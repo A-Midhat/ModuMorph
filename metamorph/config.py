@@ -31,6 +31,18 @@ _C.XML.FILTER_PARENT = "enable"
 
 _C.XML.SHADOWCLIP = 0.5
 
+
+# ----------------------------------------------------------------------------#
+# Logging Options
+# ----------------------------------------------------------------------------#
+_C.LOGGING = CN()
+
+_C.LOGGING.USE_WANDB = False
+# change to None and write them in .yaml file
+_C.LOGGING.ENTITY = "alimidhat62-org" 
+
+_C.LOGGING.PROJECT = "modumorph-ppo"
+
 # ----------------------------------------------------------------------------#
 # Unimal Env Options
 # ----------------------------------------------------------------------------#

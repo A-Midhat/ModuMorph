@@ -13,8 +13,8 @@ from metamorph.utils import file as fu
 from metamorph.utils import model as mu
 from metamorph.utils import optimizer as ou
 from metamorph.utils.meter import TrainMeter
-from torch.utils import tensorboard
-from torch.utils.tensorboard import SummaryWriter
+
+import wandb
 
 from .buffer import Buffer
 from .envs import get_ob_rms
@@ -42,7 +42,6 @@ class PPO:
             set_ob_rms(self.envs, ob_rms)
 
         if print_model:
-            #print(self.actor_critic)
             print("Num params: {}".format(mu.num_params(self.actor_critic)))
 
         self.actor_critic.to(self.device)
@@ -57,7 +56,27 @@ class PPO:
         self.lr_scale = [1. for _ in self.optimizer.param_groups]
 
         self.train_meter = TrainMeter()
-        self.writer = SummaryWriter(log_dir=os.path.join(cfg.OUT_DIR, "tensorboard"))
+
+        # ----------------------
+        # Setup logging backend:
+        # Use wandb if cfg.LOGGING.USE_WANDB is True,
+        # otherwise fallback to TensorBoard.
+        # ----------------------
+        if hasattr(cfg, "LOGGING") and cfg.LOGGING.get("USE_WANDB", False):
+            self.logger_backend = "wandb"
+            self.logger = wandb.init(
+                entity=cfg.LOGGING.get("ENTITY", "default_entity"),
+                project=cfg.LOGGING.get("PROJECT", "default_project"),
+                name=cfg.OUT_DIR.split("/")[-1],
+                config=dict(cfg)
+            )
+            wandb.config.update({"seed": cfg.RNG_SEED})
+        else:
+            self.logger_backend = "tensorboard"
+            #from torch.utils import tensorboard
+            from torch.utils.tensorboard import SummaryWriter
+            self.logger = SummaryWriter(log_dir=os.path.join(cfg.OUT_DIR, "tensorboard"))
+        # ----------------------
 
         # Get the param name for log_std term, can vary depending on arch
         for name, param in self.actor_critic.state_dict().items():
@@ -67,18 +86,28 @@ class PPO:
 
         self.fps = 0
 
+    def log_metric(self, metrics, step):
+        """
+        Helper function to log metrics based on selected logging backend.
+        """
+        if self.logger_backend == "wandb":
+            wandb.log(metrics, step=step)
+        else:
+            # For TensorBoard, add each scalar
+            for key, value in metrics.items():
+                self.logger.add_scalar(key, value, step)
+
     def train(self):
         self.save_sampled_agent_seq(0)
         obs = self.envs.reset()
         self.buffer.to(self.device)
         self.start = time.time()
 
-        print ('obs')
-        print (type(obs), len(obs))
+        print('obs')
+        print(type(obs), len(obs))
         for key in obs:
-            print (key, obs[key].size())
+            print(key, obs[key].size())
 
-        # hardcode log interval for single-task and multi-task training
         if cfg.PPO.MAX_ITERS > 1000:
             self.stat_save_freq = 100
         else:
@@ -88,12 +117,11 @@ class PPO:
 
             if cfg.PPO.EARLY_EXIT and cur_iter >= cfg.PPO.EARLY_EXIT_MAX_ITERS:
                 break
-            
+
             lr = ou.get_iter_lr(cur_iter)
             ou.set_lr(self.optimizer, lr, self.lr_scale)
 
             for step in range(cfg.PPO.TIMESTEPS):
-                # get the id of each robot if needed
                 if cfg.MODEL.TRANSFORMER.PER_NODE_EMBED:
                     unimal_ids = self.envs.get_unimal_idx()
                 else:
@@ -104,7 +132,7 @@ class PPO:
                 next_obs, reward, done, infos = self.envs.step(act)
 
                 self.train_meter.add_ep_info(infos)
-
+                # Optionally log additional info per step if needed.
                 masks = torch.tensor(
                     [[0.0] if done_ else [1.0] for done_ in done],
                     dtype=torch.float32,
@@ -116,7 +144,8 @@ class PPO:
                     device=self.device,
                 )
 
-                self.buffer.insert(obs, act, logp, val, reward, masks, timeouts, dropout_mask_v, dropout_mask_mu, unimal_ids)
+                self.buffer.insert(obs, act, logp, val, reward, masks, timeouts,
+                                   dropout_mask_v, dropout_mask_mu, unimal_ids)
                 obs = next_obs
 
             if cfg.MODEL.TRANSFORMER.PER_NODE_EMBED:
@@ -131,14 +160,9 @@ class PPO:
             self.train_meter.update_mean()
             if len(self.train_meter.mean_ep_rews["reward"]):
                 cur_rew = self.train_meter.mean_ep_rews["reward"][-1]
-                self.writer.add_scalar(
-                    'Reward', cur_rew, self.env_steps_done(cur_iter)
-                )
-            if (
-                cur_iter >= 0
-                and cur_iter % cfg.LOG_PERIOD == 0
-                and cfg.LOG_PERIOD > 0
-            ):
+                self.log_metric({"Reward": cur_rew}, self.env_steps_done(cur_iter))
+
+            if cur_iter >= 0 and cur_iter % cfg.LOG_PERIOD == 0 and cfg.LOG_PERIOD > 0:
                 self._log_stats(cur_iter)
 
                 file_name = "{}_results.json".format(self.file_prefix)
@@ -147,8 +171,8 @@ class PPO:
                 stats = self.train_meter.get_stats()
                 stats["fps"] = self.fps
                 fu.save_json(stats, path)
-                print (cfg.OUT_DIR)
-            
+                print(cfg.OUT_DIR)
+
             if cur_iter % 100 == 0:
                 self.save_model(cur_iter)
 
@@ -162,32 +186,31 @@ class PPO:
             batch_sampler = self.buffer.get_sampler(adv)
 
             for j, batch in enumerate(batch_sampler):
-                # Reshape to do in a single forward pass for all steps
-                val, _, logp, ent, _, _ = self.actor_critic(batch["obs"], batch["act"], \
-                    dropout_mask_v=batch['dropout_mask_v'], \
-                    dropout_mask_mu=batch['dropout_mask_mu'], \
-                    unimal_ids=batch['unimal_ids'])
+                val, _, logp, ent, _, _ = self.actor_critic(
+                    batch["obs"],
+                    batch["act"],
+                    dropout_mask_v=batch['dropout_mask_v'],
+                    dropout_mask_mu=batch['dropout_mask_mu'],
+                    unimal_ids=batch['unimal_ids']
+                )
                 clip_ratio = cfg.PPO.CLIP_EPS
                 ratio = torch.exp(logp - batch["logp_old"])
                 approx_kl = (batch["logp_old"] - logp).mean().item()
 
                 if cfg.PPO.KL_TARGET_COEF is not None and approx_kl > cfg.PPO.KL_TARGET_COEF * 0.01:
                     self.train_meter.add_train_stat("approx_kl", approx_kl)
-                    print (f'early stop iter {cur_iter} at epoch {i + 1}/{cfg.PPO.EPOCHS}, batch {j + 1} with approx_kl {approx_kl}')
+                    print(f'early stop iter {cur_iter} at epoch {i + 1}/{cfg.PPO.EPOCHS}, batch {j + 1} with approx_kl {approx_kl}')
                     return
 
                 surr1 = ratio * batch["adv"]
-
                 surr2 = torch.clamp(ratio, 1.0 - clip_ratio, 1.0 + clip_ratio)
                 clip_frac = (ratio != surr2).float().mean().item()
                 surr2 *= batch["adv"]
 
                 pi_loss = -torch.min(surr1, surr2).mean()
-                
+
                 if cfg.PPO.USE_CLIP_VALUE_FUNC:
-                    val_pred_clip = batch["val"] + (val - batch["val"]).clamp(
-                        -clip_ratio, clip_ratio
-                    )
+                    val_pred_clip = batch["val"] + (val - batch["val"]).clamp(-clip_ratio, clip_ratio)
                     val_loss = (val - batch["ret"]).pow(2)
                     val_loss_clip = (val_pred_clip - batch["ret"]).pow(2)
                     val_loss = 0.5 * torch.max(val_loss, val_loss_clip).mean()
@@ -195,43 +218,34 @@ class PPO:
                     val_loss = 0.5 * (batch["ret"] - val).pow(2).mean()
 
                 self.optimizer.zero_grad()
-
-                loss = val_loss * cfg.PPO.VALUE_COEF
-                loss += pi_loss
-                loss += -ent * cfg.PPO.ENTROPY_COEF
+                loss = val_loss * cfg.PPO.VALUE_COEF + pi_loss - ent * cfg.PPO.ENTROPY_COEF
                 loss.backward()
 
-                # Log training stats
-                norm = nn.utils.clip_grad_norm_(
-                    self.actor_critic.parameters(), cfg.PPO.MAX_GRAD_NORM
-                )
-                self.train_meter.add_train_stat("grad_norm", norm.item())
-
-                log_std = (
-                    self.actor_critic.state_dict()[self.log_std_param].cpu().numpy()[0]
-                )
+                norm = nn.utils.clip_grad_norm_(self.actor_critic.parameters(), cfg.PPO.MAX_GRAD_NORM)
+                log_std = self.actor_critic.state_dict()[self.log_std_param].cpu().numpy()[0]
                 std = np.mean(np.exp(log_std))
-                self.train_meter.add_train_stat("std", float(std))
 
-                self.train_meter.add_train_stat("approx_kl", approx_kl)
-                self.train_meter.add_train_stat("pi_loss", pi_loss.item())
-                self.train_meter.add_train_stat("val_loss", val_loss.item())
-                self.train_meter.add_train_stat("ratio", ratio.mean().item())
-                self.train_meter.add_train_stat("surr1", surr1.mean().item())
-                self.train_meter.add_train_stat("surr2", surr2.mean().item())
-                self.train_meter.add_train_stat("clip_frac", clip_frac)
-
+                self.log_metric({
+                    "approx_kl": approx_kl,
+                    "pi_loss": pi_loss.item(),
+                    "val_loss": val_loss.item(),
+                    "clip_frac": clip_frac,
+                    "std": float(std),
+                    "surr1": surr1.mean().item(),
+                    "surr2": surr2.mean().item(),
+                    "ratio": ratio.mean().item(),
+                    "grad_norm": norm.item()
+                }, self.env_steps_done(cur_iter))
                 self.optimizer.step()
 
-        # Save weight histogram
-        if cfg.SAVE_HIST_WEIGHTS:
-            for name, weight in self.actor_critic.named_parameters():
-                self.writer.add_histogram(name, weight, cur_iter)
-                try:
-                    self.writer.add_histogram(f"{name}.grad", weight.grad, cur_iter)
-                except NotImplementedError:
-                    # If layer does not have .grad move on
-                    continue
+                # Optionally, you can log weight and gradient histograms
+                if cfg.SAVE_HIST_WEIGHTS:
+                    for name, weight in self.actor_critic.named_parameters():
+                        self.log_metric({f"weights/{name}": wandb.Histogram(weight.cpu().detach().numpy())
+                                         } if self.logger_backend == "wandb" else {f"weights/{name}": weight.cpu().detach().numpy()}, self.env_steps_done(cur_iter))
+                        if weight.grad is not None:
+                            self.log_metric({f"gradients/{name}": wandb.Histogram(weight.grad.cpu().detach().numpy())
+                                             } if self.logger_backend == "wandb" else {f"gradients/{name}": weight.grad.cpu().detach().numpy()}, self.env_steps_done(cur_iter))
 
     def save_model(self, cur_iter, path=None):
         if not path:
@@ -249,11 +263,7 @@ class PPO:
         end = time.time()
         self.fps = int(env_steps / (end - self.start))
         if log:
-            print(
-                "Updates {}, num timesteps {}, FPS {}".format(
-                    cur_iter, env_steps, self.fps
-                )
-            )
+            print("Updates {}, num timesteps {}, FPS {}".format(cur_iter, env_steps, self.fps))
 
     def env_steps_done(self, cur_iter):
         return (cur_iter + 1) * cfg.PPO.NUM_ENVS * cfg.PPO.TIMESTEPS
@@ -268,22 +278,18 @@ class PPO:
         stats["fps"] = self.fps
         fu.save_json(stats, path)
 
-        # Save hparams when sweeping
         if hparams:
-            # Remove hparams which are of type list as tensorboard complains
-            # on saving it's not a supported type.
-            hparams_to_save = {
-                k: v for k, v in hparams.items() if not isinstance(v, list)
-            }
+            hparams_to_save = {k: v for k, v in hparams.items() if not isinstance(v, list)}
             final_env_reward = np.mean(stats["__env__"]["reward"]["reward"][-100:])
-            self.writer.add_hparams(hparams_to_save, {"reward": final_env_reward})
+            wandb.config.update(hparams_to_save) if self.logger_backend == "wandb" else None
+            self.log_metric({"final_reward": final_env_reward}, self.env_steps_done(cfg.PPO.MAX_ITERS - 1))
 
-        self.writer.close()
+        if self.logger_backend == "wandb":
+            wandb.finish()
 
     def save_video(self, save_dir, xml=None):
         env = make_vec_envs(training=False, norm_rew=False, save_video=True, xml_file=xml)
         set_ob_rms(env, get_ob_rms(self.envs))
-        
         env = VecVideoRecorder(
             env,
             save_dir,
@@ -291,69 +297,50 @@ class PPO:
             video_length=cfg.PPO.VIDEO_LENGTH,
             file_prefix=xml,
         )
-        
         obs = env.reset()
         returns = []
-
         episode_count = 0
         for t in range(cfg.PPO.VIDEO_LENGTH + 1):
-            
             _, act, _, _, _ = self.agent.act(obs)
             obs, _, _, infos = env.step(act)
-
             if 'episode' in infos[0]:
-                print (infos[0]['episode']['r'])
+                print(infos[0]['episode']['r'])
                 returns.append(infos[0]['episode']['r'])
                 episode_count += 1
                 if episode_count == 5:
                     break
-
         env.close()
-        # remove annoying meta file created by monitor
         avg_return = int(np.array(returns).mean())
         os.remove(os.path.join(save_dir, f"{xml}_video.meta.json"))
-        os.rename(os.path.join(save_dir, f"{xml}_video.mp4"), os.path.join(save_dir, f"{xml}_video_{avg_return}.mp4"))
+        os.rename(os.path.join(save_dir, f"{xml}_video.mp4"),
+                  os.path.join(save_dir, f"{xml}_video_{avg_return}.mp4"))
+        video_path = os.path.join(save_dir, f"{xml}_video_{avg_return}.mp4")
+        # If needed, log the video using the appropriate backend.
+        # self.log_metric({"video": wandb.Video(video_path, fps=cfg.VIDEO.FPS, format="mp4")},
+        #                 step=self.env_steps_done(0))
         return returns
 
     def save_sampled_agent_seq(self, cur_iter):
         num_agents = len(cfg.ENV.WALKERS)
-
         if num_agents <= 1:
             return
-
         if cfg.ENV.TASK_SAMPLING == "uniform_random_strategy":
             ep_lens = [1000] * num_agents
         elif cfg.ENV.TASK_SAMPLING == "balanced_replay_buffer":
-            # For a first couple of iterations do uniform sampling to ensure
-            # we have good estimate of ep_lens
             if cur_iter < 30:
                 ep_lens = [1000] * num_agents
             else:
                 if cfg.TASK_SAMPLING.AVG_TYPE == "ema":
-                    ep_lens = [
-                        np.mean(self.train_meter.agent_meters[agent].ep_len_ema)
-                        for agent in cfg.ENV.WALKERS
-                    ]
+                    ep_lens = [np.mean(self.train_meter.agent_meters[agent].ep_len_ema) for agent in cfg.ENV.WALKERS]
                 elif cfg.TASK_SAMPLING.AVG_TYPE == "moving_window":
-                    ep_lens = [
-                        np.mean(self.train_meter.agent_meters[agent].ep_len)
-                        for agent in cfg.ENV.WALKERS
-                    ]
-
+                    ep_lens = [np.mean(self.train_meter.agent_meters[agent].ep_len) for agent in cfg.ENV.WALKERS]
         probs = [1000.0 / l for l in ep_lens]
         probs = np.power(probs, cfg.TASK_SAMPLING.PROB_ALPHA)
         probs = [p / sum(probs) for p in probs]
-
-        # Estimate approx number of episodes each subproc env can rollout
-        avg_ep_len = np.mean([
-            np.mean(self.train_meter.agent_meters[agent].ep_len)
-            for agent in cfg.ENV.WALKERS
-        ])
-        # In the start the arrays will be empty
+        avg_ep_len = np.mean([np.mean(self.train_meter.agent_meters[agent].ep_len) for agent in cfg.ENV.WALKERS])
         if np.isnan(avg_ep_len):
             avg_ep_len = 100
         ep_per_env = cfg.PPO.TIMESTEPS / avg_ep_len
-        # Task list size (multiply by 8 as padding)
         size = int(ep_per_env * cfg.PPO.NUM_ENVS * 50)
         task_list = np.random.choice(range(0, num_agents), size=size, p=probs)
         task_list = [int(_) for _ in task_list]
