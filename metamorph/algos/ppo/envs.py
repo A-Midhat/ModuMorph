@@ -98,7 +98,7 @@ def make_vec_envs(
                     _env = make_env(cfg.ENV_NAME, seed, 2 * i + 1, xml_file=xml)()
                     envs.append(env_func_wrapper(_env))
                 cfg.PPO.NUM_ENVS = len(envs)
-        elif cfg.ENV_NAME == "Robosuite":
+        elif cfg.ENV_NAME == "Robosuite-v0":
             # --- Multi-Agent(robots) ---
             num_robots = len(cfg.ROBOSUITE.ROBOTS) # OR ENV.WALKERS
             if cfg.ENV.FIX_ENV:

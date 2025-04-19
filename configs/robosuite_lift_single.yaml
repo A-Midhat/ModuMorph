@@ -1,0 +1,26 @@
+ENV_NAME: "Robosuite-v0"
+OUT_DIR: "out/robosuite_lift_single"
+RNG_SEED: 14
+
+ROBOSUITE:
+  ENV_NAME: "Lift"
+  ROBOTS: ["Panda"]
+  CONTROLLER: "OSC_POSE"
+
+ENV:
+  MOUDLES: ["Agent", "Objects"]
+  KEYS_TO_KEEP: ["object_state", "gripper_to_object", "eef_pos", "eef_quat", "gripper_qpos", "gripper_qvel"]
+  #TASK: "robosuite_lift"
+
+MODEL:
+  TYPE: "mlp"
+  MAX_LIMBS: 8
+  MAX_JOINTS: 8
+
+PPO:
+  MAX_STATE_ACTION_PAIRS: 1e5
+  EPOCHS: 8
+  BATCH_SIZE: 512
+
+LOGGING:
+  USE_WANDB: True

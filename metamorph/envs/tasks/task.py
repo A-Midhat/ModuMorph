@@ -18,7 +18,7 @@ def make_env(agent_name):
         cfg.ENV.WALKER_DIR, "xml", "{}.xml".format(agent_name)
     )
 
-    if cfg.ENV_NAME == "Robosuite":
+    if cfg.ENV_NAME =="Robosuite-v0":
         # agent name here is teh robot type (i.e. "Sawyer")
         env = make_env_robosuite(robot_name=agent_name)
     elif cfg.ENV_NAME == "Unimal-v0" or cfg.ENV_NAME == "Modular-v0":
@@ -29,7 +29,7 @@ def make_env(agent_name):
     else :
         raise NotImplementedError
     
-    if cfg.ENV_NAME == "Robosuite":
+    if cfg.ENV_NAME == "Robosuite-v0":
         # TODO: add this as sperate keeys to keep for robosuite' or similar
         keys_to_keep = ["proprioceptive", "context", "edges", "obs_padding_mask", "act_padding_mask", "object_state", "gripper_to_object"]
     else :

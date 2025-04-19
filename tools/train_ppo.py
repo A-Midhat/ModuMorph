@@ -85,13 +85,13 @@ def calculate_max_iters():
 
 
 def maybe_infer_walkers():
-    if cfg.ENV_NAME not in ["Unimal-v0", "Modular-v0", "Robosuite"]:
+    if cfg.ENV_NAME not in ["Unimal-v0", "Modular-v0","Robosuite-v0"]:
         return
 
     # Only infer the walkers if this option was not specified
     if len(cfg.ENV.WALKERS):
         return
-    if cfg.ENV_NAME == "Robosuite":
+    if cfg.ENV_NAME == "Robosuite-v0":
         cfg.ENV.WALKERS =  cfg.ENV.ROBOTS
         print("cfg.ENV.WALKERS (manipulators actually >:( ): ", cfg.ENV.WALKERS)
     elif cfg.ENV_NAME == "Unimal-v0":

@@ -1,0 +1,29 @@
+ENV_NAME: "Robosuite-v0"
+OUT_DIR: "out/robosuite_lift_multi"
+RNG_SEED: 14
+
+ROBOSUITE:
+  ENV_NAME: "Lift"
+  ROBOTS: ["Panda", "Sawyer"]
+  CONTROLLER: "OSC_POSE"
+
+ENV:
+  MOUDLES: ["Agent", "Objects"]
+  KEYS_TO_KEEP: ["object_state", "gripper_to_object", "eef_pos", "eef_quat", "gripper_qpos", "gripper_qvel"]
+  #TASK: "robosuite_lift"
+
+MODEL:
+  TYPE: "traansformer""
+  MAX_LIMBS: 8
+  MAX_JOINTS: 8
+  TRANANSFORMER:
+    EXT_MIX: "late"
+
+PPO:
+
+  EPOCHS: 8
+  BATCH_SIZE: 512
+  NUM_ENVS: 4
+
+LOGGING:
+  USE_WANDB: True
