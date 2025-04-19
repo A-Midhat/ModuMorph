@@ -66,7 +66,7 @@ def calculate_max_limbs_joints():
             else:
                 cfg.MODEL.MAX_LIMBS = 9
                 cfg.MODEL.MAX_JOINTS = 9
-    elif cfg.ENV_NAME == 'Robosuite':
+    elif cfg.ENV_NAME == 'Robosuite-v0':
         # we rely specifically on values specified in the YAML file 
         print(f"cfg.MODEL.MAX_LIMBS: {cfg.MODEL.MAX_LIMBS}, cfg.MODEL.MAX_JOINTS: {cfg.MODEL.MAX_JOINTS}") # is this best way?? TODO: check again later
 
@@ -92,7 +92,7 @@ def maybe_infer_walkers():
     if len(cfg.ENV.WALKERS):
         return
     if cfg.ENV_NAME == "Robosuite-v0":
-        cfg.ENV.WALKERS =  cfg.ENV.ROBOTS
+        cfg.ENV.WALKERS =  cfg.ROBOSUITE.ROBOTS
         print("cfg.ENV.WALKERS (manipulators actually >:( ): ", cfg.ENV.WALKERS)
     elif cfg.ENV_NAME == "Unimal-v0":
 

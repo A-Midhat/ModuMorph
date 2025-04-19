@@ -7,13 +7,7 @@ import robosuite
 from robosuite.controllers import load_controller_config, ALL_CONTROLLERS 
 
 from metamorph.config import cfg
-try:
-    from metamorph.envs.wrappers.robosuite_wrappers import RobosuiteNodeCentricObservation, RobosuiteNodeCentricAction
-except ImportError:
-    print("Warning: metamorph.envs.wrappers.robosuite_wrappers not found yet. Node-centric wrappers will not be applied by default.")
-    # Will cause problems 
-    RobosuiteNodeCentricObservation = None
-    RobosuiteNodeCentricAction = None
+
 
 
 class RobosuiteEnvWrapper(gym.Env):
@@ -68,7 +62,7 @@ class RobosuiteEnvWrapper(gym.Env):
         gym_obs_spaces = {}
         for key, spec in obs_spec.items():
             try:
-                _shape = sepc.shape
+                _shape = spec.shape
                 _dtype = spec.dtype
 
                 _dtype = np.float32 if _dtype == np.float64 else _dtype
@@ -137,7 +131,8 @@ class RobosuiteEnvWrapper(gym.Env):
         processed_obs = self._convert_observation(obs_dict)
         
         # ---Custom info---
-        info['robot_name'] = self.robot_name
+        #info['robot_name'] = self.robot_name # causing error at Agent
+        info['name'] = self.robot_name
         info['raw_reward'] = reward
         info['action'] = action
 
@@ -280,7 +275,7 @@ class RobosuiteEnvWrapper(gym.Env):
         self.action_space.seed(seed)
         
 # --- Factory function for making env and applying the wrappers --- 
-
+#TODO: MOVE IT OTHER FILE TO ESCAPE THE CIRCULAR IMPORT ERROR
 def make_env_robosuite(robot_name):
     base_env = RobosuiteEnvWrapper(
         robosuite_env_name=cfg.ROBOSUITE.ENV_NAME,
@@ -288,10 +283,20 @@ def make_env_robosuite(robot_name):
         controller_name=cfg.ROBOSUITE.CONTROLLER,
         robosuite_cfg=cfg.ROBOSUITE # pass the config to the env 
     ) 
-
+    try:
+        from metamorph.envs.wrappers.robosuite_wrappers import RobosuiteNodeCentricObservation, RobosuiteNodeCentricAction
+        print("Success")
+    except Exception as e:
+        print("ERROR: ", e)
+        print("Warning: metamorph.envs.wrappers.robosuite_wrappers not found yet. Node-centric wrappers will not be applied by default.")
+        # Will cause problems 
+        RobosuiteNodeCentricObservation = None
+        RobosuiteNodeCentricAction = None
+    
     if RobosuiteNodeCentricObservation is not None and RobosuiteNodeCentricAction is not None:
-        env = RobosuiteNodeCentricObservation(env)
+        env = RobosuiteNodeCentricObservation(base_env)
         env = RobosuiteNodeCentricAction(env)
+        return env
     else:
         print("Warning: RobosuiteNodeCentricObservation or RobosuiteNodeCentricAction is not defined. Skipping the wrappers.")
         env = base_env 
@@ -300,3 +305,4 @@ def make_env_robosuite(robot_name):
     #     env = globals()[wrapper_name](env) 
     
     return env
+make_env_robosuite("Panda")

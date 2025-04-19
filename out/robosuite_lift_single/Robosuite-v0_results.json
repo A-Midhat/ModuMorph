@@ -1,0 +1,19 @@
+{
+  "Panda": {
+    "reward": {},
+    "pos": [],
+    "vel": [],
+    "metric": [],
+    "ep_len": []
+  },
+  "__env__": {
+    "reward": {
+      "reward": []
+    },
+    "pos": [],
+    "vel": [],
+    "metric": [],
+    "ep_len": []
+  },
+  "fps": 143
+}

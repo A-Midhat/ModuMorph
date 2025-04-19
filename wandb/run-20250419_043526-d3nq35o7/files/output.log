@@ -1,0 +1,22 @@
+obs
+<class 'dict'> 5
+proprioceptive torch.Size([4, 24])
+context torch.Size([4, 40])
+edges torch.Size([4, 16])
+obs_padding_mask torch.Size([4, 8])
+act_padding_mask torch.Size([4, 8])
+lr=2.9999999999999997e-05 for iter 0
+Traceback (most recent call last):
+  File "tools/train_ppo.py", line 238, in <module>
+    main()
+  File "tools/train_ppo.py", line 234, in main
+    ppo_train()
+  File "tools/train_ppo.py", line 205, in ppo_train
+    PPOTrainer.train()
+  File "/home/alimidhat_aims_ac_za/PythonProjects/ModuMorph/metamorph/algos/ppo/ppo.py", line 134, in train
+    self.train_meter.add_ep_info(infos)
+  File "/home/alimidhat_aims_ac_za/PythonProjects/ModuMorph/metamorph/utils/meter.py", line 106, in add_ep_info
+    agent_meter.add_ep_info(infos)
+  File "/home/alimidhat_aims_ac_za/PythonProjects/ModuMorph/metamorph/utils/meter.py", line 28, in add_ep_info
+    if info["name"] != self.name:
+KeyError: 'name'

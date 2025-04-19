@@ -1,0 +1,24 @@
+Traceback (most recent call last):
+  File "tools/train_ppo.py", line 238, in <module>
+    main()
+  File "tools/train_ppo.py", line 234, in main
+    ppo_train()
+  File "tools/train_ppo.py", line 205, in ppo_train
+    PPOTrainer.train()
+  File "/home/alimidhat_aims_ac_za/PythonProjects/ModuMorph/metamorph/algos/ppo/ppo.py", line 102, in train
+    obs = self.envs.reset()
+  File "/home/alimidhat_aims_ac_za/PythonProjects/ModuMorph/metamorph/envs/vec_env/pytorch_vec_env.py", line 14, in reset
+    obs = self.venv.reset()
+  File "/home/alimidhat_aims_ac_za/PythonProjects/ModuMorph/metamorph/envs/vec_env/vec_normalize.py", line 102, in reset
+    obs = self.venv.reset()
+  File "/home/alimidhat_aims_ac_za/PythonProjects/ModuMorph/metamorph/envs/vec_env/subproc_vec_env.py", line 121, in reset
+    obs = [remote.recv() for remote in self.remotes]
+  File "/home/alimidhat_aims_ac_za/PythonProjects/ModuMorph/metamorph/envs/vec_env/subproc_vec_env.py", line 121, in <listcomp>
+    obs = [remote.recv() for remote in self.remotes]
+  File "/usr/lib/python3.8/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+  File "/usr/lib/python3.8/multiprocessing/connection.py", line 414, in _recv_bytes
+    buf = self._recv(4)
+  File "/usr/lib/python3.8/multiprocessing/connection.py", line 383, in _recv
+    raise EOFError
+EOFError

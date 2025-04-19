@@ -25,7 +25,7 @@ def make_env(env_id, seed, rank, xml_file=None, robot_name=None):
                 env = gym.make(env_id, agent_name=xml_file)
             elif env_id == 'Modular-v0':
                 env = gym.make(f"{xml_file}-v0")
-            elif env_id == 'Robosuite':
+            elif env_id == 'Robosuite-v0':
                 env = make_env_robosuite(robot_name=robot_name)
         else:
             env = gym.make(env_id)
@@ -71,7 +71,7 @@ def make_vec_envs(
     if len(agent_list) <= 1 or render_policy or save_video:
         # ---Single Agent/Robot---
         agent_identifier = agent_list[0]
-        if cfg.ENV_NAME == 'Robosuite':
+        if cfg.ENV_NAME == 'Robosuite-v0':
             xml_file_arg, robot_name_arg = None, agent_identifier
         else :
             xml_file_arg, robot_name_arg = agent_identifier, None # use xml for unimal/modular
@@ -97,7 +97,7 @@ def make_vec_envs(
                     envs.append(env_func_wrapper(_env))
                     _env = make_env(cfg.ENV_NAME, seed, 2 * i + 1, xml_file=xml)()
                     envs.append(env_func_wrapper(_env))
-                cfg.PPO.NUM_ENVS = len(envs)
+                # cfg.PPO.NUM_ENVS = len(envs) # swith this off for now TODO: uncomment
         elif cfg.ENV_NAME == "Robosuite-v0":
             # --- Multi-Agent(robots) ---
             num_robots = len(cfg.ROBOSUITE.ROBOTS) # OR ENV.WALKERS

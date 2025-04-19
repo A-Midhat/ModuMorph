@@ -1,0 +1,19 @@
+obs
+<class 'dict'> 5
+proprioceptive torch.Size([4, 24])
+context torch.Size([4, 40])
+edges torch.Size([4, 16])
+obs_padding_mask torch.Size([4, 8])
+act_padding_mask torch.Size([4, 8])
+lr=2.9999999999999997e-05 for iter 0
+Updates 0, num timesteps 10240, FPS 138
+out/robosuite_lift_single
+lr=8.146709007300815e-05 for iter 1
+lr=0.00012185706657520947 for iter 2
+lr=0.000144 for iter 3
+lr=0.00014435872585303244 for iter 4
+lr=0.00012395277334996044 for iter 5
+lr=7.500000000000002e-05 for iter 6
+lr=3.509333353215331e-05 for iter 7
+lr=9.046106882113751e-06 for iter 8
+Finished Training: Robosuite-v0

@@ -221,10 +221,12 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
 
         # Get joint indices reference by the robot model (excluding gripper)
         ref_joint_indexes = robot_model._ref_joint_indexes
-        ref_joint_vel_indexes = robot_model._ref_joint_vel_indexes # Often starts from 6 (after root)
+        ref_joint_vel_indexes = robot_model._ref_joint_vel_indexes # Often  from 6 (after root)
+        num_arm_joints_to_use = self.num_arm_joints # Assume metadata is correct for now
+
         if len(ref_joint_indexes) != self.num_arm_joints:
              print(f"Warning: Metadata arm joints ({self.num_arm_joints}) != reference joint indexes ({len(ref_joint_indexes)}). Context might be misaligned.")
-             # Adjust num_arm_joints based on reference if mismatch detected? Risky.
+             # TODO: Adjust num_arm_joints based on reference if mismatch detected? Risky.
              # num_arm_joints_to_use = min(self.num_arm_joints, len(ref_joint_indexes))
              num_arm_joints_to_use = self.num_arm_joints # Assume metadata is correct for now
 

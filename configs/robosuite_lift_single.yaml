@@ -5,11 +5,11 @@ RNG_SEED: 14
 ROBOSUITE:
   ENV_NAME: "Lift"
   ROBOTS: ["Panda"]
-  CONTROLLER: "OSC_POSE"
+  CONTROLLER: "JOINT_POSITION"
 
 ENV:
   MOUDLES: ["Agent", "Objects"]
-  KEYS_TO_KEEP: ["object_state", "gripper_to_object", "eef_pos", "eef_quat", "gripper_qpos", "gripper_qvel"]
+  #KEYS_TO_KEEP: ["object_state", "gripper_to_object", "eef_pos", "eef_quat", "gripper_qpos", "gripper_qvel"]
   #TASK: "robosuite_lift"
 
 MODEL:
@@ -21,6 +21,7 @@ PPO:
   MAX_STATE_ACTION_PAIRS: 1e5
   EPOCHS: 8
   BATCH_SIZE: 512
+  NUM_ENVS: 4
 
 LOGGING:
   USE_WANDB: True
