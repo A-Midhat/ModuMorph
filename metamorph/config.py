@@ -44,6 +44,19 @@ _C.LOGGING.ENTITY = "alimidhat62-org"
 _C.LOGGING.PROJECT = "modumorph-ppo"
 
 # ----------------------------------------------------------------------------#
+# Robosuite Env Options
+# ----------------------------------------------------------------------------#
+_C.ROBOSUITE = CN()
+
+_C.ROBOSUITE.ENV_NAME = "Lift" 
+
+# Pontentially should accept a list of robots
+_C.ROBOSUITE.ROBOTS = ["Panda"]
+
+_C.ROBOSUITE.CONTROLLER = "JOINT_POSITION"
+# TODO: add more options
+
+# ----------------------------------------------------------------------------#
 # Unimal Env Options
 # ----------------------------------------------------------------------------#
 _C.ENV = CN()
@@ -399,6 +412,12 @@ _C.MODEL.BASE_CONTEXT_NORM = 'running'
 
 # Wrappers to add specific to model
 _C.MODEL.WRAPPERS = ["MultiUnimalNodeCentricObservation", "MultiUnimalNodeCentricAction"]
+
+# --------------------------------------------------------------------------- #
+# Extroceptive Encoder Options (for Robosuite)
+# --------------------------------------------------------------------------- #
+_C.MODEL.EXTROCEPTIVE_ENCODER = CN()
+_C.MODEL.EXTROCEPTIVE_ENCODER.HIDDEN_DIMS = [64, 64] 
 
 # --------------------------------------------------------------------------- #
 # Transformer Options
