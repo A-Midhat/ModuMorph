@@ -206,7 +206,8 @@ def ppo_train():
     hparams = get_hparams()
     PPOTrainer.save_rewards(hparams=hparams)
     PPOTrainer.save_model(-1)
-    cleanup_tensorboard()
+    if PPOTrainer.logger_backend == "tensorboard":
+        cleanup_tensorboard()
 
 
 def main():

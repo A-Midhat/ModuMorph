@@ -82,7 +82,7 @@ def make_vec_envs(
        
     else:
         # Dummy init the actual xml_file will change on each reset
-        x#ml_file = cfg.ENV.WALKERS[0]
+        #xml_file = cfg.ENV.WALKERS[0]
         envs = []
         if cfg.ENV_NAME == 'Unimal-v0':
             if not cfg.ENV.FIX_ENV:
