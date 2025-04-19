@@ -6,6 +6,6 @@ unimals_100
 test*
 
 venv
-
+wandb/*
 output/*
 *.egg-info
