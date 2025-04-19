@@ -102,12 +102,25 @@ class TransformerModel(nn.Module):
 
         # Task based observation encoder
         if "hfield" in cfg.ENV.KEYS_TO_KEEP:
+            print ('using `hfield` Encoder')
             self.hfield_encoder = MLPObsEncoder(obs_space.spaces["hfield"].shape[0])
 
         if self.ext_feat_fusion == "late":
             decoder_input_dim += self.hfield_encoder.obs_feat_dim
         self.decoder_input_dim = decoder_input_dim
 
+        # ---Robosuite-specific Encoder (new ext feat)---
+        self.extroceptive_keys = [k for k in ["object_state", "gripper_to_object"] if k in obs_space.spaces] # TODO: check for the correct synatx of those keys
+        if self.extroceptive_keys:
+            
+            #combine dim of keys 
+            extroceptive_dim = sum(obs_space.spaces[k].shape[0] for k in self.extroceptive_keys) 
+            print(f"Init Extroceptive Encoder for keys: {self.extroceptive_keys}, dim: {extroceptive_dim}")
+            self.extroceptive_encoder = ExtroceptiveEncoder(extroceptive_dim)
+            if self.ext_feat_fusion == "late":
+                self.decoder_input_dim += self.extroceptive_encoder.obs_feat_dim # Increase decoder input dim 
+
+        # -----------------------------------------------
         if self.model_args.PER_NODE_DECODER:
             # only support a single output layer
             initrange = cfg.MODEL.TRANSFORMER.DECODER_INIT
@@ -240,15 +253,33 @@ class TransformerModel(nn.Module):
     def forward(self, obs, obs_mask, obs_env, obs_cm_mask, obs_context, morphology_info, return_attention=False, dropout_mask=None, unimal_ids=None):
         # (num_limbs, batch_size, limb_obs_size) -> (num_limbs, batch_size, d_model)
         _, batch_size, limb_obs_size = obs.shape
+        
+        hfield_embedding_late = None 
 
         if "hfield" in cfg.ENV.KEYS_TO_KEEP:
             # (batch_size, embed_size)
             hfield_obs = self.hfield_encoder(obs_env["hfield"])
+            if self.ext_feat_fusion == "late":
+                hfield_embedding_late = hfield_obs.repeat(self.seq_len, 1)
+                hfield_embedding_late = hfield_embedding_late.reshape(self.seq_len, batch_size, -1)
 
-        if self.ext_feat_fusion in ["late"]:
-            hfield_obs = hfield_obs.repeat(self.seq_len, 1)
-            hfield_obs = hfield_obs.reshape(self.seq_len, batch_size, -1)
+        # if self.ext_feat_fusion in ["late"]:
+        #     hfield_obs = hfield_obs.repeat(self.seq_len, 1)
+        #     hfield_obs = hfield_obs.reshape(self.seq_len, batch_size, -1)
 
+        # ---Robosuite Ext features---
+        extroceptive_embedding_late = None 
+        if self.extroceptive_keys:
+            # concatenate the extroceptive features 
+            extro_features_list = [obs_env[k] for k in self.extroceptive_keys if k in obs_env]
+            if extro_features_list:
+                extro_features = torch.cat(extro_features_list, dim=-1)
+                exctro_enocded = self.extroceptive_encoder(extro_features) # (batch_size, extro_feat_dim)
+                if self.ext_feat_fusion == "late":
+                    extroceptive_embedding_late = exctro_enocded.repeat(self.seq_len, 1)
+                    extroceptive_embedding_late = extroceptive_embedding_late.reshape(self.seq_len, batch_size, -1)
+
+        # --- FA/HN ---
         if self.model_args.FIX_ATTENTION:
             context_embedding_attention = self.context_embed_attention(obs_context)
 
@@ -269,7 +300,8 @@ class TransformerModel(nn.Module):
         if self.model_args.HYPERNET:
             context_embedding_HN = self.context_embed_HN(obs_context)
             context_embedding_HN = self.context_encoder_HN(context_embedding_HN)
-
+        
+        # --- Input Embedding ---
         if self.model_args.HYPERNET and self.model_args.HN_EMBED:
             embed_weight = self.hnet_embed_weight(context_embedding_HN).reshape(self.seq_len, batch_size, limb_obs_size, self.d_model)
             embed_bias = self.hnet_embed_bias(context_embedding_HN)
@@ -337,14 +369,22 @@ class TransformerModel(nn.Module):
                 context=context_to_base, 
                 morphology_info=morphology_info
             )
-        
-        decoder_input = obs_embed_t
-        if "hfield" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion == "late":
-            decoder_input = torch.cat([decoder_input, hfield_obs], axis=2)
 
+        # ---Late fusion of extroceptive features---
+        decoder_input = obs_embed_t
+        # if "hfield" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion == "late":
+        #     decoder_input = torch.cat([decoder_input, hfield_obs], axis=2)
+        if hfield_embedding_late is not None:
+            decoder_input = torch.cat([decoder_input, hfield_embedding_late], dim=-1)
+
+        if extroceptive_embedding_late is not None:
+            decoder_input = torch.cat([decoder_input, extroceptive_embedding_late], dim=-1)
+        
+        # ---Decoder---
         # (num_limbs, batch_size, J)
         if self.model_args.HYPERNET and self.model_args.HN_DECODER:
             output = decoder_input
+            # HN generated decoder W/b
             layer_num = len(self.hnet_decoder_weight)
             for i in range(layer_num):
                 layer_w = self.hnet_decoder_weight[i](context_embedding_HN).reshape(self.seq_len, batch_size, self.decoder_dims[i], self.decoder_dims[i + 1])
@@ -356,6 +396,7 @@ class TransformerModel(nn.Module):
             if self.model_args.PER_NODE_DECODER:
                 output = (decoder_input[:, :, :, None] * self.decoder_weights[:, unimal_ids, :, :]).sum(dim=-2, keepdim=False) + self.decoder_bias[:, unimal_ids, :]
             else:
+                # MLP
                 output = self.decoder(decoder_input)
 
         # (batch_size, num_limbs, J)
@@ -409,13 +450,25 @@ class SWATPEEncoder(nn.Module):
         x = x + embeddings
         return x
 
-
+# TODO: rename it to HFieldEncoder
 class MLPObsEncoder(nn.Module):
     """Encoder for env obs like hfield."""
 
     def __init__(self, obs_dim):
         super(MLPObsEncoder, self).__init__()
         mlp_dims = [obs_dim] + cfg.MODEL.TRANSFORMER.EXT_HIDDEN_DIMS
+        self.encoder = tu.make_mlp_default(mlp_dims)
+        self.obs_feat_dim = mlp_dims[-1]
+
+    def forward(self, obs):
+        return self.encoder(obs)
+
+# TODO: we can just modify the keys to keep and remove this 
+# --- Encoder for extroceptive features (robosuite)---
+class ExtroceptiveEncoder(nn.Module):
+    def __init__(self, obs_dim):
+        super(ExtroceptiveEncoder, self).__init__()
+        mlp_dims = [obs_dim] + cfg.MODEL.EXTROCEPTIVE_ENCODER.HIDDEN_DIMS 
         self.encoder = tu.make_mlp_default(mlp_dims)
         self.obs_feat_dim = mlp_dims[-1]
 
@@ -461,7 +514,8 @@ class ActorCritic(nn.Module):
         if act is not None:
             batch_size = cfg.PPO.BATCH_SIZE
         else:
-            batch_size = cfg.PPO.NUM_ENVS
+            #batch_size = cfg.PPO.NUM_ENVS
+            batch_size = obs["proprioceptive"].shape[0] if cfg.MODEL.TYPE == "mlp" else obs["proprioceptive"].shape[1] 
 
         obs_env = {k: obs[k] for k in cfg.ENV.KEYS_TO_KEEP}
         if "obs_padding_cm_mask" in obs:
