@@ -16,14 +16,17 @@ from metamorph.envs.wrappers.multi_env_wrapper import MultiEnvWrapper
 
 from modular.wrappers import ModularObservationPadding, ModularActionPadding
 
+from metamorph.envs.tasks.robosuite_task import make_env_robosuite
 
-def make_env(env_id, seed, rank, xml_file=None):
+def make_env(env_id, seed, rank, xml_file=None, robot_name=None):
     def _thunk():
         if env_id in CUSTOM_ENVS:
             if env_id == 'Unimal-v0':
                 env = gym.make(env_id, agent_name=xml_file)
             elif env_id == 'Modular-v0':
                 env = gym.make(f"{xml_file}-v0")
+            elif env_id == 'Robosuite':
+                env = make_env_robosuite(robot_name=robot_name)
         else:
             env = gym.make(env_id)
         # Note this does not change the global seeds. It creates a numpy
@@ -63,22 +66,30 @@ def make_vec_envs(
     if seed is None:
         seed = cfg.RNG_SEED
 
-    if len(cfg.ENV.WALKERS) <= 1 or render_policy or save_video:
-        if xml_file is None or len(cfg.ENV.WALKERS) == 1:
-            xml_file = cfg.ENV.WALKERS[0]
+    # if len(cfg.ENV.WALKERS) <= 1 or render_policy or save_video:
+    agent_list = cfg.ENV.WALKERS # populated from maybe_infer+walkers()
+    if len(agent_list) <= 1 or render_policy or save_video:
+        # ---Single Agent/Robot---
+        agent_identifier = agent_list[0]
+        if cfg.ENV_NAME == 'Robosuite':
+            xml_file_arg, robot_name_arg = None, agent_identifier
+        else :
+            xml_file_arg, robot_name_arg = agent_identifier, None # use xml for unimal/modular
         envs = [
-            make_env(cfg.ENV_NAME, seed, idx, xml_file=xml_file)
+            make_env(cfg.ENV_NAME, seed, idx, xml_file=xml_file_arg, robot_name=robot_name_arg)
             for idx in range(num_env)
         ]
+       
     else:
         # Dummy init the actual xml_file will change on each reset
-        xml_file = cfg.ENV.WALKERS[0]
+        x#ml_file = cfg.ENV.WALKERS[0]
         envs = []
         if cfg.ENV_NAME == 'Unimal-v0':
             if not cfg.ENV.FIX_ENV:
                 # randomly sample robots for each process as in MetaMorph
                 for idx in range(num_env):
-                    _env = make_env(cfg.ENV_NAME, seed, idx, xml_file=xml_file)()
+                    #_env = make_env(cfg.ENV_NAME, seed, idx, xml_file=xml_file)()
+                    _env = make_env(cfg.ENV_NAME, seed, idx, xml_file=agent_list[0])() # TODO: Check this
                     envs.append(env_func_wrapper(MultiEnvWrapper(_env, idx)))
             else:
                 for i, xml in enumerate(cfg.ENV.WALKERS):
@@ -87,6 +98,21 @@ def make_vec_envs(
                     _env = make_env(cfg.ENV_NAME, seed, 2 * i + 1, xml_file=xml)()
                     envs.append(env_func_wrapper(_env))
                 cfg.PPO.NUM_ENVS = len(envs)
+        elif cfg.ENV_NAME == "Robosuite":
+            # --- Multi-Agent(robots) ---
+            num_robots = len(cfg.ROBOSUITE.ROBOTS) # OR ENV.WALKERS
+            if cfg.ENV.FIX_ENV:
+                envs = []
+                envs_per_robot = num_env // num_robots # TODO: Need to change when scaling
+                assert num_env % num_robots == 0, "NUM_ENVS must be divisible by number of robots for FIX_ENV=True"
+                robot_idx = 0
+                for i in range(num_env):
+                    current_robot = cfg.ROBOSUITE.ROBOTS[robot_idx]
+                    envs.append(make_env(cfg.ENV_NAME, seed, i, robot_name=current_robot)())
+                    if i % envs_per_robot == envs_per_robot - 1:
+                        robot_idx += 1
+            else: 
+                raise NotImplementedError("FIX_ENV=False not implemented for Robosuite")
         elif cfg.ENV_NAME == 'Modular-v0':
             for xml in cfg.ENV.WALKERS:
                 _env = make_env(cfg.ENV_NAME, seed, 0, xml_file=xml)()
