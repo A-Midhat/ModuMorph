@@ -1,5 +1,8 @@
 import os
 from metamorph.config import cfg
+
+from metamorph.envs.tasks.robosuite_task import make_env_robosuite
+
 from metamorph.envs.modules.agent import create_agent_xml
 from metamorph.envs.tasks.escape_bowl import make_env_escape_bowl
 from metamorph.envs.tasks.locomotion import make_env_locomotion
@@ -14,11 +17,22 @@ def make_env(agent_name):
     xml_path = os.path.join(
         cfg.ENV.WALKER_DIR, "xml", "{}.xml".format(agent_name)
     )
-    xml = create_agent_xml(xml_path)
-    env_func = "make_env_{}".format(cfg.ENV.TASK)
-    env = globals()[env_func](xml, agent_name)
 
-    # Add common wrappers in the end
-    keys_to_keep = cfg.ENV.KEYS_TO_KEEP + cfg.MODEL.OBS_TYPES
+    if cfg.ENV_NAME == "Robosuite":
+        # agent name here is teh robot type (i.e. "Sawyer")
+        env = make_env_robosuite(robot_name=agent_name)
+    elif cfg.ENV_NAME == "Unimal-v0" or cfg.ENV_NAME == "Modular-v0":
+        xml = create_agent_xml(xml_path)
+        env_func = "make_env_{}".format(cfg.ENV.TASK)
+        env = globals()[env_func](xml, agent_name)
+
+    else :
+        raise NotImplementedError
+    
+    if cfg.ENV_NAME == "Robosuite":
+        # TODO: add this as sperate keeys to keep for robosuite' or similar
+        keys_to_keep = ["proprioceptive", "context", "edges", "obs_padding_mask", "act_padding_mask", "object_state", "gripper_to_object"]
+    else :
+        keys_to_keep = cfg.ENV.KEYS_TO_KEEP + cfg.MODEL.OBS_TYPES
     env = SelectKeysWrapper(env, keys_to_keep=keys_to_keep)
     return env

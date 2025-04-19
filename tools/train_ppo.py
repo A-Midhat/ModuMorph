@@ -1,3 +1,8 @@
+# TODO: 
+# 1. Change WALKERS to AGENTS (to make it more general)
+# 2. Add a file that loops through all robosuite robots (we are using to train) and get the MAX_LIMBS and MAX_JOINTS
+
+# For the sake of simplicity, we will discard the previous
 import argparse
 import os
 import sys
@@ -61,24 +66,12 @@ def calculate_max_limbs_joints():
             else:
                 cfg.MODEL.MAX_LIMBS = 9
                 cfg.MODEL.MAX_JOINTS = 9
+    elif cfg.ENV_NAME == 'Robosuite':
+        # we rely specifically on values specified in the YAML file 
+        print(f"cfg.MODEL.MAX_LIMBS: {cfg.MODEL.MAX_LIMBS}, cfg.MODEL.MAX_JOINTS: {cfg.MODEL.MAX_JOINTS}") # is this best way?? TODO: check again later
 
-        # num_joints, num_limbs = [], []
-
-        # metadata_paths = []
-        # print (cfg.ENV.WALKERS)
-        # for agent in cfg.ENV.WALKERS:
-        #     metadata_paths.append(os.path.join(
-        #         cfg.ENV.WALKER_DIR, "metadata", "{}.json".format(agent)
-        #     ))
-
-        # for metadata_path in metadata_paths:
-        #     metadata = fu.load_json(metadata_path)
-        #     num_joints.append(metadata["dof"])
-        #     num_limbs.append(metadata["num_limbs"])
-
-        # # Add extra 1 for max_joints; needed for adding edge padding
-        # cfg.MODEL.MAX_LIMBS = max(num_limbs)
-        # cfg.MODEL.MAX_JOINTS = cfg.MODEL.MAX_LIMBS
+    else:
+        raise NotImplementedError
 
 
 def calculate_max_iters():
@@ -92,17 +85,21 @@ def calculate_max_iters():
 
 
 def maybe_infer_walkers():
-    if cfg.ENV_NAME not in ["Unimal-v0", "Modular-v0"]:
+    if cfg.ENV_NAME not in ["Unimal-v0", "Modular-v0", "Robosuite"]:
         return
 
     # Only infer the walkers if this option was not specified
     if len(cfg.ENV.WALKERS):
         return
+    if cfg.ENV_NAME == "Robosuite":
+        cfg.ENV.WALKERS =  cfg.ENV.ROBOTS
+        print("cfg.ENV.WALKERS (manipulators actually >:( ): ", cfg.ENV.WALKERS)
+    elif cfg.ENV_NAME == "Unimal-v0":
 
-    cfg.ENV.WALKERS = [
-        xml_file.split(".")[0]
-        for xml_file in os.listdir(os.path.join(cfg.ENV.WALKER_DIR, "xml"))
-    ]
+        cfg.ENV.WALKERS = [
+            xml_file.split(".")[0]
+            for xml_file in os.listdir(os.path.join(cfg.ENV.WALKER_DIR, "xml"))
+        ]
 
     if cfg.ENV_NAME == 'Modular-v0':
         register_modular_envs()
