@@ -105,10 +105,16 @@ def make_vec_envs(
                 envs = []
                 envs_per_robot = num_env // num_robots # TODO: Need to change when scaling
                 assert num_env % num_robots == 0, "NUM_ENVS must be divisible by number of robots for FIX_ENV=True"
+                
                 robot_idx = 0
                 for i in range(num_env):
                     current_robot = cfg.ROBOSUITE.ROBOTS[robot_idx]
                     envs.append(make_env(cfg.ENV_NAME, seed, i, robot_name=current_robot)())
+                    
+                    env_thunk = make_env(cfg.ENV_NAME, seed, i, robot_name=current_robot)
+                    envs.append(env_func_wrapper(env_thunk()))
+                    # no need just append directly 
+                    # envs.append(env_thunk)
                     if i % envs_per_robot == envs_per_robot - 1:
                         robot_idx += 1
             else: 
@@ -248,11 +254,19 @@ class RecordEpisodeStatistics(gym.Wrapper):
         ).step(action)
         self.episode_return += reward
         self.episode_length += 1
+
+        #----DEBUGGINF PURPOSES---
+        #print(f"RecordEpStats step: Done={done}, EpLen={self.episode_length}, Reward={reward}, infoKeys={list(info.keys())}")
+
+        #-------------------------
         for key, value in info.items():
             if "__reward__" in key:
                 self.episode_return_components[key] += value
 
         if done:
+            #----DEBUGGINF PURPOSES---
+            #print(f"RecordEpStats Done! Return={self.episode_return}, Len={self.episode_length}")
+            #-------------------------
             info["episode"] = {
                 "r": self.episode_return,
                 "l": self.episode_length,

@@ -1,14 +1,16 @@
 ENV_NAME: "Robosuite-v0"
 OUT_DIR: "out/robosuite_lift_single"
-RNG_SEED: 14
+RNG_SEED: 1409
 
 ROBOSUITE:
   ENV_NAME: "Lift"
   ROBOTS: ["Panda"]
-  CONTROLLER: "JOINT_POSITION"
+  CONTROLLER: "JOINT_VELOCITY"
 
 ENV:
-  MOUDLES: ["Agent", "Objects"]
+  MOUDLES: []
+  WRAPPERS: []
+  KEYS_TO_KEEP: ["proprioceptive"]
   #KEYS_TO_KEEP: ["object_state", "gripper_to_object", "eef_pos", "eef_quat", "gripper_qpos", "gripper_qvel"]
   #TASK: "robosuite_lift"
 
@@ -16,12 +18,19 @@ MODEL:
   TYPE: "mlp"
   MAX_LIMBS: 8
   MAX_JOINTS: 8
+  # we define them as None to bypass any possible errors even if we are using mlp
+  TRANSFORMER:
+    EXT_MIX: None 
+
+
 
 PPO:
-  MAX_STATE_ACTION_PAIRS: 1e5
+  MAX_STATE_ACTION_PAIRS: 1e6
+  TIMESTEPS: 1024
   EPOCHS: 8
   BATCH_SIZE: 512
   NUM_ENVS: 4
 
 LOGGING:
   USE_WANDB: True
+  PROJECT: "Single_Panda_Lift"

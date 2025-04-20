@@ -64,6 +64,9 @@ class AgentMeter:
         return True
 
     def log_stats(self, max_name_len):
+        #---DEBUG...---
+        #print(f"AgentMeter {self.name}: log_stats called. Reward queue len: {len(self.ep_rew['reward'])}")
+        #--------------
         if len(self.ep_rew["reward"]) == 0:
             return
         ep_rew = self.ep_rew["reward"]

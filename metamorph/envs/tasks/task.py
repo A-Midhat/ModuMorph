@@ -30,14 +30,18 @@ def make_env(agent_name):
         raise NotImplementedError
     
     if cfg.ENV_NAME == "Robosuite-v0":
-        # TODO: add this as sperate keeys to keep for robosuite' or similar
-        keys_to_keep = ["proprioceptive", "context", "edges", \
-                        "obs_padding_mask", "act_padding_mask", \
-                            
-                            "object_state", "gripper_to_object",\
-                            "eef_pos", "eef_quat", "gripper_qpos", "gripper_qvel"]
-        final_obs_spcae_keys = env.observation_space.spaces.keys()
-        keys_to_keep = [k for k in keys_to_keep if k in final_obs_spcae_keys]
+        # for single robots 
+        if cfg.MODEL.TYPE=="mlp":
+            keys_to_keep = ["proprioceptive"] # try add object state
+        else:
+            # TODO: add this as sperate keeys to keep for robosuite' or similar
+            keys_to_keep = ["proprioceptive", "context", "edges", \
+                            "obs_padding_mask", "act_padding_mask", \
+                                
+                                "object_state", "gripper_to_object",\
+                                "eef_pos", "eef_quat", "gripper_qpos", "gripper_qvel"]
+            final_obs_spcae_keys = env.observation_space.spaces.keys()
+            keys_to_keep = [k for k in keys_to_keep if k in final_obs_spcae_keys]
     else :
         keys_to_keep = cfg.ENV.KEYS_TO_KEEP + cfg.MODEL.OBS_TYPES
     env = SelectKeysWrapper(env, keys_to_keep=keys_to_keep)

@@ -8,7 +8,7 @@ ROBOSUITE:
   CONTROLLER: "OSC_POSE"
 
 ENV:
-  MOUDLES: ["Agent", "Objects"]
+  MOUDLES: []
   FIX_ENV: True
   #KEYS_TO_KEEP: ["object_state", "gripper_to_object", "eef_pos", "eef_quat", "gripper_qpos", "gripper_qvel"]
   #TASK: "robosuite_lift"

@@ -41,10 +41,12 @@ class RobosuiteEnvWrapper(gym.Env):
             "controller_configs": self.controller_config,
             "has_renderer": False, # False for training
             "has_offscreen_renderer": False, # TODO: Set True to use camera observations as exteroceptive observations
-            "ignore_done": True, # Use PPO for termniation
+            #"ignore_done": True, # Use PPO for termniation (TODO:Uncomment)
             "use_camera_obs": False, # TODO: Set True to use camera observations as exteroceptive observations
             "control_freq":20,
             "hard_reset": False, # TODO: check if it is really faster during training 
+            "horizon":1000,
+            "reward_shaping": True
         }
 
         robosuite_init_args.update(self.robosuite_cfg.get("ENV_ARGS", {}))
@@ -109,7 +111,7 @@ class RobosuiteEnvWrapper(gym.Env):
             metadata['joint_names'] = []
             #metadata['link_names'] = []
         
-        print("Robot metadata: ", metadata)
+        #print("Robot metadata: ", metadata)
         return metadata
     
     def step(self, action):
@@ -117,7 +119,11 @@ class RobosuiteEnvWrapper(gym.Env):
         try:
             # done here is ignored 
             obs_dict, reward, done, info = self.env.step(action)
-            done = False 
+            #done = False # TODO: UNCOMMNET
+            #---Debug ---
+            # if self.ep_step_count %20==0 or reward !=0:
+            #     print(f" [RobosuiteEnvWrapper Step {self.ep_step_count}] Raw Reward: {reward}")
+            #-------------
         except Exception as e:
             print(f"ERROR during Robosuite step: Robot=`{self.robot_name}`, Env=`{self.robosuite_env_name}`, Action=`{action}`, Error={e}")
             raise e # for debugging 
@@ -131,7 +137,7 @@ class RobosuiteEnvWrapper(gym.Env):
         processed_obs = self._convert_observation(obs_dict)
         
         # ---Custom info---
-        #info['robot_name'] = self.robot_name # causing error at Agent
+        #info['robot_name'] = self.robot_name # causing error at meter
         info['name'] = self.robot_name
         info['raw_reward'] = reward
         info['action'] = action
@@ -203,6 +209,9 @@ class RobosuiteEnvWrapper(gym.Env):
             # create a dummy observation (zeros)
             prelim_obs['object_state'] = np.zeros([], dtype=np.float32)
         
+        # TODO: Combined states (proprio + obj) for MLP (single robot)
+        #combined_state = np.concatenate([obs_dict[robot_proprio_key], obs_dict['object-state']])
+        # --------------------------------------------------------------------------------------
         # ---Gripper to Object Distance---
         # TODO: alt we can use the eef_pos and gripper_to_object directly
         obj_pos_key = 'object-state' # gripper to obj is the last 3 elemtns in object-state 
