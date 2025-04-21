@@ -1,5 +1,5 @@
 ENV_NAME: "Robosuite-v0"
-OUT_DIR: "out/robosuite_lift_single"
+OUT_DIR: "out/1409/robosuite_lift_single_obj_obs"
 RNG_SEED: 1409
 
 ROBOSUITE:
@@ -10,7 +10,7 @@ ROBOSUITE:
 ENV:
   MOUDLES: []
   WRAPPERS: []
-  KEYS_TO_KEEP: ["proprioceptive"]
+  #KEYS_TO_KEEP: ["proprioceptive"]
   #KEYS_TO_KEEP: ["object_state", "gripper_to_object", "eef_pos", "eef_quat", "gripper_qpos", "gripper_qvel"]
   #TASK: "robosuite_lift"
 

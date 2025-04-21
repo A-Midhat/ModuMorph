@@ -27,12 +27,12 @@ class RobosuiteEnvWrapper(gym.Env):
         # --- Controller Setup --- 
         controller_name = controller_name 
         if controller_name not in ALL_CONTROLLERS:
-            print("Warning: controller_name not in ALL_CONTROLLERS. Using default controller. (JOINT_POSITION)")
+            print("[RobosuiteEnvWrapper] Warning: controller_name not in ALL_CONTROLLERS. Using default controller. (JOINT_POSITION)")
             self.controller_name = "JOINT_POSITION"
         try: 
             self.controller_config = load_controller_config(default_controller=controller_name)
         except Exception as e:
-            print(f"Error loading controller_config: {e}")
+            print(f"[RobosuiteEnvWrapper] Error loading controller_config: {e}")
             self.controller_config = load_controller_config(default_controller="JOINT_POSITION")
 
         # --- Env Setup --- 
@@ -72,7 +72,7 @@ class RobosuiteEnvWrapper(gym.Env):
                 _dtype = np.float32 if _dtype == np.float64 else _dtype
                 gym_obs_spaces[key] = spaces.Box(low=-np.inf, high=np.inf, shape=_shape, dtype=_dtype)
             except Exception as e:
-                print(f"Error processing obs spec: {e}")
+                print(f"[RobosuiteEnvWrapper] Error processing obs spec: {e}")
                 continue
         self.observation_space = spaces.Dict(gym_obs_spaces)
         # ---Metadata--- 
@@ -105,7 +105,7 @@ class RobosuiteEnvWrapper(gym.Env):
             # metadata['joint_names'] = robot.robot_joints + robot.gripper_joints  ? 
 
         else: 
-            print("Warning: No robot found in the environment. Metadata will set to None.")
+            print("[RobosuiteEnvWrapper] Warning: No robot found in the environment. Metadata will set to None.")
             metadata['robot_name'] = "Unkown"
             metadata['num_arm_joints'] = 0
             metadata['num_gripper_joints'] = 0
@@ -127,7 +127,7 @@ class RobosuiteEnvWrapper(gym.Env):
             #     print(f" [RobosuiteEnvWrapper Step {self.ep_step_count}] Raw Reward: {reward}")
             #-------------
         except Exception as e:
-            print(f"ERROR during Robosuite step: Robot=`{self.robot_name}`, Env=`{self.robosuite_env_name}`, Action=`{action}`, Error={e}")
+            print(f"[RobosuiteEnvWrapper] ERROR during Robosuite step: Robot=`{self.robot_name}`, Env=`{self.robosuite_env_name}`, Action=`{action}`, Error={e}")
             raise e # for debugging 
             # TODO: add a flag to skip the step and return None for training stablity (UNCOMMENT)
             #obs_dict = self.observation_space.sample() # dummy obs
@@ -152,7 +152,7 @@ class RobosuiteEnvWrapper(gym.Env):
         try: 
             obs_dict = self.env.reset()
         except Exception as e:
-            print(f"ERROR during Robosuite reset: Robot=`{self.robot_name}`, Env=`{self.robosuite_env_name}`, Error={e}")
+            print(f"[RobosuiteEnvWrapper] ERROR during Robosuite reset: Robot=`{self.robot_name}`, Env=`{self.robosuite_env_name}`, Error={e}")
             raise e # for debugging
             # TODO: add a flag to skip the reset and return None for training stablity (UNCOMMENT)
             #obs_dict = self.observation_space.sample() # dummy obs
@@ -177,7 +177,7 @@ class RobosuiteEnvWrapper(gym.Env):
         if robot_proprio_key in obs_dict:
             prelim_obs[robot_proprio_key] = obs_dict[robot_proprio_key]
         else:
-            print(f"Warning: {robot_proprio_key} state not found for robot {self.robot_name} in the observation dictionary.")
+            print(f"[RobosuiteEnvWrapper] Warning: {robot_proprio_key} state not found for robot {self.robot_name} in the observation dictionary.")
             # the problem is this is robot-dependent naming 
             parts = []
             keys_to_try = [
@@ -287,67 +287,206 @@ class RobosuiteEnvWrapper(gym.Env):
 
 
 # --- Wrapper for MLP Model (ST) ---
+# class RobosuiteMLPFlattener(gym.ObservationWrapper):
+#     """
+#     Flattens selected Robosuite observations into a single 'proprioceptive'
+#     vector suitable for a simple MLP policy.
+#     """
+#     def __init__(self, env):
+#         super().__init__(env)
+#         # print(f"---DEBUGGING MLPFlattener: {env.observation_space.spaces}")
+#         self.keys_to_flatten = ['robot0_proprio-state', 'object_state'] # TODO: Add object_state
+        
+#         self.key_dims = {}
+#         #--- To solve the bug produced by ac expectiung other keys than proprioceptive---
+#          # Get max dims needed for dummy masks/edges from config
+#         self.max_limbs = cfg.MODEL.MAX_LIMBS
+#         self.max_joints = cfg.MODEL.MAX_JOINTS
+
+#         # Define dummy shapes for masks and edges
+#         dummy_mask_shape = (self.max_limbs,) 
+#         dummy_edges_shape = (2 * self.max_joints,) 
+#         # ---
+
+#         # Important for input layer dim
+#         # --- Calculate flat_obs_dim *during init* using base space ---
+#         self.flat_obs_dim = self._calculate_flat_dim_from_base_space()
+#         proprio_shape = (self.flat_obs_dim,) 
+
+#         # Define the new observation space: a single Box
+#         inf = np.float32(np.inf)
+
+#         self.observation_space = spaces.Dict({
+#             'proprioceptive': spaces.Box(-inf, inf, (proprio_shape,), dtype=np.float32),
+#             'obs_padding_mask': spaces.Box(False, True, dummy_mask_shape, dtype=bool),
+#             'act_padding_mask': spaces.Box(False, True, dummy_mask_shape, dtype=bool), # Use same shape for simplicity
+#             'edges':            spaces.Box(-np.inf, np.inf, dummy_edges_shape, dtype=np.float32),
+#             'context':          spaces.Box(-inf, inf, (1,), dtype=np.float32), # Minimal dummy context
+#          })
+#         print(f"[MLPFlattener] Final Obs Space: {self.observation_space}")
+
+#         # Action space remains the same as the underlying environment's
+#         self.action_space = self.env.action_space
+
+#     def _calculate_flat_dim_from_base_space(self):
+#         """ Calculates the total dimension after flattening the selected keys. """
+#         total_dim = 0
+#         self.key_dims = {} # Reset key_dims
+#         base_obs_space = self.env.observation_space # Access space of the wrapped env
+
+#         for key in self.keys_to_flatten:
+#             if key in base_obs_space.spaces:
+#                 #total_dim += np.prod(base_obs_space[key].shape)
+#                 key_shape = base_obs_space[key].shape
+#             #     key_dim = np.prod(key_shape)
+#             #     self.key_dims[key] = int(key_dim) # Store the dimension
+#             #     total_dim += key_dim
+#             # else:
+#             #     print(f"Warning [MLPFlattener]: Key '{key}' not found in base obs space")
+#             #     self.key_dims[key] = 0
+#                 key_dim = np.prod(key_shape) if key_shape else 0 # Handle potential empty shapes
+#                 self.key_dims[key] = int(key_dim) # Store the dimension as standard int
+#                 total_dim += int(key_dim)
+#             else:
+#                 print(f"Warning [MLPFlattener Init]: Key '{key}' not found in base obs space definition.")
+#                 self.key_dims[key] = 0
+
+#         if total_dim == 0:
+#             raise ValueError("[MLPFlattener Init] Resulted in a 0-dimensional observation space. Check keys_to_flatten and base env.")
+        
+#         return total_dim
+
+#     def observation(self, obs):
+#         """ Flattens the selected observation keys. """
+#         flat_obs_list = []
+#         # current_dims = {}
+#         for key in self.keys_to_flatten:
+#             # if key in obs:
+#             #     flat_obs_list.append(obs[key].flatten())
+#             if key in obs and obs[key].size > 0:
+#                 flattened_val = obs[key].flatten()
+#                 flat_obs_list.append(flattened_val)
+#                 # current_dims[key] = len(flattened_val)
+#             else:
+#                 # TODO: Need to handle missing keys,Padding Requires knowing the expected dim.
+#                 # assume keys are always present for now.
+#                 #raise KeyError(f"[RobosuiteMLPFlattener] Key '{key}' expected not found in observation dict.")
+#                 expected_dim = self.key_dims.get(key, 0)
+#                 print(f"Warning [MLPFlattener]: Key '{key}' not found in observation dict. Appending {expected_dim} zeros.")
+#                 flat_obs_list.append(np.zeros(expected_dim, dtype=np.float32))
+
+#         flat_proprio = np.concatenate(flat_obs_list).astype(np.float32)
+
+        
+
+#         # Verify shape
+#         if flat_proprio.shape[0] != self.flat_obs_dim:
+#             raise ValueError(f"[MLPFlattener Obs] Flattened observation dimension mismatch! Expected {self.flat_obs_dim}, got {flat_proprio.shape[0]}.")
+#         dummy_mask  = np.zeros(self.max_limbs, dtype=bool)
+#         dummy_edges = np.zeros(2 * self.max_joints, dtype=np.float32)
+#         dummy_context = np.zeros(1, dtype=np.float32) # Minimal context placeholder
+
+#         # Return the full dictionary, including dummies
+#         return OrderedDict({'proprioceptive': flat_proprio,
+#                            'obs_padding_mask': dummy_mask,
+#                            'act_padding_mask': dummy_mask, 
+#                            'edges': dummy_edges,
+#                            'context': dummy_context}) 
+
+#     def reset(self, **kwargs):
+#         observation = self.env.reset(**kwargs)
+#         return self.observation(observation)
+
+#     def action(self, action):
+#          return action
+
+#-----------------------------------------------------------------
+#-----------------------------------------------------------------
+# --- RobosuiteMLPFlattener (final version) ----------------------------
 class RobosuiteMLPFlattener(gym.ObservationWrapper):
     """
-    Flattens selected Robosuite observations into a single 'proprioceptive'
-    vector suitable for a simple MLP policy.
+    Flattens ['robot0_proprio-state', 'object_state'] into a single vector
+    and adds dummy masks / edges expected by MetaMorph's MLP baseline.
     """
     def __init__(self, env):
         super().__init__(env)
-        # print(f"---DEBUGGING MLPFlattener: {env.observation_space.spaces}")
-        self.keys_to_flatten = ['robot0_proprio-state', 'object-state'] # TODO: Add object_state
 
-        self.flat_obs_dim = self._calculate_flat_dim() # Important for input layer dim
+        self.keys_to_flatten = ["robot0_proprio-state", "object_state"]
+        self.max_limbs  = cfg.MODEL.MAX_LIMBS
+        self.max_joints = cfg.MODEL.MAX_JOINTS
 
-        # Define the new observation space: a single Box
-        inf = np.float32(np.inf)
+        # ---------- 1. get a *real* observation -----------------------
+        first_obs_dict = self.env.reset()          # ← one early reset
+        flat           = self._flatten(first_obs_dict)
+        self.flat_obs_dim = flat.shape[0]          # will be 42 for Panda‑Lift
+        # --------------------------------------------------------------
+
+        inf  = np.float32(np.inf)
+        dmsk = (self.max_limbs,)           # dummy‑mask shape
+        dedg = (2 * self.max_joints,)      # dummy‑edge shape
+
         self.observation_space = spaces.Dict({
-            'proprioceptive': spaces.Box(-inf, inf, (self.flat_obs_dim,), dtype=np.float32)
+            "proprioceptive"   : Box(-inf, inf, (self.flat_obs_dim,), np.float32),
+            "obs_padding_mask" : Box(False, True, dmsk, dtype=bool),
+            "act_padding_mask" : Box(False, True, dmsk, dtype=bool),
+            "edges"            : Box(-inf,  inf, dedg, dtype=np.float32),
+            "context"          : Box(-inf,  inf, (1,),  dtype=np.float32),
         })
-        print(f"[MLPFlattener] Final Obs Space: {self.observation_space}")
+        self.action_space = env.action_space
 
-        # Action space remains the same as the underlying environment's
-        self.action_space = self.env.action_space
+        # store the reset we already did so the outer env gets the
+        # exact same initial state it expects
+        self._cached_initial_obs = first_obs_dict
 
-    def _calculate_flat_dim(self):
-        """ Calculates the total dimension after flattening the selected keys. """
-        total_dim = 0
-        # check the base env obs space
-        base_obs_space = self.env.observation_space
-        for key in self.keys_to_flatten:
-            if key in base_obs_space.spaces:
-                total_dim += np.prod(base_obs_space[key].shape)
+    # ------------------------------------------------------------------
+    def _flatten(self, obs_dict):
+        pieces = []
+        for k in self.keys_to_flatten:
+            if k in obs_dict and obs_dict[k].size:
+                pieces.append(obs_dict[k].ravel())
             else:
-                print(f"Warning [MLPFlattener]: Key '{key}' not found in base obs space")
-        if total_dim == 0:
-             raise ValueError("[MLPFlattener] resulted in a 0-dimensional observation space. Check keys_to_flatten and base env.")
-        return total_dim
+                pieces.append(np.zeros(0, dtype=np.float32))  # will never happen after first reset
+        return np.concatenate(pieces).astype(np.float32)
 
-    def observation(self, obs):
-        """ Flattens the selected observation keys. """
-        flat_obs_list = []
-        for key in self.keys_to_flatten:
-            if key in obs:
-                flat_obs_list.append(obs[key].flatten())
-            else:
-                # TODO: Need to handle missing keys,Padding Requires knowing the expected dim.
-                # assume keys are always present for now.
-                raise KeyError(f"[RobosuiteMLPFlattener] Key '{key}' expected not found in observation dict.")
+    # ------------------------------------------------------------------
+    def observation(self, obs_dict):
+        flat = self._flatten(obs_dict)
 
-        flat_proprio = np.concatenate(flat_obs_list).astype(np.float32)
+        if flat.shape[0] != self.flat_obs_dim:     # guard against surprises
+            raise ValueError(
+                f"[MLPFlattener] Expected {self.flat_obs_dim} dims, "
+                f"got {flat.shape[0]}"
+            )
 
-        # Verify shape
-        if flat_proprio.shape[0] != self.flat_obs_dim:
-             raise ValueError(f"[RobosuiteMLPFlattener] Flattened observation dimension mismatch: expected {self.flat_obs_dim}, got {flat_proprio.shape[0]}")
+        dummy_mask   = np.zeros(self.max_limbs,      dtype=bool)
+        dummy_edges  = np.zeros(2 * self.max_joints, dtype=np.float32)
+        dummy_ctx    = np.zeros(1, dtype=np.float32)
 
-        return OrderedDict({'[RobosuiteMLPFlattener] proprioceptive+object_state': flat_proprio})
+        return OrderedDict({
+            "proprioceptive"   : flat,
+            "obs_padding_mask" : dummy_mask,
+            "act_padding_mask" : dummy_mask,
+            "edges"            : dummy_edges,
+            "context"          : dummy_ctx,
+        })
 
-    def reset(self, **kwargs):
-        observation = self.env.reset(**kwargs)
-        return self.observation(observation)
+    # ------------------------------------------------------------------
+    def reset(self, **kw):
+        if self._cached_initial_obs is not None:
+            obs_dict = self._cached_initial_obs
+            self._cached_initial_obs = None           # only use once
+        else:
+            obs_dict = self.env.reset(**kw)
+        return self.observation(obs_dict)
 
+    # actions pass straight through
     def action(self, action):
-         return action
+        return action
+# ----------------------------------------------------------------------
+
+# ----------------------------------------------------------------------
+
+
 
 # --- Node-Centric Wrappers (from previous step, keep them here) ---
 class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
