@@ -20,6 +20,6 @@ register(
 
 register(
     id="Robosuite-v0",
-    entry_point="metamorph.envs.tasks.robosuite_task:RobosuiteEnvWrapper"
+    entry_point="metamorph.envs.wrappers.robosuite_wrapper:RobosuiteEnvWrapper"
 )
 CUSTOM_ENVS = ["Unimal-v0", "GeneralWalker2D-v0", "Modular-v0", "Robosuite-v0"] 

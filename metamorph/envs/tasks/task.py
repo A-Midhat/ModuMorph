@@ -32,7 +32,7 @@ def make_env(agent_name):
     if cfg.ENV_NAME == "Robosuite-v0":
         # for single robots 
         if cfg.MODEL.TYPE=="mlp":
-            keys_to_keep = ["proprioceptive"] # try add object state
+            keys_to_keep = ["proprioceptive", "object_state"]
         else:
             # TODO: add this as sperate keeys to keep for robosuite' or similar
             keys_to_keep = ["proprioceptive", "context", "edges", \
