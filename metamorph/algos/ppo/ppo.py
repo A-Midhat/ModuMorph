@@ -73,7 +73,7 @@ class PPO:
             wandb.config.update({"seed": cfg.RNG_SEED})
         else:
             self.logger_backend = "tensorboard"
-            #from torch.utils import tensorboard
+
             from torch.utils.tensorboard import SummaryWriter
             self.logger = SummaryWriter(log_dir=os.path.join(cfg.OUT_DIR, "tensorboard"))
         # ----------------------

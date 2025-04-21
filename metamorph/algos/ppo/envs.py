@@ -82,7 +82,6 @@ def make_vec_envs(
        
     else:
         # Dummy init the actual xml_file will change on each reset
-        #xml_file = cfg.ENV.WALKERS[0]
         envs = []
         if cfg.ENV_NAME == 'Unimal-v0':
             if not cfg.ENV.FIX_ENV:
@@ -112,7 +111,7 @@ def make_vec_envs(
                     envs.append(make_env(cfg.ENV_NAME, seed, i, robot_name=current_robot)())
                     
                     env_thunk = make_env(cfg.ENV_NAME, seed, i, robot_name=current_robot)
-                    envs.append(env_func_wrapper(env_thunk()))
+                    envs.append(env_func_wrapper(env_thunk())) # TODO: no need for the env_func_wrapper
                     # no need just append directly 
                     # envs.append(env_thunk)
                     if i % envs_per_robot == envs_per_robot - 1:
