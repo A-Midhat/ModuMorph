@@ -714,7 +714,7 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
         joint_armature = np.zeros(num_arm_joints_to_use, dtype=np.float32)
         joint_friction = np.zeros(num_arm_joints_to_use, dtype=np.float32)
 
-        # Extract context for each arm joint
+        # Extract context for each arm joint (node)
         for i in range(num_arm_joints_to_use):
             try:
                 joint_id_model = ref_joint_indexes[i]
