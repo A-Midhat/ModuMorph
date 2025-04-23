@@ -8,4 +8,7 @@ test*
 venv
 wandb/*
 output/*
+out/*
+robosuite_test_agents/*
+
 *.egg-info
