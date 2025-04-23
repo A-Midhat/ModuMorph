@@ -51,7 +51,7 @@ def evaluate_model(model_path, agent_path, policy_folder, suffix=None, terminate
 
     test_agents = [x.split('.')[0] for x in os.listdir(f'{agent_path}/xml')]
 
-    print (policy_folder)
+    # print (policy_folder)
     cfg.merge_from_file(f'{policy_folder}/config.yaml')
     cfg.PPO.CHECKPOINT_PATH = model_path
     cfg.ENV.WALKERS = []
@@ -61,6 +61,13 @@ def evaluate_model(model_path, agent_path, policy_folder, suffix=None, terminate
     cfg.DETERMINISTIC = deterministic
     cfg.PPO.NUM_ENVS = 32
     set_cfg_options()
+
+    if cfg.ENV_NAME == "Robosuite-v0":
+        test_agents = cfg.ROBOSUITE.ROBOTS
+        print(f"Evaluating Robosuite environment with robots: {test_agents}")
+    else:
+        test_agents = [x.split('.')[0] for x in os.listdir(f'{agent_path}/xml')]
+        print(f"Evaluating {cfg.ENV_NAME} with agents from {agent_path}: {test_agents}")
 
     ppo_trainer = PPO()
     policy = ppo_trainer.agent
@@ -96,7 +103,13 @@ def evaluate_model(model_path, agent_path, policy_folder, suffix=None, terminate
         if agent in eval_result:
             # do not repeat evaluation
             continue
-        envs = make_vec_envs(xml_file=agent, training=False, norm_rew=False, render_policy=True)
+        # envs = make_vec_envs(xml_file=agent, training=False, norm_rew=False, render_policy=True)
+        # we pass robot_name for robosuite
+        if cfg.ENV_NAME == "Robosuite-v0":
+            envs = make_vec_envs(robot_name=agent, training=False, norm_rew=False, render_policy=True)
+        else:
+            envs = make_vec_envs(xml_file=agent, training=False, norm_rew=False, render_policy=True)
+
         set_ob_rms(envs, get_ob_rms(ppo_trainer.envs))
         episode_return = evaluate(policy, envs)
         envs.close()
@@ -156,7 +169,11 @@ if __name__ == '__main__':
         scores.append(score)
     scores = np.stack(scores)
     print ('avg score across seeds: ')
-    test_agents = [x.split('.')[0] for x in os.listdir(f'{args.test_folder}/xml')]
+    if cfg.ENV_NAME == "Robosuite-v0":
+        test_agents = cfg.ROBOSUITE.ROBOTS
+    else:
+        test_agents = [x.split('.')[0] for x in os.listdir(f'{args.test_folder}/xml')]
+        
     for i, agent in enumerate(test_agents):
         print (f'{agent}: {scores[:, i].mean()} +- {scores[:, i].std()}')
     scores = scores.mean(axis=1)
