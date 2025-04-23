@@ -52,7 +52,7 @@ class RobosuiteEnvWrapper(gym.Env):
         }
 
         robosuite_init_args.update(self.robosuite_cfg.get("ENV_ARGS", {}))
-        print("Robosuite init args: ", robosuite_init_args)
+        #print("Robosuite init args: ", robosuite_init_args)
 
         # Create the env
         self.env = robosuite.make(**robosuite_init_args)

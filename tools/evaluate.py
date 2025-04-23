@@ -1,3 +1,4 @@
+import wandb
 import argparse
 import os
 import torch
@@ -49,7 +50,7 @@ def evaluate_model(model_path, agent_path, policy_folder, suffix=None, terminate
     deterministic: whether take a deterministic action (mean of the Gaussian action distribution) or a random action
     '''
 
-    test_agents = [x.split('.')[0] for x in os.listdir(f'{agent_path}/xml')]
+    # test_agents = [x.split('.')[0] for x in os.listdir(f'{agent_path}/xml')]
 
     # print (policy_folder)
     cfg.merge_from_file(f'{policy_folder}/config.yaml')
@@ -77,11 +78,16 @@ def evaluate_model(model_path, agent_path, policy_folder, suffix=None, terminate
     # set the output file name
     # a hack here: usually the folder path is `output/folder_name/seed`
     # so we use folder_name and seed together to name the output file
-    if len(policy_folder.split('/')) == 3:
-        output_name = policy_folder.split('/')[1] + '_' + policy_folder.split('/')[2]
-        folder_name = policy_folder.split('/')[1]
-    else:
-        output_name = policy_folder.split('/')[1]
+    # if len(policy_folder.split('/')) == 3:
+    #     output_name = policy_folder.split('/')[1] + '_' + policy_folder.split('/')[2]
+    #     folder_name = policy_folder.split('/')[1]
+    # else:
+    #     output_name = policy_folder.split('/')[1]
+
+        # folder_name = policy_folder.split('/')[0]
+    folder_parts = [p for p in policy_folder.split('/') if p] # Remove empty parts
+    if len(folder_parts) >= 2:
+        output_name = f"{folder_parts[-2]}_{folder_parts[-1]}" # e.g., 1409_robosuite_lift_single_obj_obs
         folder_name = policy_folder.split('/')[0]
     if suffix is not None:
         output_name = f'{output_name}_{suffix}'
@@ -106,7 +112,7 @@ def evaluate_model(model_path, agent_path, policy_folder, suffix=None, terminate
         # envs = make_vec_envs(xml_file=agent, training=False, norm_rew=False, render_policy=True)
         # we pass robot_name for robosuite
         if cfg.ENV_NAME == "Robosuite-v0":
-            envs = make_vec_envs(robot_name=agent, training=False, norm_rew=False, render_policy=True)
+            envs = make_vec_envs(robot_name=agent, training=False, norm_rew=False, render_policy=True, save_video=True)
         else:
             envs = make_vec_envs(xml_file=agent, training=False, norm_rew=False, render_policy=True)
 
@@ -135,6 +141,7 @@ if __name__ == '__main__':
     parser.add_argument("--deterministic", action="store_true")
     parser.add_argument("--seed", default=None, type=int)
     parser.add_argument("--test_folder", default='unimals_100/test', type=str)
+    # parser.add_argument("--save_video", action="store_true", help="Record videos of evaluation episodes")
     args = parser.parse_args()
 
     suffix = []
@@ -161,20 +168,60 @@ if __name__ == '__main__':
         seeds = ['1409', '1410', '1411']
 
     policy_path = args.policy_path
+    if not os.path.isdir(policy_path):
+        print(f"ERROR: Policy path not found: {policy_path}")
+        exit(1)
     # `scores` saves each agent's average return in each seed
-    scores = []
-    for seed in seeds:
-        model_path = os.path.join(policy_path, seed, args.policy_name + '.pt')
-        score = evaluate_model(model_path, args.test_folder, os.path.join(policy_path, seed), suffix=suffix, terminate_on_fall=args.terminate_on_fall, deterministic=args.deterministic)
-        scores.append(score)
-    scores = np.stack(scores)
-    print ('avg score across seeds: ')
+    # scores = []
+    # for seed in seeds:
+    #     model_path = os.path.join(policy_path, seed, args.policy_name + '.pt')
+    #     score = evaluate_model(model_path, args.test_folder, os.path.join(policy_path, seed), suffix=suffix, terminate_on_fall=args.terminate_on_fall, deterministic=args.deterministic)
+    #     scores.append(score)
+    # scores = np.stack(scores)
+    # print ('avg score across seeds: ')
+    # --------------------------------------------------------------
+    # Construct model path using the provided policy_path and policy_name
+    model_path = os.path.join(policy_path, args.policy_name + '.pt')
+    if not os.path.exists(model_path):
+        print(f"ERROR: Model file not found: {model_path}")
+        # Attempt to find the final model if checkpoint wasn't specified
+        final_model_name = "Robosuite-v0.pt" if "Robosuite" in policy_path else "Unimal-v0.pt" # Heuristic
+        model_path = os.path.join(policy_path, final_model_name)
+        if not os.path.exists(model_path):
+             print(f"ERROR: Also couldn't find default model: {model_path}")
+             exit(1)
+        else:
+             print(f"Using default model file: {model_path}")
+
+    # Call evaluate_model once with the direct policy path
+    # agent_path is still args.test_folder, used only if not Robosuite
+    score = evaluate_model(model_path, args.test_folder, policy_path, suffix=suffix, terminate_on_fall=args.terminate_on_fall, deterministic=args.deterministic)
+
+    # Print results (score is now a single array, not averaged over seeds here)
+    print ('\n--- Evaluation Results ---')
+    # Load test agents based on the config loaded inside evaluate_model
     if cfg.ENV_NAME == "Robosuite-v0":
         test_agents = cfg.ROBOSUITE.ROBOTS
     else:
-        test_agents = [x.split('.')[0] for x in os.listdir(f'{args.test_folder}/xml')]
+     test_agents = [x.split('.')[0] for x in os.listdir(f'{args.test_folder}/xml')]
+
+     for i, agent in enumerate(test_agents):
+        print (f'{agent}: {score[i]:.2f}') # Score is 1D array of avg returns per agent
+    print (f'overall: {score.mean():.2f} +- {score.std():.2f}')
+    # if cfg.LOGGING.USE_WANDB:
+    #     import wandb 
+    #     wandb.log({
+    #         f"eval/overall_mean_reward": score.mean(),
+    #         f"eval//overall_std_reward": score.std(),
+    #     })
+    #     wandb.finish()
+    # --------------------------------------------------------------
+    # if cfg.ENV_NAME == "Robosuite-v0":
+    #     test_agents = cfg.ROBOSUITE.ROBOTS
+    # else:
+    #     test_agents = [x.split('.')[0] for x in os.listdir(f'{args.test_folder}/xml')]
         
-    for i, agent in enumerate(test_agents):
-        print (f'{agent}: {scores[:, i].mean()} +- {scores[:, i].std()}')
-    scores = scores.mean(axis=1)
-    print (f'overall: {scores.mean()} +- {scores.std()}')
+    # for i, agent in enumerate(test_agents):
+    #     print (f'{agent}: {scores[:, i].mean()} +- {scores[:, i].std()}')
+    # scores = scores.mean(axis=1)
+    # print (f'overall: {scores.mean()} +- {scores.std()}')

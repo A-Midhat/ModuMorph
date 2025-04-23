@@ -51,6 +51,7 @@ def env_func_wrapper(env):
 
 def make_vec_envs(
     xml_file=None,
+    robot_name=None, # for robosuite (eval)
     training=True,
     norm_rew=True,
     num_env=None,
@@ -70,7 +71,10 @@ def make_vec_envs(
     agent_list = cfg.ENV.WALKERS # populated from maybe_infer+walkers()
     if len(agent_list) <= 1 or render_policy or save_video:
         # ---Single Agent/Robot---
-        agent_identifier = agent_list[0]
+        agent_identifier = robot_name if robot_name is not None else (agent_list[0] if agent_list else None)
+        if agent_identifier is None:
+            raise ValueError("[make vec env] No agent identifier provided for single env.")
+        
         if cfg.ENV_NAME == 'Robosuite-v0':
             xml_file_arg, robot_name_arg = None, agent_identifier
         else :
