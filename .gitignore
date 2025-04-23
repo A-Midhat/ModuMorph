@@ -10,5 +10,6 @@ wandb/*
 output/*
 out/*
 robosuite_test_agents/*
+eval/*
 
 *.egg-info
