@@ -38,10 +38,10 @@ _C.XML.SHADOWCLIP = 0.5
 _C.LOGGING = CN()
 
 _C.LOGGING.USE_WANDB = False
-# change to None and write them in .yaml file
-_C.LOGGING.ENTITY = "alimidhat62-org" 
 
-_C.LOGGING.PROJECT = "modumorph-ppo"
+_C.LOGGING.ENTITY = None 
+
+_C.LOGGING.PROJECT = None 
 
 # ----------------------------------------------------------------------------#
 # Robosuite Env Options
@@ -54,7 +54,19 @@ _C.ROBOSUITE.ENV_NAME = "Lift"
 _C.ROBOSUITE.ROBOTS = ["Panda"]
 
 _C.ROBOSUITE.CONTROLLER = "JOINT_POSITION"
-# TODO: add more options
+
+# Robosuite env options
+_C.ROBOSUITE.ENV_ARGS = CN()
+
+
+_C.ROBOSUITE.ENV_ARGS.has_renderer = False # False for training
+_C.ROBOSUITE.ENV_ARGS.ignore_done = True # use PPO for termniation
+_C.ROBOSUITE.ENV_ARGS.has_offscreen_renderer = False
+_C.ROBOSUITE.ENV_ARGS.use_camera_obs = False
+_C.ROBOSUITE.ENV_ARGS.control_freq = 20
+_C.ROBOSUITE.ENV_ARGS.hard_reset = False
+_C.ROBOSUITE.ENV_ARGS.horizon = 1000 
+_C.ROBOSUITE.ENV_ARGS.reward_shaping = True
 
 # ----------------------------------------------------------------------------#
 # Unimal Env Options
