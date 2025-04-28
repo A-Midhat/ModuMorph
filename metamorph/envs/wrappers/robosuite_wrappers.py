@@ -214,8 +214,6 @@ class RobosuiteEnvWrapper(gym.Env):
                 prelim_obs['robot0_proprio-state'] = np.concatenate(parts)
         
         # ---Object State---
-        # print(f"obs_dict keys ===>: {obs_dict.keys()}")
-        # print(f"new obs keys ===>: {prelim_obs.keys()}")
         if 'object-state' in obs_dict:
             prelim_obs['object-state'] = obs_dict['object-state'].astype(np.float32)
         else:
@@ -244,23 +242,37 @@ class RobosuiteEnvWrapper(gym.Env):
         # TODO: make the name consistent with the other keys
         eef_pos_key = f'robot0_eef_pos' # change `0` to the robot index if we have multiple robots (guess)
         if eef_pos_key in obs_dict:
-            prelim_obs['eef_pos'] = obs_dict[eef_pos_key].astype(np.float32)
+            prelim_obs['robot0_eef_pos'] = obs_dict[eef_pos_key].astype(np.float32)
         else:
             print(f"[RobosuiteEnvWrapper] Warning: {eef_pos_key} not found in the observation dictionary.")
             # create a dummy observation (zeros)
-            prelim_obs['eef_pos'] = np.zeros(3, dtype=np.float32)
+            prelim_obs['robot0_eef_pos'] = np.zeros(3, dtype=np.float32)
         
         eef_quat_key = f'robot0_eef_quat' # change `0` to the robot index if we have multiple robots (guess)
         if eef_quat_key in obs_dict:
-            prelim_obs['eef_quat'] = obs_dict[eef_quat_key].astype(np.float32)
+            prelim_obs['robot0_eef_quat'] = obs_dict[eef_quat_key].astype(np.float32)
         else:
             print(f"[RobosuiteEnvWrapper] Warning: {eef_quat_key} not found in the observation dictionary.")
-            prelim_obs['eef_quat'] = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32) # Default Identity 
-        
+            prelim_obs['robot0_eef_quat'] = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32) # Default Identity 
+        # f'robot0_gripper_qpos', f'robot0_gripper_qvel'
+        # ---Gripper State---
+        gripper_qpos_key = f'robot0_gripper_qpos'
+        if gripper_qpos_key in obs_dict:
+            prelim_obs['robot0_gripper_qpos'] = obs_dict[gripper_qpos_key].astype(np.float32)
+        else:
+            print(f"[RobosuiteEnvWrapper] Warning: {gripper_qpos_key} not found in the observation dictionary.")
+            prelim_obs['robot0_gripper_qpos'] = np.zeros(1, dtype=np.float32)
+
+        gripper_qvel_key = f'robot0_gripper_qvel'
+        if gripper_qvel_key in obs_dict:
+            prelim_obs['robot0_gripper_qvel'] = obs_dict[gripper_qvel_key].astype(np.float32)
+        else:
+            print(f"[RobosuiteEnvWrapper] Warning: {gripper_qvel_key} not found in the observation dictionary.")
+            prelim_obs['robot0_gripper_qvel'] = np.zeros(1, dtype=np.float32)
         # --- Robot Context (Static Info) --- 
         # features extracted from the _robot_metadata so node-centric wrapper can easily distribute it to all nodes
         prelim_obs['robot_context_dict'] = self.metadata['robot_metadata']
-
+        # TODO: Combine all eef and gripper obs into a single combined state (similar to the object-state/proprio)
         return prelim_obs
         
     def close(self):
@@ -658,9 +670,8 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
 
         # --- Pass Through Extroceptive & Other Global Features ---
         # Ensure keys match those defined in self._define_observation_space()
-        print("obs ------------> ", self.observation_space.spaces )
         # for key in ['object-state', 'gripper_to_object', 'eef_pos', 'eef_quat', 'gripper_qpos', 'gripper_qvel']:
-        for key in  ['object-state', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos', 'robot0_gripper_qvel']:
+        for key in ['object-state', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos', 'robot0_gripper_qvel']:
             if key in self.observation_space.spaces and key in obs:
                 final_obs[key] = obs[key].astype(np.float32) # Ensure correct type
             elif key in self.observation_space.spaces and key not in obs:
@@ -716,18 +727,6 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
         # Process the initial observation using the (potentially updated) internal state
         return self.observation(observation)
 
-base_env = RobosuiteEnvWrapper(
-    robosuite_env_name='Lift',
-    robot_name="Panda"
-)
-print("Base env Observation:\n", base_env.reset().keys())
-print("-----------------------------------------------------------------")
-node_env = RobosuiteNodeCentricObservation(base_env)
-# print(type(node_env.env))
-
-print("Node Centric Observation:\n", node_env.reset()["proprioceptive"].shape)
-print(node_env.observation_space)
-
 
 
 class RobosuiteNodeCentricAction(gym.ActionWrapper):
@@ -744,42 +743,41 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
         self.base_env_ref = self.env
         while not isinstance(self.base_env_ref, RobosuiteEnvWrapper):
             if not hasattr(self.base_env_ref, 'env'):
-                raise TypeError("Could not find RobosuiteEnvWrapper in the wrapper stack for ActionWrapper.")
+                raise TypeError("[RobosuiteNodeCentricAction] Could not find RobosuiteEnvWrapper in the wrapper stack for ActionWrapper.")
             self.base_env_ref = self.base_env_ref.env
 
         self.base_action_space = self.base_env_ref.action_space
         self.robot_metadata = self.base_env_ref.metadata.get('robot_metadata', {})
 
         self.num_arm_actions = self.robot_metadata.get('num_arm_joints', 0)
-        self.num_gripper_actions = self.robot_metadata.get('num_gripper_joints', 0) # Assumes 1 DoF per gripper joint
+        self.num_gripper_actions = self.robot_metadata.get('num_gripper_joints', 0) 
         self.real_action_dim = self.base_action_space.shape[0]
-
         # Verify consistency
         if self.num_arm_actions + self.num_gripper_actions != self.real_action_dim:
-             print(f"Warning [ActionWrapper]: Arm ({self.num_arm_actions}) + Gripper ({self.num_gripper_actions}) != Base Action Dim ({self.real_action_dim}). Check metadata.")
+             print(f"[RobosuiteNodeCentricAction] Warning: Arm ({self.num_arm_actions}) + Gripper ({self.num_gripper_actions}) != Base Action Dim ({self.real_action_dim}). Check metadata.")
              # Adjust arm action count as fallback if gripper seems incorrect
              if self.num_gripper_actions == 0 and self.num_arm_actions != self.real_action_dim:
-                  print(f"  Adjusting num_arm_actions to {self.real_action_dim}")
+                  print(f"[RobosuiteNodeCentricAction] Adjusting num_arm_actions to {self.real_action_dim}")
                   self.num_arm_actions = self.real_action_dim
 
         self.max_limbs = cfg.MODEL.MAX_LIMBS
 
         # --- Define the PADDED Action Space the Policy Outputs (Main Decoder Arm Actions) ---
-        # Assumes policy main decoder outputs `max_limbs` actions (one per potential node)
+        # Assumes policy main decoder outputs `max_limbs` actions (one per potential node) # TODO: we will add gripper actions    
         self.padded_action_dim = self.max_limbs
         low = -1.0 * np.ones(self.padded_action_dim, dtype=np.float32)
         high = 1.0 * np.ones(self.padded_action_dim, dtype=np.float32)
-        self.action_space = Box(low=low, high=high, dtype=np.float32) # This wrapper defines the space the *policy* sees
+        self.action_space = Box(low=low, high=high, dtype=np.float32) # This wrapper defines the space the policy sees
 
         # Fetch the action padding mask from metadata (set by the observation wrapper)
         if 'act_padding_mask' not in self.env.metadata:
-            raise ValueError("Action padding mask ('act_padding_mask') not found in env metadata. Ensure RobosuiteNodeCentricObservation runs first.")
+            raise ValueError("[RobosuiteNodeCentricAction] Action padding mask ('act_padding_mask') not found in env metadata. Ensure RobosuiteNodeCentricObservation runs first.")
         self.act_padding_mask = self.env.metadata['act_padding_mask']
 
         # Verify mask length consistency
         if len(self.act_padding_mask) != self.padded_action_dim:
             # This might happen if metadata wasn't updated correctly on reset
-            print(f"Warning [ActionWrapper]: Action padding mask length ({len(self.act_padding_mask)}) in metadata does not match expected padded dimension ({self.padded_action_dim}). Using expected dim for mask slicing, but this indicates a potential issue.")
+            print(f"[RobosuiteNodeCentricAction] Warning: Action padding mask length ({len(self.act_padding_mask)}) in metadata does not match expected padded dimension ({self.padded_action_dim}). Using expected dim for mask slicing, but this indicates a potential issue.")
             # Recreate a default mask based on current understanding - this is risky
             # is_valid = [False] + [True] * self.num_arm_actions + [False] * (self.max_limbs - (self.num_arm_actions + 1))
             # self.act_padding_mask = np.array(~np.array(is_valid), dtype=bool)
@@ -792,13 +790,13 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
         """
         # Ensure action has the expected padded dimension
         if action.shape[-1] != self.padded_action_dim:
-             raise ValueError(f"Received action shape {action.shape} doesn't match expected padded dimension {self.padded_action_dim}")
+             raise ValueError(f"[RobosuiteNodeCentricAction] Received action shape {action.shape} doesn't match expected padded dimension {self.padded_action_dim}")
 
         # --- Refetch mask in case env reset changed it ---
         # This relies on the observation wrapper correctly updating metadata on reset
         current_mask = self.env.metadata.get('act_padding_mask', self.act_padding_mask)
         if len(current_mask) != self.padded_action_dim:
-             print(f"Warning [ActionWrapper]: Mask length mismatch after step! Using stored mask. This is likely an error.")
+             print(f"[RobosuiteNodeCentricAction] Warning: Mask length mismatch after step! Using stored mask. This is likely an error.")
         else:
              self.act_padding_mask = current_mask
         #------------------------------------------------
@@ -810,7 +808,7 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
         if unpadded_arm_action.shape[0] != self.num_arm_actions:
             num_valid_mask = (~self.act_padding_mask).sum()
             print(
-                f"ERROR [ActionWrapper]: Arm action shape mismatch after unpadding! "
+                f"[RobosuiteNodeCentricAction] ERROR: Arm action shape mismatch after unpadding! "
                 f"Robot: {self.robot_metadata.get('robot_name', 'Unknown')}. "
                 f"Expected {self.num_arm_actions} (from metadata), "
                 f"but got {unpadded_arm_action.shape[0]} (based on mask with {num_valid_mask} valid entries). "
@@ -836,7 +834,7 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
 
         # Ensure final dimension matches base environment
         if full_action.shape[0] != self.real_action_dim:
-             print(f"ERROR [ActionWrapper]: Final combined action dim ({full_action.shape[0]}) != base env dim ({self.real_action_dim}).")
+             print(f"[RobosuiteNodeCentricAction] ERROR: Final combined action dim ({full_action.shape[0]}) != base env dim ({self.real_action_dim}).")
              # Attempt to pad/truncate as fallback
              final_action = np.zeros(self.real_action_dim, dtype=np.float32)
              copy_len = min(len(full_action), self.real_action_dim)
