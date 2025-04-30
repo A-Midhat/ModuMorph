@@ -9,4 +9,3 @@ def make_env_robosuite(robot_name): # TODO: for future add task name as will  (M
         robosuite_cfg=cfg.ROBOSUITE
     )
     return base_env
-

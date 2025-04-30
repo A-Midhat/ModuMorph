@@ -14,11 +14,13 @@ class AgentMeter:
         self.mean_vel = []
         self.mean_metric = []
         self.mean_ep_len = []
+        self.mean_ep_success_rate = []
 
         self.ep_rew = defaultdict(lambda: deque(maxlen=10))
         self.ep_pos = deque(maxlen=10)
         self.ep_vel = deque(maxlen=10)
         self.ep_metric = deque(maxlen=10)
+        self.ep_success = deque(maxlen=10)
         self.ep_count = 0
         self.ep_len = deque(maxlen=10)
         self.ep_len_ema = -1
@@ -30,6 +32,10 @@ class AgentMeter:
             if "episode" in info.keys():
                 self.ep_rew["reward"].append(info["episode"]["r"])
                 self.ep_count += 1
+                
+                if "success" in info["episode"].keys():
+                    self.ep_success.append(info["episode"]["success"])
+                
                 self.ep_len.append(info["episode"]["l"])
                 if self.ep_count == 10:
                     self.ep_len_ema = np.mean(self.ep_len)
@@ -61,6 +67,10 @@ class AgentMeter:
         self.mean_vel.append(round(np.mean(self.ep_vel), 2))
         self.mean_metric.append(round(np.mean(self.ep_metric), 2))
         self.mean_ep_len.append(round(np.mean(self.ep_len), 2))
+
+        if len(self.ep_success) > 0:
+            self.mean_ep_success_rate.append(round(np.mean(self.ep_success), 3))
+
         return True
 
     def log_stats(self, max_name_len):
@@ -70,10 +80,12 @@ class AgentMeter:
         if len(self.ep_rew["reward"]) == 0:
             return
         ep_rew = self.ep_rew["reward"]
+        current_success_rate = self.mean_ep_success_rate[-1] if self.mean_ep_success_rate else "N/A"
         print(
             "Agent {:>{size}}: mean/median reward {:>4.0f}/{:<4.0f}, "
             "min/max reward {:>4.0f}/{:<4.0f}, "
-            "#Ep: {:>7.0f}, avg/ema Ep len: {:>4.0f}/{:>4.0f}".format(
+            # "#Ep: {:>7.0f}, avg/ema Ep len: {:>4.0f}/{:>4.0f}".format(
+            "#Ep: {:>7.0f}, success: {}, avg Ep len: {:>4.0f},".format(
                 self.name,
                 np.mean(ep_rew),
                 np.median(ep_rew),
@@ -82,7 +94,9 @@ class AgentMeter:
                 self.ep_count,
                 np.mean(self.ep_len),
                 self.ep_len_ema,
-                size=max_name_len
+                current_success_rate,
+                size=max_name_len,
+                
             )
         )
 
@@ -100,6 +114,7 @@ class TrainMeter:
         self.mean_vel = []
         self.mean_metric = []
         self.mean_ep_len = []
+        self.mean_ep_success_rate = [] # for overall success rate
 
     def add_train_stat(self, stat_type, stat_value):
         self.train_stats[stat_type].append(stat_value)
@@ -114,13 +129,14 @@ class TrainMeter:
             if not success:
                 return
 
-        metrics = ["mean_pos", "mean_vel", "mean_metric", "mean_ep_len"]
+        metrics = ["mean_pos", "mean_vel", "mean_metric", "mean_ep_len", "mean_ep_success_rate"]
         for metric in metrics:
             metric_list = []
             for _, agent_meter in self.agent_meters.items():
                 metric_list.append(getattr(agent_meter, metric)[-1])
 
-            getattr(self, metric).append(round(np.mean(metric_list), 2))
+            # getattr(self, metric).append(round(np.mean(metric_list), 2))
+            getattr(self, metric).append(round(np.mean(metric_list), 3))
 
         rew_types = self.agent_meters[self.agents[0]].mean_ep_rews.keys()
 
@@ -134,11 +150,15 @@ class TrainMeter:
     def log_stats(self):
         for _, agent_meter in self.agent_meters.items():
             agent_meter.log_stats(self.max_name_len)
+        
+        latest_overall_success = self.mean_ep_success_rate[-1] if self.mean_ep_success_rate else "N/A"
 
         if len(self.mean_ep_rews["reward"]) > 0:
-            print("Agent {:>{size}}: mean/------ reward {:>4.0f}, ".format(
+            # print("Agent {:>{size}}: mean/------ reward {:>4.0f}, ".format(
+            print("Agent {:>{size}}: mean reward {:>4.0f},  mean success: {}".format(
                     "__env__",
                     self.mean_ep_rews["reward"][-1],
+                    latest_overall_success,
                     size=self.max_name_len
                 )
             )
@@ -152,6 +172,7 @@ class TrainMeter:
                 "vel": agent_meter.mean_vel,
                 "metric": agent_meter.mean_metric,
                 "ep_len": agent_meter.mean_ep_len,
+                "success_rate": agent_meter.mean_ep_success_rate,
             }
 
         stats["__env__"] = {
@@ -160,6 +181,7 @@ class TrainMeter:
                 "vel": self.mean_vel,
                 "metric": self.mean_metric,
                 "ep_len": self.mean_ep_len,
+                "success_rate": self.mean_ep_success_rate,
         }
         stats["__env__"].update(dict(self.train_stats))
         return stats

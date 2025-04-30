@@ -16,10 +16,11 @@ from metamorph.envs.wrappers.multi_env_wrapper import MultiEnvWrapper
 
 from modular.wrappers import ModularObservationPadding, ModularActionPadding
 
-from metamorph.envs.wrappers.robosuite_wrappers import ( \
-    RobosuiteEnvWrapper, RobosuiteNodeCentricObservation, \
-    RobosuiteNodeCentricAction, RobosuiteMLPFlattener )  
-     
+# Robosuite Wrappers
+from metamorph.envs.wrappers.robosuite_wrappers import RobosuiteNodeCentricObservation
+from metamorph.envs.wrappers.robosuite_wrappers import RobosuiteNodeCentricAction
+from metamorph.envs.wrappers.robosuite_wrappers import RobosuiteMLPFlattener 
+
 from metamorph.envs.tasks.robosuite_task import make_env_robosuite
 
 def make_env(env_id, seed, rank, xml_file=None, robot_name=None):
@@ -274,6 +275,7 @@ class RecordEpisodeStatistics(gym.Wrapper):
         self.episode_length = 0
         self.return_queue = deque(maxlen=deque_size)
         self.length_queue = deque(maxlen=deque_size)
+        self.success_queue = deque(maxlen=deque_size)
 
     def reset(self, **kwargs):
         observation = super(RecordEpisodeStatistics, self).reset(**kwargs)
@@ -295,7 +297,8 @@ class RecordEpisodeStatistics(gym.Wrapper):
         for key, value in info.items():
             if "__reward__" in key:
                 self.episode_return_components[key] += value
-
+        
+        episode_finished = done 
         if done:
             #----DEBUGGINF PURPOSES---
             #print(f"RecordEpStats Done! Return={self.episode_return}, Len={self.episode_length}")
@@ -308,6 +311,11 @@ class RecordEpisodeStatistics(gym.Wrapper):
             for key, value in self.episode_return_components.items():
                 info["episode"][key] = value
                 self.episode_return_components[key] = 0
+            
+            # success rate calculation
+            current_success = info.get("success", False)
+            info["episode"]["success"] = current_success
+            self.success_queue.append(current_success)
 
             self.return_queue.append(self.episode_return)
             self.length_queue.append(self.episode_length)

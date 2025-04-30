@@ -158,6 +158,7 @@ class RobosuiteEnvWrapper(gym.Env):
         info['name'] = self.robot_name
         info['raw_reward'] = reward
         info['action'] = action
+        info['success'] = self.env._check_success()
 
         self._elapsed_steps += 1
 

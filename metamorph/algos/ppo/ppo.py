@@ -160,8 +160,12 @@ class PPO:
             self.train_meter.update_mean()
             if len(self.train_meter.mean_ep_rews["reward"]):
                 cur_rew = self.train_meter.mean_ep_rews["reward"][-1]
-                self.log_metric({"Reward": cur_rew}, self.env_steps_done(cur_iter))
-
+                # self.log_metric({"Reward": cur_rew}, self.env_steps_done(cur_iter))
+                cur_success = self.train_meter.mean_ep_success_rate[-1] if self.train_meter.mean_ep_success_rate else 0.0
+                self.log_metric(
+                    {"Reward/Train": cur_rew, "SuccessRate/Train": cur_success},
+                     self.env_steps_done(cur_iter))
+                     
             if cur_iter >= 0 and cur_iter % cfg.LOG_PERIOD == 0 and cfg.LOG_PERIOD > 0:
                 self._log_stats(cur_iter)
 
