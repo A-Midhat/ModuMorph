@@ -16,6 +16,10 @@ from metamorph.envs.wrappers.multi_env_wrapper import MultiEnvWrapper
 
 from modular.wrappers import ModularObservationPadding, ModularActionPadding
 
+from metamorph.envs.wrappers.robosuite_wrappers import ( \
+    RobosuiteEnvWrapper, RobosuiteNodeCentricObservation, \
+    RobosuiteNodeCentricAction, RobosuiteMLPFlattener )  
+     
 from metamorph.envs.tasks.robosuite_task import make_env_robosuite
 
 def make_env(env_id, seed, rank, xml_file=None, robot_name=None):
@@ -35,6 +39,20 @@ def make_env(env_id, seed, rank, xml_file=None, robot_name=None):
         # Don't add wrappers above TimeLimit
         if str(env.__class__.__name__).find("TimeLimit") >= 0:
             env = TimeLimitMask(env)
+        
+        if cfg.MODEL.TYPE == "mlp":
+            print("Applying [RobosuiteMLPFlattener] wrapper")
+            env = RobosuiteMLPFlattener(env)
+        elif cfg.MODEL.TYPE == "transformer":
+            print("Applying [RobosuiteNodeCentricObservation/Action] wrappers")
+            env = RobosuiteNodeCentricObservation(env)
+            env = RobosuiteNodeCentricAction(env)
+        
+        # for extra wrappers TODO: if needed
+        # for wrapper_name in cfg.ENV.WRAPPERS:
+        #             env = globals()[wrapper_name](env) 
+        #         env = RobosuiteNodeCentricObservation(base_env)
+        #         env = RobosuiteNodeCentricAction(env)
         # Store the un-normalized rewards
         env = RecordEpisodeStatistics(env)
         return env
@@ -67,10 +85,10 @@ def make_vec_envs(
     if seed is None:
         seed = cfg.RNG_SEED
 
-    # if len(cfg.ENV.WALKERS) <= 1 or render_policy or save_video:
     agent_list = cfg.ENV.WALKERS # populated from maybe_infer+walkers()
     if len(agent_list) <= 1 or render_policy or save_video:
         # ---Single Agent/Robot---
+        # TODO: for multiple robots, need a var to select the wanted robot to render. [Used on eval, the robot_name should be specified]
         agent_identifier = robot_name if robot_name is not None else (agent_list[0] if agent_list else None)
         if agent_identifier is None:
             raise ValueError("[make vec env] No agent identifier provided for single env.")
@@ -220,6 +238,18 @@ def set_ob_rms(venv, ob_rms):
 
 # Checks whether done was caused my timit limits or not
 class TimeLimitMask(gym.Wrapper):
+    def __init__(self, env):
+        super().__init__(env)
+        self._current_step = 0
+        # Try to access the horizon from the wrapped env
+        self._horizon = None
+        if hasattr(env, 'horizon'):
+            self._horizon = env.horizon
+        elif hasattr(env, 'env') and hasattr(env.env, 'horizon'):
+            self._horizon = env.env.horizon
+        else:
+            print("Warning: TimeLimitMask could not find horizon attribute.")
+    
     def step(self, action):
         obs, rew, done, info = self.env.step(action)
         if done and self.env._max_episode_steps == self.env._elapsed_steps:

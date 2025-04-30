@@ -82,7 +82,7 @@ def calculate_max_iters():
     cfg.PPO.EARLY_EXIT_MAX_ITERS = (
         int(cfg.PPO.EARLY_EXIT_STATE_ACTION_PAIRS) // cfg.PPO.TIMESTEPS // cfg.PPO.NUM_ENVS
     )
-
+    print("Max Iterations: ", cfg.PPO.MAX_ITERS)
 
 def maybe_infer_walkers():
     if cfg.ENV_NAME not in ["Unimal-v0", "Modular-v0","Robosuite-v0"]:
@@ -93,14 +93,13 @@ def maybe_infer_walkers():
         return
     if cfg.ENV_NAME == "Robosuite-v0":
         cfg.ENV.WALKERS =  cfg.ROBOSUITE.ROBOTS
-        print("cfg.ENV.WALKERS (manipulators actually >:( ): ", cfg.ENV.WALKERS)
-    elif cfg.ENV_NAME == "Unimal-v0":
-
+        print("Arms used: ", cfg.ENV.WALKERS)
+    
+    if cfg.ENV_NAME == "Unimal-v0":
         cfg.ENV.WALKERS = [
             xml_file.split(".")[0]
             for xml_file in os.listdir(os.path.join(cfg.ENV.WALKER_DIR, "xml"))
         ]
-
     if cfg.ENV_NAME == 'Modular-v0':
         register_modular_envs()
 
@@ -217,7 +216,7 @@ def main():
     # Load config options
     cfg.merge_from_file(args.cfg_file)
     cfg.merge_from_list(args.opts)
-
+    # TODO: 1.add conditional statement based on env name, 2.add robosuite obs
     if args.no_context_in_state:
         obs_type = [
             "body_xpos", "body_xvelp", "body_xvelr", "body_xquat", # limb

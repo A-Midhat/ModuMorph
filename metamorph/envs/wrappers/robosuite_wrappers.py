@@ -18,7 +18,7 @@ class RobosuiteEnvWrapper(gym.Env):
     """
     metadata = {'render.modes': ['human', 'rgb_array']}
 
-    def __init__(self, robosuite_env_name, robot_name, controller_name=None, robosuite_cfg=None):
+    def __init__(self, robosuite_env_name, robot_name, horizon=100, controller_name=None, robosuite_cfg=None):
         """
         robotsuite_env_name: the task (i.e. Lift).
         robot_name: the robot (i.e. Panda).
@@ -53,11 +53,11 @@ class RobosuiteEnvWrapper(gym.Env):
             "controller_configs": self.controller_config,
             "has_renderer": False, # False for training
             "has_offscreen_renderer": False, # TODO: Set True to use camera observations as exteroceptive observations
-            #"ignore_done": True, # Use PPO for termniation (TODO:Uncomment)
+            "ignore_done": False, # Use PPO for termniation (TODO:Uncomment)
             "use_camera_obs": False, # TODO: Set True to use camera observations as exteroceptive observations
             "control_freq":20,
             "hard_reset": False, # TODO: check if it is really faster during training 
-            "horizon":1000,
+            "horizon":100,
             "reward_shaping": True
         }
 
@@ -66,6 +66,10 @@ class RobosuiteEnvWrapper(gym.Env):
 
         # Create the env
         self.env = robosuite.make(**robosuite_init_args)
+        
+        self.horizon = self.env.horizon
+        self._max_episode_steps = self.horizon
+
 
         # --- Gym Interfase Setup ---
         act_low, act_high = self.env.action_spec
@@ -91,7 +95,7 @@ class RobosuiteEnvWrapper(gym.Env):
         self.metadata["robot_metadata"] = self._robot_metadata 
         # for multi-robot envs, we will use robot_name 
         #TODO: add some kind of unique Id (when using same robot but differen kinamtics)
-        self.ep_step_count = 0 # optional 
+        self._elapsed_steps = 0 # for timelimt wrapper  
 
     def _extract_robot_metadata(self):
         """
@@ -132,7 +136,7 @@ class RobosuiteEnvWrapper(gym.Env):
         try:
             # done here is ignored 
             obs_dict, reward, done, info = self.env.step(action)
-            done = False # TODO: UNCOMMNET
+            #done = False # TODO: UNCOMMNET
             #---Debug ---
             # if self.ep_step_count %20==0 or reward !=0:
             #     print(f" [RobosuiteEnvWrapper Step {self.ep_step_count}] Raw Reward: {reward}")
@@ -155,7 +159,7 @@ class RobosuiteEnvWrapper(gym.Env):
         info['raw_reward'] = reward
         info['action'] = action
 
-        self.ep_step_count += 1 
+        self._elapsed_steps += 1
 
         return processed_obs, reward, done, info
 
