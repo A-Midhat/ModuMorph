@@ -62,7 +62,7 @@ class RobosuiteEnvWrapper(gym.Env):
         }
 
         robosuite_init_args.update(self.robosuite_cfg.get("ENV_ARGS", {}))
-        #print("Robosuite init args: ", robosuite_init_args)
+        print("Robosuite init args: ", robosuite_init_args)
 
         # Create the env
         self.env = robosuite.make(**robosuite_init_args)
@@ -287,20 +287,24 @@ class RobosuiteEnvWrapper(gym.Env):
         if mode == "rgb_array":
             if self.env.has_offscreen_renderer:
                 cam_name = camera_name if camera_name else self.env.render_camera 
-                return self.env.sim.render(
+                img = self.env.sim.render(
                     camera_name=cam_name,
                     width=width,
                     height=height,
                     depth=False
                 )
+                img = img[::-1]             
+                return img  
             else :
                 print("Warning: Offscreen rendering is not available for this environment")
-                return self.env.sim.render(
+                img =  self.env.sim.render(
                     mode='offscreen',
                     width=width,
                     height=height,
                     depth=False
                 ) # alt return zeros (blank)
+                img = img[::-1]             
+                return img 
         elif mode == "human":
             if self.env.has_renderer:
                 self.env.render()

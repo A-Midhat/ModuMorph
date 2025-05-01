@@ -2,304 +2,351 @@ import argparse
 import json
 import os
 import pickle
+import sys 
 
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from tqdm import tqdm 
+from tqdm import tqdm
+import gym 
+from gym import spaces
 
-from metamorph.algos.ppo.envs import (get_ob_rms, get_vec_normalize,
-                                      make_vec_envs, set_ob_rms)
+
+
+from metamorph.config import cfg, load_cfg
+
+import metamorph.envs
+from metamorph.algos.ppo.envs import (make_env, get_ob_rms,
+                                      get_vec_normalize, set_ob_rms)
+
+from metamorph.envs.vec_env.dummy_vec_env import DummyVecEnv
+from metamorph.envs.vec_env.subproc_vec_env import SubprocVecEnv
+from metamorph.envs.vec_env.vec_normalize import VecNormalize
+from metamorph.envs.vec_env.pytorch_vec_env import VecPyTorch
+from metamorph.envs.vec_env.vec_video_recorder import VecVideoRecorder
 from metamorph.algos.ppo.model import ActorCritic, Agent
-from metamorph.config import cfg, load_cfg, set_cfg_options
+
+from metamorph.utils import file as fu
+from metamorph.utils import sweep as swu
+
+from metamorph.envs.wrappers.robosuite_wrappers import RobosuiteEnvWrapper
+import robosuite # For controller config loading
+from robosuite.controllers import load_controller_config
 
 
+def set_cfg_options():
+    """Sets inferred config options relevant for evaluation."""
+    maybe_infer_agents() # Ensure AGENTS list is populated based on args
+    calculate_max_limbs_joints() # Crucial for model init based on test agents
+
+def calculate_max_limbs_joints():
+    """
+    Calculates the maximum number of limbs and joints required for padding
+    based on the agents specified in the config (for evaluation).
+    """
+    agents = cfg.ENV.get('AGENTS', []) # Use the potentially overridden list
+    if not agents:
+         print("Warning: cfg.ENV.AGENTS is empty in calculate_max_limbs_joints.")
+         if not hasattr(cfg.MODEL, 'MAX_LIMBS') or not cfg.MODEL.get('MAX_LIMBS'): cfg.MODEL.MAX_LIMBS = 8
+         if not hasattr(cfg.MODEL, 'MAX_JOINTS') or not cfg.MODEL.get('MAX_JOINTS'): cfg.MODEL.MAX_JOINTS = 8
+         print(f"Using fallback/default MAX_LIMBS={cfg.MODEL.MAX_LIMBS}, MAX_JOINTS={cfg.MODEL.MAX_JOINTS}")
+         return
+
+    num_joints, num_limbs = [], []
+    padding_needed = 1 
+
+    if cfg.ENV_NAME == "Unimal-v0":
+        
+        agent_dir = cfg.ENV.get('WALKER_DIR', None)
+        if not agent_dir: raise ValueError("cfg.ENV.WALKER_DIR not set for Unimal/Modular eval.")
+        metadata_paths = [os.path.join(agent_dir, "metadata", f"{agent}.json") for agent in agents]
+        for metadata_path in metadata_paths:
+            if not os.path.exists(metadata_path): print(f"Warning: Metadata missing {metadata_path}"); continue
+            metadata = fu.load_json(metadata_path)
+            num_joints.append(metadata.get("dof", 0))
+            num_limbs.append(metadata.get("num_limbs", 0) + 1) # +1 for torso/root
+        max_limbs_calculated = max(num_limbs) + padding_needed if num_limbs else 12
+        max_joints_calculated = max(num_joints) + padding_needed if num_joints else 16
+        cfg.MODEL.MAX_JOINTS = max_joints_calculated
+        cfg.MODEL.MAX_LIMBS = max_limbs_calculated
+        print(f"[Unimal/Modular Eval] Calculated MAX_JOINTS={cfg.MODEL.MAX_JOINTS}, MAX_LIMBS={cfg.MODEL.MAX_LIMBS}")
+
+    elif cfg.ENV_NAME == 'Modular-v0':
+        # Keep hardcoded logic based on eval agent dir
+        agent_dir = cfg.ENV.get('WALKER_DIR', "")
+        if 'hopper' in agent_dir: cfg.MODEL.MAX_LIMBS = 5; cfg.MODEL.MAX_JOINTS = 5
+        elif 'walker' in agent_dir: cfg.MODEL.MAX_LIMBS = 7; cfg.MODEL.MAX_JOINTS = 7
+        elif 'humanoid' in agent_dir: cfg.MODEL.MAX_LIMBS = 9; cfg.MODEL.MAX_JOINTS = 9
+        elif 'all' in agent_dir: cfg.MODEL.MAX_LIMBS = 19; cfg.MODEL.MAX_JOINTS = 19 # Assume consistent padding for 'all'
+        else: cfg.MODEL.MAX_LIMBS = 9; cfg.MODEL.MAX_JOINTS = 9 # Default
+        print(f"[Modular Eval] Set MAX_LIMBS={cfg.MODEL.MAX_LIMBS}, MAX_JOINTS={cfg.MODEL.MAX_JOINTS}")
+
+    elif cfg.ENV_NAME == 'Robosuite-v0':
+        print("[RoboSuite Eval] Dynamically calculating MAX_LIMBS/JOINTS for eval agents...")
+        controller_config = load_controller_config(default_controller="JOINT_VELOCITY") # Use simple controller
+        for robot_name in agents:
+            env = None
+            try:
+                # Instantiate minimal wrapper - use minimal config from loaded cfg
+                minimal_robosuite_cfg = cfg.ROBOSUITE.clone()
+                minimal_robosuite_cfg.defrost()
+                minimal_robosuite_cfg.ENV_ARGS = {'has_renderer': False, 'has_offscreen_renderer': True, 'horizon': 500} # Minimal
+                minimal_robosuite_cfg.freeze()
+                env = RobosuiteEnvWrapper(
+                    robosuite_env_name=cfg.ROBOSUITE.ENV_NAME,
+                    robot_name=robot_name,
+                    controller_name="JOINT_VELOCITY", # Use simple controller name
+                    robosuite_cfg=minimal_robosuite_cfg # Pass minimal cfg node
+                )
+                metadata = env.metadata.get('robot_metadata', {})
+                if not metadata: continue
+                # --- ADAPT BASED ON FINAL NODE/JOINT DEFINITION in wrappers ---
+                # This needs to match how your node-centric wrappers count things
+                # Example: Assuming link-based nodes, and joints = arm+gripper DoF
+                num_limbs_current = metadata.get('num_links', metadata.get('num_nodes', 0)) # Use 'num_nodes' as fallback
+                num_joints_current = metadata.get('num_arm_joints', 0) + metadata.get('num_gripper_joints', 0)
+                # --- End adaptation section ---
+                if num_limbs_current > 0: num_limbs.append(num_limbs_current)
+                if num_joints_current > 0: num_joints.append(num_joints_current)
+            except Exception as e: print(f"Warning: Failed to inspect robot {robot_name}: {e}")
+            finally:
+                if env: env.close()
+
+        if not num_limbs or not num_joints:
+             print("Error: Could not determine dimensions for RoboSuite eval robots.")
+             cfg.MODEL.MAX_LIMBS = cfg.MODEL.get('MAX_LIMBS', 8)
+             cfg.MODEL.MAX_JOINTS = cfg.MODEL.get('MAX_JOINTS', 8)
+        else:
+             cfg.MODEL.MAX_LIMBS = max(num_limbs) + padding_needed
+             cfg.MODEL.MAX_JOINTS = max(num_joints) + padding_needed
+        print(f"[RoboSuite Eval] Calculated MAX_LIMBS={cfg.MODEL.MAX_LIMBS}, MAX_JOINTS={cfg.MODEL.MAX_JOINTS}")
+
+    else:
+        print(f"Warning: Unknown ENV_NAME '{cfg.ENV_NAME}'. Keeping configured MAX_LIMBS/JOINTS.")
+        if not hasattr(cfg.MODEL, 'MAX_LIMBS') or not cfg.MODEL.get('MAX_LIMBS'): cfg.MODEL.MAX_LIMBS = 8
+        if not hasattr(cfg.MODEL, 'MAX_JOINTS') or not cfg.MODEL.get('MAX_JOINTS'): cfg.MODEL.MAX_JOINTS = 8
+
+
+def maybe_infer_agents():
+    """Sets cfg.ENV.AGENTS based on evaluation args if not already set."""
+    # This is mostly redundant here as main_stats sets cfg.ENV.AGENTS first,
+    # but acts as a safeguard if called independently.
+    if not cfg.ENV.get('AGENTS'):
+        print("Warning: cfg.ENV.AGENTS not set before maybe_infer_agents in eval script.")
+
+# --- End copied functions ---
+
+
+# --- Evaluation Function ---
 def evaluate_rollouts(policy, env, num_episodes_target):
-    """
-    Runs rollouts until a target number of episodes are completed across all envs.
-
-    Args:
-        policy: The policy agent (metamorph.algos.ppo.model.Agent).
-        env: The vectorized environment instance.
-        num_episodes_target: The total number of episodes to collect across all parallel envs.
-
-    Returns:
-        A dictionary containing evaluation statistics, including 'all_returns'.
-    """
+    """Runs rollouts until a target number of episodes are completed."""
     num_envs = env.num_envs
     all_episode_returns = []
     episode_lengths = []
-    episode_successes = [] 
+    episode_successes = []
     obs = env.reset()
     current_returns = np.zeros(num_envs)
     current_lengths = np.zeros(num_envs)
     episodes_collected = 0
-
-    pbar = tqdm(total=num_episodes_target, desc="Evaluating Rollouts")
-
+    pbar = tqdm(total=num_episodes_target, desc="Evaluating Rollouts", leave=False)
     while episodes_collected < num_episodes_target:
-        # Get action from policy
-        with torch.no_grad():
-            # cfg.DETERMINISTIC controls deterministic vs stochastic actions
-            _, action, _, _, _ = policy.act(obs, compute_val=False)
-
-        # Step environment
-        try:
-            obs, reward, step_dones, infos = env.step(action)
-        except Exception as e:
-             print(f"\nError during env.step(): {e}")
-             # Decide how to handle step errors during eval: skip or fail?
-             # For now, let's break and report what we have
-             print("Aborting evaluation for this agent due to step error.")
-             break # Exit the while loop
-
-        current_returns += reward.cpu().numpy().flatten() # Assuming reward is (N, 1)
-        current_lengths += 1
-
-        # Handle dones
+        with torch.no_grad(): _, action, _, _, _ = policy.act(obs, compute_val=False)
+        try: obs, reward, step_dones, infos = env.step(action)
+        except Exception as e: print(f"\nStep Error: {e}. Aborting agent."); break
+        current_returns += reward.cpu().numpy().flatten(); current_lengths += 1
         for i in range(num_envs):
-            # Important: Check the actual 'done' signal from the step, NOT just the info dict
             if step_dones[i]:
                 if episodes_collected < num_episodes_target:
                     all_episode_returns.append(current_returns[i])
                     episode_lengths.append(current_lengths[i])
-                    # Check for success key robustly
-                    success = infos[i].get('success', False) # From RobosuiteEnvWrapper
-                    if not success and "episode" in infos[i]: # Fallback check in episode dict
-                        success = infos[i]["episode"].get('success', False)
+                    success = infos[i].get('success', False) or infos[i].get('episode', {}).get('success', False)
                     episode_successes.append(success)
-
-                    episodes_collected += 1
-                    pbar.update(1)
-
-                # Reset tracking for the finished episode in this env
-                current_returns[i] = 0
-                current_lengths[i] = 0
-                # VecEnv handles the internal env reset automatically when step_dones[i] is True
-
-        # Safety break in case loop condition is tricky
-        if episodes_collected >= num_episodes_target:
-             break
-
+                    episodes_collected += 1; pbar.update(1)
+                current_returns[i] = 0; current_lengths[i] = 0
+        if episodes_collected >= num_episodes_target: break
     pbar.close()
-    if episodes_collected < num_episodes_target:
-        print(f"\nWarning: Collected only {episodes_collected}/{num_episodes_target} episodes.")
-
-
-    results = {
-        "all_returns": all_episode_returns, # Return the full list for histogram
-        "mean_return": np.mean(all_episode_returns) if all_episode_returns else 0,
-        "std_return": np.std(all_episode_returns) if all_episode_returns else 0,
-        "median_return": np.median(all_episode_returns) if all_episode_returns else 0,
-        "min_return": np.min(all_episode_returns) if all_episode_returns else 0,
-        "max_return": np.max(all_episode_returns) if all_episode_returns else 0,
-        "mean_length": np.mean(episode_lengths) if episode_lengths else 0,
-        "success_rate": np.mean(episode_successes) if episode_successes else 0,
-        "num_episodes": len(all_episode_returns),
-    }
+    if episodes_collected < num_episodes_target: print(f"\nWarning: Collected only {episodes_collected}/{num_episodes_target} episodes.")
+    results = {"all_returns": all_episode_returns, "mean_return": np.mean(all_episode_returns) if all_episode_returns else 0, "std_return": np.std(all_episode_returns) if all_episode_returns else 0, "median_return": np.median(all_episode_returns) if all_episode_returns else 0, "min_return": np.min(all_episode_returns) if all_episode_returns else 0, "max_return": np.max(all_episode_returns) if all_episode_returns else 0, "mean_length": np.mean(episode_lengths) if episode_lengths else 0, "success_rate": np.mean(episode_successes) if episode_successes else 0, "num_episodes": len(all_episode_returns)}
     return results
 
-# --- Histogram Plotting Function ---
-
 def plot_histogram(returns, save_path, title="Episode Return Distribution", bins=30):
-    """Generates and saves a histogram of returns."""
-    if not returns:
-        print("No return data to plot histogram.")
-        return
+    """Generates and saves a histogram of episode returns."""
+    if not returns: print("No return data to plot histogram."); return
     try:
-        plt.figure(figsize=(10, 6))
-        plt.hist(returns, bins=bins, edgecolor='black', alpha=0.7)
-        mean_ret = np.mean(returns)
-        std_ret = np.std(returns)
+        plt.figure(figsize=(10, 6)); plt.hist(returns, bins=bins, edgecolor='black', alpha=0.7)
+        mean_ret = np.mean(returns); std_ret = np.std(returns)
         plt.axvline(mean_ret, color='r', linestyle='dashed', linewidth=1, label=f'Mean: {mean_ret:.2f}')
         plt.title(f"{title}\n(N={len(returns)}, Mean={mean_ret:.2f}, Std={std_ret:.2f})")
-        plt.xlabel("Episode Return")
-        plt.ylabel("Frequency")
-        plt.legend()
-        plt.grid(axis='y', alpha=0.5)
-        plt.tight_layout()
-        plt.savefig(save_path)
-        plt.close() # Close the plot to free memory
+        plt.xlabel("Episode Return"); plt.ylabel("Frequency"); plt.legend(); plt.grid(axis='y', alpha=0.5)
+        plt.tight_layout(); plt.savefig(save_path); plt.close()
         print(f"Histogram saved to {save_path}")
-    except Exception as e:
-        print(f"Error plotting histogram: {e}")
-
-# --- Main Evaluation Logic ---
+    except Exception as e: print(f"Error plotting histogram: {e}")
 
 def main_stats():
     parser = argparse.ArgumentParser(description="Evaluate a trained RL policy")
     parser.add_argument("--policy_dir", required=True, help="Directory containing config.yaml and model checkpoint")
-    parser.add_argument("--checkpoint", default=None, help="Name of the model checkpoint file (e.g., Unimal-v0.pt or checkpoint_1000.pt). If None, tries common names.")
-    parser.add_argument("--test_agent_dir", default=None, help="Directory for test agents (e.g., unimals_100/test), required if not Robosuite")
-    parser.add_argument("--test_robots", nargs='+', default=None, help="List of robot names for Robosuite evaluation (overrides cfg)")
-    parser.add_argument("--num_episodes", type=int, default=50, help="Total number of episodes to collect across all envs/agents")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed for evaluation")
+    parser.add_argument("--checkpoint", default=None, help="Checkpoint file name. Auto-detects if None.")
+    parser.add_argument("--test_agent_dir", default=None, help="Directory for test agents (UniMal/Modular)")
+    parser.add_argument("--test_robots", nargs='+', default=None, help="List of robot names for Robosuite evaluation")
+    parser.add_argument("--num_episodes", type=int, default=50, help="Total number of evaluation episodes per agent type")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--deterministic", action="store_true", help="Use deterministic actions (policy mean)")
-    parser.add_argument("--out_file", default="eval_results.json", help="Output file for results (JSON), saved in policy_dir")
-    parser.add_argument("--hist_file", default="eval_return_histogram.png", help="Output file for histogram plot, saved in policy_dir")
-    parser.add_argument("--num_envs", type=int, default=16, help="Number of parallel environments for evaluation")
+    parser.add_argument("--out_file", default="eval_results.json", help="Output JSON file name")
+    parser.add_argument("--hist_file", default="eval_return_histogram.png", help="Output histogram file name")
+    parser.add_argument("--num_envs", type=int, default=16, help="Number of parallel environments for evaluation rollouts")
+    parser.add_argument("--record_video", action="store_true", help="Enable video recording (first env instance)")
+    parser.add_argument("--video_length", type=int, default=500, help="Max length of recorded videos in steps")
+    parser.add_argument("--video_dir_suffix", default="_videos", help="Suffix for video directory (created inside policy_dir)")
     args = parser.parse_args()
 
-    # --- 1. Load Config ---
     config_path = os.path.join(args.policy_dir, "config.yaml")
-    if not os.path.exists(config_path):
-        raise FileNotFoundError(f"Config file not found at {config_path}")
+    if not os.path.exists(config_path): raise FileNotFoundError(f"Config file not found: {config_path}")
     cfg.merge_from_file(config_path)
 
-    # --- 2. Override Config for Evaluation ---
     cfg.defrost()
-    cfg.PPO.NUM_ENVS = args.num_envs # Use eval num_envs
+    # Use evaluation settings for num_envs, seed, deterministic only for stat rollouts
+    # Video recording will use num_envs=1 temporarily if needed
     cfg.RNG_SEED = args.seed
-    cfg.DETERMINISTIC = args.deterministic
-    cfg.TERMINATE_ON_FALL = False # Typically off for eval
-    cfg.LOGGING.USE_WANDB = False # Disable logging during eval
+    cfg.DETERMINISTIC = args.deterministic 
+    cfg.TERMINATE_ON_FALL = False
+    cfg.LOGGING.USE_WANDB = False
 
-    # Determine agents/robots to evaluate
+    cfg.ROBOSUITE.ENV_ARGS.has_offscreen_renderer = True
+    cfg.ROBOSUITE.ENV_ARGS.has_renderer = False 
+
     agents_to_evaluate = []
     if cfg.ENV_NAME == "Robosuite-v0":
-        agents_to_evaluate = args.test_robots if args.test_robots else cfg.ROBOSUITE.ROBOTS
-        if not agents_to_evaluate: # Fallback if test_robots and config list are empty
-             raise ValueError("No RoboSuite robots specified for evaluation (--test_robots or in config).")
-        cfg.ROBOSUITE.ROBOTS = agents_to_evaluate # Ensure config matches eval set
-        cfg.ENV.AGENTS = agents_to_evaluate # Keep consistent
-        print(f"Evaluating RoboSuite with robots: {agents_to_evaluate}")
-    else: # UniMorph / Modular
-        if not args.test_agent_dir:
-            raise ValueError("--test_agent_dir is required for non-Robosuite environments")
-        cfg.ENV.WALKER_DIR = args.test_agent_dir # Keep original key if needed by legacy code
+        agents_to_evaluate = args.test_robots if args.test_robots else cfg.ROBOSUITE.get('ROBOTS', [])
+        if not agents_to_evaluate: raise ValueError("No RoboSuite robots specified for evaluation.")
+        cfg.ROBOSUITE.ROBOTS = agents_to_evaluate
+    else:
+        if not args.test_agent_dir: raise ValueError("--test_agent_dir required for non-Robosuite.")
+        cfg.ENV.WALKER_DIR = args.test_agent_dir
         try:
-            agent_files = [f for f in os.listdir(os.path.join(args.test_agent_dir, 'xml')) if f.endswith('.xml')]
-            agents_to_evaluate = [f.split('.')[0] for f in agent_files]
-        except FileNotFoundError:
-             raise FileNotFoundError(f"Cannot find 'xml' subdirectory in --test_agent_dir: {args.test_agent_dir}")
-        if not agents_to_evaluate:
-             raise ValueError(f"No agent XML files found in {os.path.join(args.test_agent_dir, 'xml')}")
-        cfg.ENV.AGENTS = agents_to_evaluate
-        print(f"Evaluating {cfg.ENV_NAME} with agents from {args.test_agent_dir}")
-
-    set_cfg_options() # Recalculate MAX_LIMBS etc. based on the *loaded evaluation config*
+            xml_dir = os.path.join(args.test_agent_dir, 'xml')
+            agents_to_evaluate = [f.split('.')[0] for f in os.listdir(xml_dir) if f.endswith('.xml')]
+        except FileNotFoundError: raise FileNotFoundError(f"Cannot find 'xml' subdirectory in {args.test_agent_dir}")
+        if not agents_to_evaluate: raise ValueError(f"No agent XML files found in {xml_dir}")
+    cfg.ENV.AGENTS = agents_to_evaluate # Set the definitive list
+    print(f"Evaluating {cfg.ENV_NAME} with agents: {agents_to_evaluate}")
+    set_cfg_options()
     cfg.freeze()
 
-    # --- 3. Setup Shared Policy and Normalization ---
     print("Loading policy and normalization stats...")
-
-    # Find checkpoint file
-    if args.checkpoint:
-        checkpoint_filename = args.checkpoint
-    else: # Auto-detect common names
-        potential_names = [f"{cfg.ENV_NAME}.pt", "checkpoint_-1.pt"]
-        checkpoint_filename = None
-        for name in potential_names:
-             if os.path.exists(os.path.join(args.policy_dir, name)):
-                  checkpoint_filename = name
-                  print(f"Auto-detected checkpoint: {name}")
-                  break
+    if args.checkpoint: checkpoint_filename = args.checkpoint
+    else: 
+        potential_names=[f"{cfg.ENV_NAME}.pt", "checkpoint_-1.pt"]
+        checkpoint_filename=None
+        for name in potential_names: 
+            if os.path.exists(os.path.join(args.policy_dir, name)): 
+                checkpoint_filename = name
+            break
         if checkpoint_filename is None:
-             raise FileNotFoundError(f"Could not find checkpoint file in {args.policy_dir}. Tried: {potential_names}")
-
+             raise FileNotFoundError(f"Checkpoint not found in {args.policy_dir}. Tried: {potential_names}")
     checkpoint_path = os.path.join(args.policy_dir, checkpoint_filename)
-
-    # Load checkpoint data
     try:
-        # Assume checkpoint might be just the state dict or a list/tuple
-        loaded_data = torch.load(checkpoint_path, map_location=cfg.DEVICE)
+        loaded_data = torch.load(checkpoint_path, map_location=torch.device(cfg.DEVICE)) # Ensure device
         if isinstance(loaded_data, (list, tuple)) and len(loaded_data) == 2:
-            policy_state_dict, saved_ob_rms = loaded_data
-            print("Loaded policy state dict and ob_rms from checkpoint.")
-        elif isinstance(loaded_data, dict): # Assume it's just the state dict
-            policy_state_dict = loaded_data
-            saved_ob_rms = None
-            print("Warning: Loaded state dict only from checkpoint, ob_rms missing.")
-        elif hasattr(loaded_data, 'state_dict'): # Check if it's a model object
-             policy_state_dict = loaded_data.state_dict()
-             saved_ob_rms = None # Assume no ob_rms saved with full model object
-             print("Warning: Loaded full model object, extracting state dict. ob_rms assumed missing.")
-        else:
-             raise TypeError(f"Unexpected data type loaded from checkpoint: {type(loaded_data)}")
-
-        # Verify policy_state_dict is actually a dict
-        if not isinstance(policy_state_dict, dict):
-             raise TypeError(f"Extracted policy data is not a state dictionary: {type(policy_state_dict)}")
-
-    except Exception as e:
-        raise RuntimeError(f"Could not load or parse policy checkpoint '{checkpoint_path}': {e}") from e
+             policy_obj, saved_ob_rms = loaded_data
+             if hasattr(policy_obj, 'state_dict'): policy_state_dict = policy_obj.state_dict()
+             else: raise TypeError("Loaded object is not a model or state dict.")
+             print("Loaded model object and ob_rms. Extracted state_dict.")
+        elif isinstance(loaded_data, dict):
+             policy_state_dict = loaded_data; saved_ob_rms = None
+             print("Warning: Loaded state dict only, ob_rms missing.")
+        else: raise TypeError(f"Unexpected data type in checkpoint: {type(loaded_data)}")
+        if not isinstance(policy_state_dict, dict): raise TypeError("Extracted policy data is not state dict.")
+    except Exception as e: raise RuntimeError(f"Could not load checkpoint '{checkpoint_path}': {e}") from e
 
 
-    # --- 4. Create VecEnv ONCE to initialize ActorCritic ---
-    print("Initializing ActorCritic with environment spaces...")
-    # Temporarily set config for the first agent to get spaces
-    global_cfg_backup = cfg.clone()
-    cfg.defrost()
+    print("Initializing ActorCritic...")
     first_agent = agents_to_evaluate[0]
-    if cfg.ENV_NAME == "Robosuite-v0": cfg.ROBOSUITE.ROBOTS = [first_agent]
-    cfg.ENV.AGENTS = [first_agent]
-    cfg.PPO.NUM_ENVS = 1 # Only need one env instance
-    # set_cfg_options() # Re-run in case max dims differ for first agent
-    cfg.freeze()
+    temp_env_factory = make_env(cfg.ENV_NAME, cfg.RNG_SEED, 0,
+                                        xml_file=first_agent if cfg.ENV_NAME != "Robosuite-v0" else None,
+                                        robot_name=first_agent if cfg.ENV_NAME == "Robosuite-v0" else None)
+    # Use DummyVecEnv with one instance to get spaces
+    init_envs_instance = DummyVecEnv([temp_env_factory])
 
-    # Create the temporary env
-    init_envs = make_vec_envs(training=False, norm_rew=False, seed=args.seed, num_env=1)
-
-    # Restore global cfg immediately
-    cfg.clear()
-    cfg.update(global_cfg_backup)
-
-    # Initialize Policy using spaces from init_envs
-    try:
-        actor_critic = ActorCritic(init_envs.observation_space, init_envs.action_space)
-    except Exception as e:
-         print("\nERROR initializing ActorCritic!")
-         print("Observation Space:", init_envs.observation_space)
-         print("Action Space:", init_envs.action_space)
-         init_envs.close()
-         raise e
-    init_envs.close() # Close the temporary env
+    try: actor_critic = ActorCritic(init_envs_instance.observation_space, init_envs_instance.action_space)
+    except Exception as e: print("\nERROR initializing ActorCritic!"); print("Obs Space:", init_envs_instance.observation_space); print("Act Space:", init_envs_instance.action_space); init_envs_instance.close(); raise e
+    init_envs_instance.close()
 
     actor_critic.load_state_dict(policy_state_dict)
-    actor_critic.to(cfg.DEVICE)
-    actor_critic.eval() # Set to evaluation mode
-    policy = Agent(actor_critic)
-    print("Policy initialized successfully.")
+    actor_critic.to(cfg.DEVICE); actor_critic.eval(); policy = Agent(actor_critic)
+    print("Policy initialized.")
 
-    # --- 5. Run Evaluation Per Agent ---
-    print(f"Starting evaluation for {len(agents_to_evaluate)} agents/robots...")
+    print(f"\nStarting evaluation...")
     all_agent_results = {}
-    all_returns_for_hist = [] # Collect all returns across all agents
+    all_returns_for_hist = []
 
     for agent_name in agents_to_evaluate:
         print(f"\n--- Evaluating: {agent_name} ---")
-        # Create envs specific to this agent for evaluation
-        # Temporarily override global cfg
-        global_cfg_backup_agent = cfg.clone()
-        cfg.defrost()
-        if cfg.ENV_NAME == "Robosuite-v0": cfg.ROBOSUITE.ROBOTS = [agent_name]
-        cfg.ENV.AGENTS = [agent_name]
-        cfg.PPO.NUM_ENVS = args.num_envs # Use eval num_envs
-        # set_cfg_options() # May not be needed if MAX dims are consistent across test set
-        cfg.freeze()
+        current_xml_file = agent_name if cfg.ENV_NAME != "Robosuite-v0" else None
+        current_robot_name = agent_name if cfg.ENV_NAME == "Robosuite-v0" else None
 
-        # Create the actual VecEnv for this agent
-        agent_envs = make_vec_envs(training=False, norm_rew=False, seed=args.seed)
+        num_eval_envs = 1 if args.record_video else args.num_envs
 
-        # Restore global cfg
-        cfg.clear()
-        cfg.update(global_cfg_backup_agent)
+        env_fns = [
+            make_env(cfg.ENV_NAME, args.seed, i, xml_file=current_xml_file, robot_name=current_robot_name)
+            for i in range(num_eval_envs) # Use potentially adjusted num_envs
+        ]
 
-        # Apply normalization stats
-        if saved_ob_rms:
-            set_ob_rms(agent_envs, saved_ob_rms)
-        else:
-            # Ensure VecNormalize doesn't update stats during eval even if ob_rms was missing
-            vec_norm_agent = get_vec_normalize(agent_envs)
-            if vec_norm_agent: vec_norm_agent.eval()
+        vecenv_class = SubprocVecEnv if cfg.VECENV.TYPE == "SubprocVecEnv" and not args.record_video else DummyVecEnv
+        agent_envs_base = vecenv_class(env_fns)
 
-        results = evaluate_rollouts(policy, agent_envs, args.num_episodes)
-        all_agent_results[agent_name] = results # Store detailed results per agent
-        all_returns_for_hist.extend(results["all_returns"]) # Add returns to histogram list
+        eval_env = agent_envs_base # Start with base
+        if args.record_video:
+             if not isinstance(agent_envs_base, DummyVecEnv) or agent_envs_base.num_envs != 1:
+                  print("Warning: Recreating env as DummyVecEnv(N=1) for video recording.")
+                  agent_envs_base.close() # Close original VecEnv
+                  eval_env = DummyVecEnv([env_fns[0]]) # Create new DummyVecEnv(N=1)
+             else:
+                  eval_env = agent_envs_base # Already suitable
+
+             agent_video_dir = os.path.join(args.policy_dir, agent_name + args.video_dir_suffix)
+             os.makedirs(agent_video_dir, exist_ok=True)
+             video_prefix = f"{agent_name}_seed{args.seed}"
+             if args.deterministic: video_prefix += "_deterministic"
+
+             eval_env = VecVideoRecorder(
+                 eval_env, agent_video_dir,
+                 record_video_trigger=lambda x: x < 1, # Record frame 0 (first step)
+                 video_length=args.video_length, file_prefix=video_prefix
+             )
+             print(f"Video recording enabled for {agent_name} to {agent_video_dir}")
+
+        # if saved_ob_rms:
+        #     eval_env = VecNormalize(eval_env, training=False, ob=True, ret=False)
+        #     set_ob_rms(eval_env, saved_ob_rms)
+        # vec_norm_eval = get_vec_normalize(eval_env) # Get ref after potential wrapping
+        # if vec_norm_eval:
+        #      vec_norm_eval.eval() # Ensure eval mode
+        # Determine keys to normalize FROM THE LOADED CONFIG
+        keys_to_normalize = cfg.MODEL.get('OBS_TO_NORM')
+        apply_norm = isinstance(keys_to_normalize, list) and len(keys_to_normalize) > 0
+
+        if apply_norm:
+            # print(f"Applying VecNormalize with keys: {keys_to_normalize}")
+            # Pass the keys from config to the wrapper
+            eval_env = VecNormalize(eval_env, training=False, ob=True, ret=False,
+                                    obs_to_norm=keys_to_normalize) 
+            if saved_ob_rms:
+                 set_ob_rms(eval_env, saved_ob_rms) # Set stats AFTER wrapping
+            eval_env.eval() # Ensure it doesn't update stats
+        # else: print("Skipping VecNormalize.")
+
+        eval_env = VecPyTorch(eval_env, cfg.DEVICE)
+        # Rollouts
+        num_episodes_this_agent = args.num_episodes # Target total episodes for this agent
+        results = evaluate_rollouts(policy, eval_env, num_episodes_this_agent)
+        all_agent_results[agent_name] = results
+        all_returns_for_hist.extend(results["all_returns"])
         print(f"  Result: Mean Return={results['mean_return']:.2f} +/- {results['std_return']:.2f}, Success Rate={results['success_rate']:.2%}, N={results['num_episodes']}")
-        agent_envs.close()
 
-    # --- 6. Aggregate, Save Results, and Plot Histogram ---
+        eval_env.close()
+        if args.record_video and agent_video_dir:
+             print(f"Video saving finalized for {agent_name}.")
+
     print("\n--- Overall Evaluation Summary ---")
     overall_returns = [res['mean_return'] for res in all_agent_results.values() if res['num_episodes'] > 0]
     overall_success = [res['success_rate'] for res in all_agent_results.values() if res['num_episodes'] > 0]
@@ -309,22 +356,27 @@ def main_stats():
     print(f"Average Success Rate Across Agents: {np.mean(overall_success):.2%}" if overall_success else "N/A")
 
 
-    # Save detailed results
     output_path = os.path.join(args.policy_dir, args.out_file)
     try:
         with open(output_path, 'w') as f:
-             # Convert numpy types to standard python types for JSON
-             json.dump(all_agent_results, f, default=lambda x: x.tolist() if isinstance(x, np.ndarray) else (int(x) if isinstance(x, np.int_) else (float(x) if isinstance(x, np.float_) else x)), indent=4)
+             def json_converter(obj):
+                  if isinstance(obj, np.ndarray): return obj.tolist()
+                  if isinstance(obj, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64)): return int(obj)
+                  elif isinstance(obj, (np.float_, np.float16, np.float32, np.float64)): return float(obj)
+                  elif isinstance(obj, (np.bool_)): return bool(obj)
+                  elif isinstance(obj, (np.void)): return None # Handle void/structured arrays if they appear
+                  return obj # Let default handle others, will raise TypeError if needed
+             json.dump(all_agent_results, f, default=json_converter, indent=4)
         print(f"Detailed results saved to {output_path}")
     except Exception as e:
         print(f"Error saving results to JSON: {e}")
 
-
     # Plot and save histogram
     hist_path = os.path.join(args.policy_dir, args.hist_file)
-    policy_name = os.path.basename(args.policy_dir.rstrip('/')) # Get name from policy dir
+    policy_name = os.path.basename(args.policy_dir.rstrip('/'))
     plot_histogram(all_returns_for_hist, hist_path, title=f"Episode Return Distribution ({policy_name}) - All Agents")
 
-
 if __name__ == "__main__":
+    # Define or import set_cfg_options and its dependencies here
+    # For simplicity, assuming they are now defined within this file
     main_stats()
