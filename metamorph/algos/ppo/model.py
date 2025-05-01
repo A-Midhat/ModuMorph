@@ -1,5 +1,3 @@
-# metamorph/algos/ppo/model.py
-
 import math
 import numpy as np
 import torch
@@ -12,11 +10,10 @@ from gym import spaces # Import spaces for type checking
 from metamorph.config import cfg
 from metamorph.utils import model as tu
 
-# Assuming transformer definitions are in this relative path
 from .transformer import TransformerEncoder
 from .transformer import TransformerEncoderLayerResidual
 
-# MLP model as single-robot baseline (assuming it's adapted for flattened input)
+# MLP model as single-robot baseline
 class MLPModel(nn.Module):
     def __init__(self, obs_space, out_dim):
         super(MLPModel, self).__init__()
@@ -25,7 +22,7 @@ class MLPModel(nn.Module):
 
         # Verify obs_space structure for MLPFlattener output
         if not isinstance(obs_space, (spaces.Dict, OrderedDict)) or "proprioceptive" not in obs_space.spaces:
-            raise ValueError("MLPModel requires a Dict obs_space with 'proprioceptive' key (from MLPFlattener).")
+            raise ValueError("[MLPModel] requires a Dict obs_space with 'proprioceptive' key (from MLPFlattener).")
 
         flat_proprio_dim = obs_space["proprioceptive"].shape[0]
         # out_dim is 1 for critic, or action_dim for actor
