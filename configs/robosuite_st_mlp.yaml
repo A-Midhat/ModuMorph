@@ -1,0 +1,39 @@
+ENV_NAME: "Robosuite-v0"
+OUT_DIR: "out/1411/robosuite_PickPlace_single_1411"
+RNG_SEED: 1411
+
+ROBOSUITE:
+  ENV_NAME: "PickPlace"
+  ROBOTS: ["Panda"]
+  CONTROLLER: "JOINT_VELOCITY"
+
+ENV:
+  MOUDLES: []
+  WRAPPERS: []
+  KEYS_TO_KEEP: ["proprioceptive"]
+  #KEYS_TO_KEEP: ["proprioceptive", "object-state", "gripper_to_object", "eef_pos", "eef_quat", "gripper_qpos", "gripper_qvel"]
+  #TASK: "robosuite_lift"
+
+MODEL:
+  TYPE: "mlp"
+  MAX_LIMBS: 8
+  MAX_JOINTS: 8
+  # we define them as None to bypass any possible errors even if we are using mlp
+  TRANSFORMER:
+    EXT_MIX: "late" 
+    # USE_SWAT_PE: False
+    # USE_SWAT_RE: False
+    # PER_NODE_EMBED: False
+    # PER_NODE_DECODER: False
+
+
+PPO:
+  MAX_STATE_ACTION_PAIRS: 1e7
+  TIMESTEPS: 1024
+  EPOCHS: 8
+  BATCH_SIZE: 512
+  NUM_ENVS: 4
+
+LOGGING:
+  USE_WANDB: True
+  PROJECT: "Single_Panda_Lift"

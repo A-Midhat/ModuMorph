@@ -7,6 +7,9 @@ import torch
 
 import metamorph.envs  # Register envs
 from metamorph.config import cfg
+from metamorph.envs.tasks.task import make_base_env 
+from metamorph.envs.wrappers.select_keys import SelectKeysWrapper
+
 from metamorph.envs import CUSTOM_ENVS
 from metamorph.envs.vec_env.dummy_vec_env import DummyVecEnv
 from metamorph.envs.vec_env.pytorch_vec_env import VecPyTorch
@@ -21,7 +24,6 @@ from metamorph.envs.wrappers.robosuite_wrappers import RobosuiteNodeCentricObser
 from metamorph.envs.wrappers.robosuite_wrappers import RobosuiteNodeCentricAction
 from metamorph.envs.wrappers.robosuite_wrappers import RobosuiteMLPFlattener 
 
-from metamorph.envs.tasks.robosuite_task import make_env_robosuite
 
 def make_env(env_id, seed, rank, xml_file=None, robot_name=None):
     def _thunk():
@@ -31,24 +33,36 @@ def make_env(env_id, seed, rank, xml_file=None, robot_name=None):
             elif env_id == 'Modular-v0':
                 env = gym.make(f"{xml_file}-v0")
             elif env_id == 'Robosuite-v0':
-                env = make_env_robosuite(robot_name=robot_name)
+                env = make_base_env(agent_name=robot_name)
         else:
             env = gym.make(env_id)
         # Note this does not change the global seeds. It creates a numpy
         # rng gen for env.
         env.seed(seed + rank)
+        # Apply to all env
         # Don't add wrappers above TimeLimit
         if str(env.__class__.__name__).find("TimeLimit") >= 0:
             env = TimeLimitMask(env)
         
-        if cfg.MODEL.TYPE == "mlp":
-            print("Applying [RobosuiteMLPFlattener] wrapper")
-            env = RobosuiteMLPFlattener(env)
-        elif cfg.MODEL.TYPE == "transformer":
-            print("Applying [RobosuiteNodeCentricObservation/Action] wrappers")
-            env = RobosuiteNodeCentricObservation(env)
-            env = RobosuiteNodeCentricAction(env)
-        
+        # apply the following wrappers only for robosuite env
+        if cfg.ENV_NAME == "Robosuite-v0":
+            if cfg.MODEL.TYPE == "mlp":
+                print("Applying [RobosuiteMLPFlattener] wrapper")
+                keys_to_keep = ["proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context"] # we will use only proprioceptive, the others are dummy for MLPModel
+                env = RobosuiteMLPFlattener(env)
+                env = SelectKeysWrapper(env, keys_to_keep=keys_to_keep)
+            elif cfg.MODEL.TYPE == "transformer":
+                print("Applying [RobosuiteNodeCentricObservation/Action] wrappers")
+                keys_ = ["proprioceptive", "context", "edges", \
+                            "obs_padding_mask", "act_padding_mask", \
+                                
+                                "object-state", 'robot0_eef_quat', 'robot0_gripper_qpos', 'robot0_gripper_qvel']
+                env = RobosuiteNodeCentricObservation(env)
+                env = RobosuiteNodeCentricAction(env)
+                final_obs_spcae_keys = env.observation_space.spaces.keys()
+                keys_to_keep = [k for k in keys_ if k in final_obs_spcae_keys]
+
+                env = SelectKeysWrapper(env, keys_to_keep=keys_to_keep)
         # for extra wrappers TODO: if needed
         # for wrapper_name in cfg.ENV.WRAPPERS:
         #             env = globals()[wrapper_name](env) 

@@ -65,7 +65,7 @@ _C.ROBOSUITE.ENV_ARGS.has_offscreen_renderer = False
 _C.ROBOSUITE.ENV_ARGS.use_camera_obs = False
 _C.ROBOSUITE.ENV_ARGS.control_freq = 20
 _C.ROBOSUITE.ENV_ARGS.hard_reset = False
-_C.ROBOSUITE.ENV_ARGS.horizon = 100 
+_C.ROBOSUITE.ENV_ARGS.horizon = 1000 
 _C.ROBOSUITE.ENV_ARGS.reward_shaping = True
 
 # ----------------------------------------------------------------------------#

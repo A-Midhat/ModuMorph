@@ -81,23 +81,39 @@ class AgentMeter:
             return
         ep_rew = self.ep_rew["reward"]
         current_success_rate = self.mean_ep_success_rate[-1] if self.mean_ep_success_rate else "N/A"
+        # print(
+        #     "Agent {:>{size}}: mean/median reward {:>4.0f}/{:<4.0f}, "
+        #     "min/max reward {:>4.0f}/{:<4.0f}, "
+        #     # "#Ep: {:>7.0f}, avg/ema Ep len: {:>4.0f}/{:>4.0f}".format(
+        #     "#Ep: {:>7.0f}, success: {}, avg Ep len: {:>4.0f},".format(
+        #         self.name,
+        #         np.mean(ep_rew),
+        #         np.median(ep_rew),
+        #         np.min(ep_rew),
+        #         np.max(ep_rew),
+        #         self.ep_count,
+        #         np.mean(self.ep_len),
+        #         self.ep_len_ema,
+        #         current_success_rate,
+        #         size=max_name_len,
+                
+        #     )
+        # )
         print(
-            "Agent {:>{size}}: mean/median reward {:>4.0f}/{:<4.0f}, "
-            "min/max reward {:>4.0f}/{:<4.0f}, "
-            # "#Ep: {:>7.0f}, avg/ema Ep len: {:>4.0f}/{:>4.0f}".format(
-            "#Ep: {:>7.0f}, success: {}, avg Ep len: {:>4.0f},".format(
-                self.name,
-                np.mean(ep_rew),
+             "Agent {:>{size}}: mean/median reward {:>4.0f}/{:<4.0f}, "
+             "min/max reward {:>4.0f}/{:<4.0f}, "
+             "#Ep: {:>7.0f}, success: {}, avg Ep len: {:>4.0f},".format(
+                 self.name,
+                np.mean(ep_rew) if ep_rew else 0.0, 
                 np.median(ep_rew),
                 np.min(ep_rew),
                 np.max(ep_rew),
                 self.ep_count,
-                np.mean(self.ep_len),
-                self.ep_len_ema,
+                current_success_rate,   
+                self.ep_len_ema,       
                 current_success_rate,
                 size=max_name_len,
-                
-            )
+             )
         )
 
 

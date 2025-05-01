@@ -1,0 +1,85 @@
+ENV_NAME: "Robosuite-v0"
+# Suggestion: Make OUT_DIR more specific if you try different Transformer settings later
+OUT_DIR: "out/1409/robosuite_lift_single_transformer_jv" # Added _jv for JOINT_VELOCITY
+RNG_SEED: 1409
+
+ROBOSUITE:
+  ENV_NAME: "Lift"
+  ROBOTS: ["Panda"]
+  CONTROLLER: "JOINT_VELOCITY" # Keeping JOINT_VELOCITY as per your config
+
+ENV:
+  MODULES: [] # Corrected typo from MOUDLES
+  WRAPPERS: []
+  # Critical: Add core keys required by the node-centric wrappers and model pipeline
+  KEYS_TO_KEEP: [
+      "proprioceptive", "context", "edges",
+      "obs_padding_mask", "act_padding_mask", # Core keys from NodeCentric wrappers
+      "object_state",                        # Extroceptive keys for late mixing
+      "gripper_to_object_pos",               # Extroceptive (calculated in wrapper)
+      "eef_pos"                              # Extroceptive
+      # Add other keys from RobosuiteEnvWrapper._convert_observation if desired for late mix
+      # "eef_quat", "gripper_qpos", "gripper_qvel" # Example optional keys
+    ]
+  # TASK: "robosuite_lift" # This is optional if ENV_NAME handles routing
+
+MODEL:
+  TYPE: "transformer"
+  MAX_LIMBS: 8  # Seems correct for Panda (7 links + 1 base node)
+  MAX_JOINTS: 7 # Seems correct for Panda (7 arm kinematic edges)
+
+  # Define encoder for extroceptive features (needed for EXT_MIX: late)
+  EXTROCEPTIVE_ENCODER:
+    HIDDEN_DIMS: [64, 64] # Example dims
+
+  TRANSFORMER:
+    # --- Core Transformer Hyperparameters (MUST BE PRESENT) ---
+    NHEAD: 2                            # Default: 2
+    DIM_FEEDFORWARD: 1024               # Default: 1024
+    DROPOUT: 0.1                        # Default: 0.1 (can be 0.0 for testing)
+    NLAYERS: 3                          # Start smaller: 3 (Default: 5)
+    # --- Other Transformer Settings ---
+    EMBED_INIT: 0.1
+    DECODER_INIT: 0.01
+    POS_EMBEDDING: "learnt"             # Use learned positional embeddings
+    EMBEDDING_DROPOUT: True             # Enable dropout on embeddings
+    CONSISTENT_DROPOUT: False
+    EMBEDDING_SCALE: True
+    EXT_MIX: "late"                     # Set to "late" to use extroceptive keys
+    DECODER_DIMS: [128]                 # Define decoder MLP hidden layers
+    
+    # HYPERNET: False
+    # FIX_ATTENTION: False
+    CONTEXT_EMBED_SIZE: 128
+    HN_EMBED: True
+    HN_DECODER: True
+    HN_CONTEXT_ENCODER: 'linear'
+    HN_CONTEXT_LAYER_NUM: 1
+    CONTEXT_LAYER: 3
+    LINEAR_CONTEXT_LAYER: 2
+    CONTEXT_ENCODER: 'linear'
+    HFIELD_IN_FIX_ATTENTION: False
+    USE_MORPHOLOGY_INFO_IN_ATTENTION: False
+    USE_SWAT_PE: False
+    USE_SWAT_RE: False
+    PER_NODE_EMBED: False
+    PER_NODE_DECODER: False
+
+PPO:
+  MAX_STATE_ACTION_PAIRS: 1e6           # Small value for quick testing
+  TIMESTEPS: 1024
+  EPOCHS: 8
+  BATCH_SIZE: 512
+  NUM_ENVS: 4                           # Number of parallel envs
+  GAMMA: 0.99
+  GAE_LAMBDA: 0.95
+  CLIP_EPS: 0.2
+  VALUE_COEF: 0.5
+  ENTROPY_COEF: 0.01
+  BASE_LR: 3e-4
+  LR_POLICY: "cos"
+  MAX_GRAD_NORM: 0.5
+
+LOGGING:
+  USE_WANDB: True
+  PROJECT: "Single_Panda_Lift" 
