@@ -61,7 +61,7 @@ def make_env(env_id, seed, rank, xml_file=None, robot_name=None):
                 env = RobosuiteNodeCentricAction(env)
                 final_obs_spcae_keys = env.observation_space.spaces.keys()
                 keys_to_keep = [k for k in keys_ if k in final_obs_spcae_keys]
-
+                cfg.ENV.KEYS_TO_KEEP = keys_to_keep
                 env = SelectKeysWrapper(env, keys_to_keep=keys_to_keep)
         # for extra wrappers TODO: if needed
         # for wrapper_name in cfg.ENV.WRAPPERS:

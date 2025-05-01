@@ -1,5 +1,5 @@
 ENV_NAME: "Robosuite-v0"
-OUT_DIR: "out/1409/robosuite_Panda_Lift_1409"
+OUT_DIR: "out/1409/robosuite_Panda_Lift_transformer_1409"
 RNG_SEED: 1409
 
 ROBOSUITE:
@@ -15,12 +15,12 @@ ENV:
   #TASK: "robosuite_lift"
 
 MODEL:
-  TYPE: "mlp"
+  TYPE: "transformer"
   MAX_LIMBS: 8
   MAX_JOINTS: 7
   # we define them as None to bypass any possible errors even if we are using mlp
   TRANSFORMER:
-    EXT_MIX: None 
+    EXT_MIX: "late" 
 
 
 

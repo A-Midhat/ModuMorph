@@ -1,621 +1,561 @@
-import math
+# metamorph/algos/ppo/model.py
 
+import math
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from torch.distributions.normal import Normal
+from collections import OrderedDict
+from gym import spaces # Import spaces for type checking
 
 from metamorph.config import cfg
 from metamorph.utils import model as tu
 
+# Assuming transformer definitions are in this relative path
 from .transformer import TransformerEncoder
 from .transformer import TransformerEncoderLayerResidual
 
-import time
-import matplotlib.pyplot as plt
-
-
-# MLP model as single-robot baseline
+# MLP model as single-robot baseline (assuming it's adapted for flattened input)
 class MLPModel(nn.Module):
     def __init__(self, obs_space, out_dim):
         super(MLPModel, self).__init__()
         self.model_args = cfg.MODEL.MLP
-        self.seq_len = cfg.MODEL.MAX_LIMBS
-        self.limb_obs_size = limb_obs_size = obs_space["proprioceptive"].shape[0] // self.seq_len
-        self.limb_out_dim = out_dim // self.seq_len
+        self.seq_len = cfg.MODEL.MAX_LIMBS # Needed for consistency, though MLP doesn't use seq structure explicitly
 
-        self.input_layer = nn.Linear(obs_space["proprioceptive"].shape[0], self.model_args.HIDDEN_DIM)
+        # Verify obs_space structure for MLPFlattener output
+        if not isinstance(obs_space, (spaces.Dict, OrderedDict)) or "proprioceptive" not in obs_space.spaces:
+            raise ValueError("MLPModel requires a Dict obs_space with 'proprioceptive' key (from MLPFlattener).")
 
+        flat_proprio_dim = obs_space["proprioceptive"].shape[0]
+        # out_dim is 1 for critic, or action_dim for actor
+        self.output_dim = out_dim
+
+        self.input_layer = nn.Linear(flat_proprio_dim, self.model_args.HIDDEN_DIM)
         self.output_layer = nn.Linear(self.model_args.HIDDEN_DIM, out_dim)
-        
-        if "hfield" in cfg.ENV.KEYS_TO_KEEP:
-            self.hfield_encoder = MLPObsEncoder(obs_space.spaces["hfield"].shape[0])
-            hidden_dims = [self.model_args.HIDDEN_DIM + self.hfield_encoder.obs_feat_dim] + [self.model_args.HIDDEN_DIM for _ in range(self.model_args.LAYER_NUM - 1)]
-            self.hidden_layers = tu.make_mlp_default(hidden_dims)
-        else:
-            hidden_dims = [self.model_args.HIDDEN_DIM for _ in range(self.model_args.LAYER_NUM)]
-            self.hidden_layers = tu.make_mlp_default(hidden_dims)
 
-    def forward(self, obs, obs_mask, obs_env, obs_cm_mask, obs_context, morphology_info, return_attention=False, dropout_mask=None, unimal_ids=None):
+        # --- Handle potential hfield input ---
+        # Note: This assumes hfield would be concatenated *before* flattening,
+        # which might not be how MLPFlattener works. This section might need
+        # removal or adaptation depending on how external features are passed to MLP.
+        # For now, assume hfield is NOT part of the MLP pipeline by default.
+        hidden_input_dim = self.model_args.HIDDEN_DIM
+        self.hfield_encoder = None
+        # if "hfield" in cfg.ENV.KEYS_TO_KEEP and "hfield" in obs_space.spaces:
+        #     # This likely won't trigger if MLPFlattener defines the space
+        #     print("MLP: Initializing HField Encoder")
+        #     self.hfield_encoder = HFieldObsEncoder(obs_space.spaces["hfield"].shape[0])
+        #     hidden_input_dim += self.hfield_encoder.obs_feat_dim
 
-        embedding = self.input_layer(obs)
+        hidden_dims = [hidden_input_dim] + [self.model_args.HIDDEN_DIM for _ in range(self.model_args.LAYER_NUM - 1)]
+        self.hidden_layers = tu.make_mlp_default(hidden_dims)
+
+    # MLP forward expects the specific flattened 'proprioceptive' key from the obs dict
+    def forward(self, obs_proprio, obs_env=None, # Simplified signature for MLP path
+                return_attention=False, dropout_mask=None, unimal_ids=None, **kwargs): # Use kwargs to ignore unused args
+
+        embedding = self.input_layer(obs_proprio) # Input is the flat tensor
         embedding = F.relu(embedding)
 
-        if "hfield" in cfg.ENV.KEYS_TO_KEEP:
-            hfield_embedding = self.hfield_encoder(obs_env["hfield"])
-            embedding = torch.cat([embedding, hfield_embedding], 1)
-        
-        # hidden layers
-        embedding = self.hidden_layers(embedding)
+        # Incorporate hfield if it exists (assuming obs_env is passed)
+        # if self.hfield_encoder is not None and obs_env and "hfield" in obs_env:
+        #     hfield_embedding = self.hfield_encoder(obs_env["hfield"])
+        #     embedding = torch.cat([embedding, hfield_embedding], 1)
 
-        # output layer
+        embedding = self.hidden_layers(embedding)
         output = self.output_layer(embedding)
 
-        return output, None, 0.
+        # MLP returns: output, None (no attention), Tuple of None (no specific dropout masks)
+        return output, None, (None, None)
 
 
-# J: Max num joints between two limbs. 1 for 2D envs, 2 for unimal
+# --- Positional Encodings ---
+class PositionalEncoding(nn.Module):
+    # Standard learned positional embedding
+    def __init__(self, d_model, seq_len, dropout=0., batch_first=False):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+        # Parameter shape depends on batch_first convention (Transformer uses batch_first=False)
+        pe_shape = (1, seq_len, d_model) if batch_first else (seq_len, 1, d_model)
+        self.pe = nn.Parameter(torch.randn(*pe_shape))
+
+    def forward(self, x):
+        x = x + self.pe
+        return self.dropout(x)
+
+class PositionalEncoding1D(nn.Module):
+    # Sinusoidal encoding (from original Transformer paper)
+    def __init__(self, d_model, max_len=5000):
+        super(PositionalEncoding1D, self).__init__()
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1) # Shape: (max_len, 1, d_model)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        # x shape: (seq_len, batch, d_model)
+        x = x + self.pe[:x.size(0), :]
+        return x
+
+# --- Observation Encoders ---
+class HFieldObsEncoder(nn.Module):
+    """Encoder for hfield observation."""
+    def __init__(self, obs_dim):
+        super(HFieldObsEncoder, self).__init__()
+        # Use configured dims or provide a default
+        hidden_dims = cfg.MODEL.TRANSFORMER.get('EXT_HIDDEN_DIMS', [64]) # Safer access
+        mlp_dims = [obs_dim] + hidden_dims
+        self.encoder = tu.make_mlp_default(mlp_dims)
+        self.obs_feat_dim = mlp_dims[-1]
+
+    def forward(self, obs):
+        return self.encoder(obs)
+
+class ExtroceptiveEncoder(nn.Module):
+    """Encoder for general extroceptive features (e.g., object state, eef pose)."""
+    def __init__(self, obs_dim):
+        super(ExtroceptiveEncoder, self).__init__()
+        # Use configured dims or provide a default
+        hidden_dims = cfg.MODEL.EXTROCEPTIVE_ENCODER.get('HIDDEN_DIMS', [64]) # Safer access
+        mlp_dims = [obs_dim] + hidden_dims
+        self.encoder = tu.make_mlp_default(mlp_dims)
+        self.obs_feat_dim = mlp_dims[-1]
+
+    def forward(self, obs):
+        return self.encoder(obs)
+
+# --- Transformer Model ---
 class TransformerModel(nn.Module):
     def __init__(self, obs_space, decoder_out_dim):
         super(TransformerModel, self).__init__()
 
-        self.decoder_out_dim = decoder_out_dim
+        if not isinstance(obs_space, (spaces.Dict, OrderedDict)):
+             raise ValueError(f"TransformerModel expects a Dict obs_space, got {type(obs_space)}")
 
+        self.decoder_out_dim = decoder_out_dim
         self.model_args = cfg.MODEL.TRANSFORMER
         self.seq_len = cfg.MODEL.MAX_LIMBS
-        # Embedding layer for per limb obs
-        limb_obs_size = obs_space["proprioceptive"].shape[0] // self.seq_len
+
+        # --- Determine Input Feature Sizes ---
+        if "proprioceptive" not in obs_space.spaces or "context" not in obs_space.spaces:
+             raise ValueError("Transformer requires 'proprioceptive' and 'context' keys.")
+        # Assuming flattened inputs (Batch, Seq*Feat) from wrappers
+        self.limb_obs_size = obs_space["proprioceptive"].shape[0] // self.seq_len
+        self.context_obs_size = obs_space["context"].shape[0] // self.seq_len
+
         self.d_model = cfg.MODEL.LIMB_EMBED_SIZE
-        if self.model_args.PER_NODE_EMBED:
-            print ('independent weights for each node')
-            initrange = cfg.MODEL.TRANSFORMER.EMBED_INIT
-            self.limb_embed_weights = nn.Parameter(torch.zeros(self.seq_len, len(cfg.ENV.WALKERS), limb_obs_size, self.d_model).uniform_(-initrange, initrange))
-            self.limb_embed_bias = nn.Parameter(torch.zeros(self.seq_len, len(cfg.ENV.WALKERS), self.d_model))
-        else:
-            self.limb_embed = nn.Linear(limb_obs_size, self.d_model)
-        self.ext_feat_fusion = self.model_args.EXT_MIX
 
-        if self.model_args.POS_EMBEDDING == "learnt":
-            print ('use PE learnt')
-            seq_len = self.seq_len
-            self.pos_embedding = PositionalEncoding(self.d_model, seq_len)
-        elif self.model_args.POS_EMBEDDING == "abs":
-            print ('use PE abs')
+        # --- Input Embeddings ---
+        # Currently assumes PER_NODE_EMBED is False for simplicity
+        if self.model_args.get('PER_NODE_EMBED', False):
+             raise NotImplementedError("PER_NODE_EMBED not fully integrated/verified.")
+        self.limb_embed = nn.Linear(self.limb_obs_size, self.d_model)
+        self.context_embed = nn.Linear(self.context_obs_size, self.d_model) # For context features
+
+        self.ext_feat_fusion = self.model_args.get('EXT_MIX', 'none') # Default to none
+
+        # --- Positional Encoding ---
+        pos_embedding_type = self.model_args.get('POS_EMBEDDING', 'learnt') # Default to learnt
+        if pos_embedding_type == "learnt":
+            print ('Using learned PE')
+            self.pos_embedding = PositionalEncoding(self.d_model, self.seq_len, batch_first=False)
+        elif pos_embedding_type == "abs":
+            print ('Using absolute (sinusoidal) PE')
             self.pos_embedding = PositionalEncoding1D(self.d_model, self.seq_len)
-
-        # Transformer Encoder
-        encoder_layers = TransformerEncoderLayerResidual(
-            cfg.MODEL.LIMB_EMBED_SIZE,
-            self.model_args.NHEAD,
-            self.model_args.DIM_FEEDFORWARD,
-            self.model_args.DROPOUT,
-        )
-
-        self.transformer_encoder = TransformerEncoder(
-            encoder_layers, self.model_args.NLAYERS, norm=None,
-        )
-
-        # Map encoded observations to per node action mu or critic value
-        decoder_input_dim = self.d_model
-
-        # Task based observation encoder
-        if "hfield" in cfg.ENV.KEYS_TO_KEEP:
-            print ('using `hfield` Encoder')
-            self.hfield_encoder = MLPObsEncoder(obs_space.spaces["hfield"].shape[0])
-
-        if self.ext_feat_fusion == "late":
-            decoder_input_dim += self.hfield_encoder.obs_feat_dim
-        self.decoder_input_dim = decoder_input_dim
-
-        # ---Robosuite-specific Encoder (new ext feat)---
-        self.extroceptive_keys = [k for k in ["object_state", "gripper_to_object"] if k in obs_space.spaces] # TODO: check for the correct synatx of those keys
-        if self.extroceptive_keys:
-            
-            #combine dim of keys 
-            extroceptive_dim = sum(obs_space.spaces[k].shape[0] for k in self.extroceptive_keys) 
-            print(f"Init Extroceptive Encoder for keys: {self.extroceptive_keys}, dim: {extroceptive_dim}")
-            self.extroceptive_encoder = ExtroceptiveEncoder(extroceptive_dim)
-            if self.ext_feat_fusion == "late":
-                self.decoder_input_dim += self.extroceptive_encoder.obs_feat_dim # Increase decoder input dim 
-
-        # -----------------------------------------------
-        if self.model_args.PER_NODE_DECODER:
-            # only support a single output layer
-            initrange = cfg.MODEL.TRANSFORMER.DECODER_INIT
-            self.decoder_weights = torch.zeros(decoder_input_dim, decoder_out_dim).uniform_(-initrange, initrange)
-            self.decoder_weights = self.decoder_weights.repeat(self.seq_len, len(cfg.ENV.WALKERS), 1, 1)
-            self.decoder_weights = nn.Parameter(self.decoder_weights)
-            self.decoder_bias = torch.zeros(decoder_out_dim).uniform_(-initrange, initrange)
-            self.decoder_bias = self.decoder_bias.repeat(self.seq_len, len(cfg.ENV.WALKERS), 1)
-            self.decoder_bias = nn.Parameter(self.decoder_bias)
         else:
+            print ('No PE used.')
+            self.pos_embedding = None
+
+        # --- Transformer Encoder ---
+        # Use .get() for safer access to config values
+        nhead = self.model_args.get('NHEAD', 2)
+        dim_feedforward = self.model_args.get('DIM_FEEDFORWARD', 512)
+        dropout = self.model_args.get('DROPOUT', 0.1)
+        nlayers = self.model_args.get('NLAYERS', 3)
+
+        encoder_layers = TransformerEncoderLayerResidual(
+            self.d_model, nhead, dim_feedforward, dropout, batch_first=False
+        )
+        # Apply layer norm after encoder stack
+        encoder_norm = nn.LayerNorm(self.d_model)
+        self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers, norm=encoder_norm)
+
+        # --- H-Field Encoder (Conditional) ---
+        self.hfield_encoder = None
+        if "hfield" in cfg.ENV.KEYS_TO_KEEP and "hfield" in obs_space.spaces:
+            print ('Initializing HField Encoder')
+            self.hfield_encoder = HFieldObsEncoder(obs_space.spaces["hfield"].shape[0])
+
+        # --- Robosuite Extroceptive Encoder (Conditional) ---
+        self.extroceptive_encoder = None
+        self.extro_feat_dim = 0
+        self.extroceptive_keys = [k for k in ['object-state', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos', 'robot0_gripper_qvel'] if k in obs_space.spaces]
+        if self.extroceptive_keys:
+            extroceptive_dim = sum(np.prod(obs_space.spaces[k].shape) for k in self.extroceptive_keys) # Use prod for multi-dim shapes
+            print(f"Initializing Extroceptive Encoder for keys: {self.extroceptive_keys}, total dim: {extroceptive_dim}")
+            self.extroceptive_encoder = ExtroceptiveEncoder(extroceptive_dim)
+            self.extro_feat_dim = self.extroceptive_encoder.obs_feat_dim
+
+        # --- Calculate Decoder Input Dimension ---
+        decoder_input_dim = self.d_model
+        if self.ext_feat_fusion == "late":
+            if self.hfield_encoder is not None:
+                decoder_input_dim += self.hfield_encoder.obs_feat_dim
+            if self.extroceptive_encoder is not None:
+                decoder_input_dim += self.extro_feat_dim
+        print(f"Decoder input dimension: {decoder_input_dim}")
+        self.decoder_input_dim = decoder_input_dim # Store for potential use (e.g., HN)
+
+        # --- Decoder ---
+        if self.model_args.get('PER_NODE_DECODER', False):
+            raise NotImplementedError("PER_NODE_DECODER not fully integrated/verified.")
+        else:
+            decoder_dims = self.model_args.get('DECODER_DIMS', [128]) # Example default
             self.decoder = tu.make_mlp_default(
-                [decoder_input_dim] + self.model_args.DECODER_DIMS + [decoder_out_dim],
+                [self.decoder_input_dim] + decoder_dims + [decoder_out_dim],
                 final_nonlinearity=False,
             )
 
-        if self.model_args.FIX_ATTENTION:
-            print ('use fix attention')
-            # the network to generate context embedding from the morphology context
-            context_obs_size = obs_space["context"].shape[0] // self.seq_len
-            self.context_embed_attention = nn.Linear(context_obs_size, self.model_args.CONTEXT_EMBED_SIZE)
+        # --- Fixed Attention / HyperNet Stubs (Conditional) ---
+        self.context_embed_attention = None
+        self.context_encoder_attention = None
+        if self.model_args.get('FIX_ATTENTION', False):
+             print ('Initializing Fixed Attention components (stub)')
+             context_embed_size = self.model_args.get('CONTEXT_EMBED_SIZE', 128)
+             self.context_embed_attention = nn.Linear(self.context_obs_size, context_embed_size)
+             # Example simple encoder
+             self.context_encoder_attention = nn.Sequential(nn.Linear(context_embed_size, context_embed_size), nn.ReLU())
+        # Add HYPERNET init here if needed, similar structure
 
-            if self.model_args.CONTEXT_ENCODER == 'transformer':
-                print ('use transformer context encoder')
-                context_encoder_layers = TransformerEncoderLayerResidual(
-                    self.model_args.CONTEXT_EMBED_SIZE,
-                    self.model_args.NHEAD,
-                    self.model_args.DIM_FEEDFORWARD,
-                    self.model_args.DROPOUT,
-                )
-                self.context_encoder_attention = TransformerEncoder(
-                    context_encoder_layers, self.model_args.CONTEXT_LAYER, norm=None,
-                )
-            else: # MLP context encoder: the default choice
-                print ('use MLP context encoder')
-                modules = [nn.ReLU()]
-                for _ in range(self.model_args.LINEAR_CONTEXT_LAYER):
-                    modules.append(nn.Linear(self.model_args.CONTEXT_EMBED_SIZE, self.model_args.CONTEXT_EMBED_SIZE))
-                    modules.append(nn.ReLU())
-                self.context_encoder_attention = nn.Sequential(*modules)
-
-            # whether to include hfield in attention map computation: default to False
-            if self.model_args.HFIELD_IN_FIX_ATTENTION:
-                self.context_hfield_encoder = MLPObsEncoder(obs_space.spaces["hfield"].shape[0])
-                self.context_compress = nn.Sequential(
-                    nn.Linear(self.model_args.EXT_HIDDEN_DIMS[-1] + self.model_args.CONTEXT_EMBED_SIZE, self.model_args.CONTEXT_EMBED_SIZE), 
-                    nn.ReLU(), 
-                )
-
-        if self.model_args.HYPERNET:
-            print ('use HN')
-            # the network to generate context embedding from the morphology context
-            context_obs_size = obs_space["context"].shape[0] // self.seq_len
-            self.context_embed_HN = nn.Linear(context_obs_size, self.model_args.CONTEXT_EMBED_SIZE)
-            
-            if self.model_args.HN_CONTEXT_ENCODER == 'linear': # the default architecture choice
-                modules = [nn.ReLU()]
-                for _ in range(self.model_args.HN_CONTEXT_LAYER_NUM):
-                    modules.append(nn.Linear(self.model_args.CONTEXT_EMBED_SIZE, self.model_args.CONTEXT_EMBED_SIZE))
-                    modules.append(nn.ReLU())
-                self.context_encoder_HN = nn.Sequential(*modules)
-            elif self.model_args.HN_CONTEXT_ENCODER == 'transformer':
-                context_encoder_layers = TransformerEncoderLayerResidual(
-                    self.model_args.CONTEXT_EMBED_SIZE,
-                    self.model_args.NHEAD,
-                    self.model_args.DIM_FEEDFORWARD,
-                    self.model_args.DROPOUT,
-                )
-                self.context_encoder_HN = TransformerEncoder(
-                    context_encoder_layers, self.model_args.HN_CONTEXT_LAYER_NUM, norm=None,
-                )
-
-            HN_input_dim = self.model_args.CONTEXT_EMBED_SIZE
-
-            self.hnet_embed_weight = nn.Linear(HN_input_dim, limb_obs_size * self.d_model)
-            self.hnet_embed_bias = nn.Linear(HN_input_dim, self.d_model)
-
-            self.decoder_dims = [decoder_input_dim] + self.model_args.DECODER_DIMS + [decoder_out_dim]
-
-            self.hnet_decoder_weight = []
-            self.hnet_decoder_bias = []
-            for i in range(len(self.decoder_dims) - 1):
-                layer_w = nn.Linear(HN_input_dim, self.decoder_dims[i] * self.decoder_dims[i + 1])
-                self.hnet_decoder_weight.append(layer_w)
-                layer_b = nn.Linear(HN_input_dim, self.decoder_dims[i + 1])
-                self.hnet_decoder_bias.append(layer_b)
-            self.hnet_decoder_weight = nn.ModuleList(self.hnet_decoder_weight)
-            self.hnet_decoder_bias = nn.ModuleList(self.hnet_decoder_bias)
-
-        # whether to use SWAT PE and RE: default to False
-        if self.model_args.USE_SWAT_PE:
-            self.swat_PE_encoder = SWATPEEncoder(self.d_model, self.seq_len)
-
-        self.dropout = nn.Dropout(p=0.1)
-
+        self.dropout = nn.Dropout(p=dropout)
         self.init_weights()
 
+
     def init_weights(self):
-        # init obs embedding
-        if not self.model_args.PER_NODE_EMBED:
-            initrange = cfg.MODEL.TRANSFORMER.EMBED_INIT
-            self.limb_embed.weight.data.uniform_(-initrange, initrange)
-        # init decoder
-        if not self.model_args.PER_NODE_DECODER:
-            initrange = cfg.MODEL.TRANSFORMER.DECODER_INIT
-            self.decoder[-1].bias.data.zero_()
-            self.decoder[-1].weight.data.uniform_(-initrange, initrange)
+        # Simplified init
+        initrange = self.model_args.get('EMBED_INIT', 0.1)
+        self.limb_embed.weight.data.uniform_(-initrange, initrange)
+        if self.limb_embed.bias is not None: self.limb_embed.bias.data.zero_()
+        self.context_embed.weight.data.uniform_(-initrange, initrange)
+        if self.context_embed.bias is not None: self.context_embed.bias.data.zero_()
 
-        if self.model_args.FIX_ATTENTION:
-            initrange = cfg.MODEL.TRANSFORMER.EMBED_INIT
+        if hasattr(self, 'decoder'): # PER_NODE_DECODER=False path
+             initrange = self.model_args.get('DECODER_INIT', 0.01)
+             # Init last layer of decoder MLP
+             if isinstance(self.decoder, nn.Sequential) and len(self.decoder) > 0 and isinstance(self.decoder[-1], nn.Linear):
+                  self.decoder[-1].bias.data.zero_()
+                  self.decoder[-1].weight.data.uniform_(-initrange, initrange)
+             elif isinstance(self.decoder, nn.Linear): # If decoder is just one layer
+                  self.decoder.bias.data.zero_()
+                  self.decoder.weight.data.uniform_(-initrange, initrange)
+
+        if self.context_embed_attention:
+            initrange = self.model_args.get('EMBED_INIT', 0.1)
             self.context_embed_attention.weight.data.uniform_(-initrange, initrange)
+        # Add init for context_encoder_attention, HyperNet components if implemented
 
-        if self.model_args.HYPERNET:
-            initrange = cfg.MODEL.TRANSFORMER.HN_EMBED_INIT
-            self.context_embed_HN.weight.data.uniform_(-initrange, initrange)
 
-            # initialize the hypernet following https://arxiv.org/abs/2210.11348
-            initrange = cfg.MODEL.TRANSFORMER.EMBED_INIT
-            self.hnet_embed_weight.weight.data.zero_()
-            self.hnet_embed_weight.bias.data.uniform_(-initrange, initrange)
-            self.hnet_embed_bias.weight.data.zero_()
-            self.hnet_embed_bias.bias.data.zero_()
+    # --- Updated forward signature ---
+    def forward(self, obs_proprio, obs_mask, obs_env, obs_context, morphology_info,
+                return_attention=False, dropout_mask=None, unimal_ids=None):
 
-            initrange = cfg.MODEL.TRANSFORMER.DECODER_INIT
-            for i in range(len(self.hnet_decoder_weight)):
-                self.hnet_decoder_weight[i].weight.data.zero_()
-                self.hnet_decoder_weight[i].bias.data.uniform_(-initrange, initrange)
-                self.hnet_decoder_bias[i].weight.data.zero_()
-                self.hnet_decoder_bias[i].bias.data.zero_()
+        # Inputs obs_proprio, obs_context are expected to be (Batch, Seq*Feat)
+        batch_size = obs_proprio.shape[0]
 
-    def forward(self, obs, obs_mask, obs_env, obs_cm_mask, obs_context, morphology_info, return_attention=False, dropout_mask=None, unimal_ids=None):
-        # (num_limbs, batch_size, limb_obs_size) -> (num_limbs, batch_size, d_model)
-        _, batch_size, limb_obs_size = obs.shape
-        
-        hfield_embedding_late = None 
+        # Reshape flattened inputs: (Batch, Seq*Feat) -> (Batch, Seq, Feat)
+        obs_proprio_r = obs_proprio.view(batch_size, self.seq_len, self.limb_obs_size)
+        obs_context_r = obs_context.view(batch_size, self.seq_len, self.context_obs_size)
 
-        if "hfield" in cfg.ENV.KEYS_TO_KEEP:
-            # (batch_size, embed_size)
-            hfield_obs = self.hfield_encoder(obs_env["hfield"])
-            if self.ext_feat_fusion == "late":
-                hfield_embedding_late = hfield_obs.repeat(self.seq_len, 1)
-                hfield_embedding_late = hfield_embedding_late.reshape(self.seq_len, batch_size, -1)
+        # Transformer expects (Seq, Batch, Feat)
+        obs_proprio_t = obs_proprio_r.permute(1, 0, 2)
+        obs_context_t = obs_context_r.permute(1, 0, 2)
 
-        # if self.ext_feat_fusion in ["late"]:
-        #     hfield_obs = hfield_obs.repeat(self.seq_len, 1)
-        #     hfield_obs = hfield_obs.reshape(self.seq_len, batch_size, -1)
-
-        # ---Robosuite Ext features---
-        extroceptive_embedding_late = None 
-        if self.extroceptive_keys:
-            # concatenate the extroceptive features 
-            extro_features_list = [obs_env[k] for k in self.extroceptive_keys if k in obs_env]
-            if extro_features_list:
-                extro_features = torch.cat(extro_features_list, dim=-1)
-                exctro_enocded = self.extroceptive_encoder(extro_features) # (batch_size, extro_feat_dim)
-                if self.ext_feat_fusion == "late":
-                    extroceptive_embedding_late = exctro_enocded.repeat(self.seq_len, 1)
-                    extroceptive_embedding_late = extroceptive_embedding_late.reshape(self.seq_len, batch_size, -1)
-
-        # --- FA/HN ---
-        if self.model_args.FIX_ATTENTION:
-            context_embedding_attention = self.context_embed_attention(obs_context)
-
-            if self.model_args.CONTEXT_ENCODER == 'transformer':
-                context_embedding_attention = self.context_encoder_attention(
-                    context_embedding_attention, 
-                    src_key_padding_mask=obs_mask, 
-                    morphology_info=morphology_info)
-            else:
-                context_embedding_attention = self.context_encoder_attention(context_embedding_attention)
-
-            if self.model_args.HFIELD_IN_FIX_ATTENTION:
-                hfield_embedding = self.context_hfield_encoder(obs_env["hfield"])
-                hfield_embedding = hfield_embedding.repeat(self.seq_len, 1).reshape(self.seq_len, batch_size, -1)
-                context_embedding_attention = torch.cat([context_embedding_attention, hfield_embedding], dim=-1)
-                context_embedding_attention = self.context_compress(context_embedding_attention)
-
-        if self.model_args.HYPERNET:
-            context_embedding_HN = self.context_embed_HN(obs_context)
-            context_embedding_HN = self.context_encoder_HN(context_embedding_HN)
-        
-        # --- Input Embedding ---
-        if self.model_args.HYPERNET and self.model_args.HN_EMBED:
-            embed_weight = self.hnet_embed_weight(context_embedding_HN).reshape(self.seq_len, batch_size, limb_obs_size, self.d_model)
-            embed_bias = self.hnet_embed_bias(context_embedding_HN)
-            obs_embed = (obs[:, :, :, None] * embed_weight).sum(dim=-2, keepdim=False) + embed_bias
-        else:
-            if self.model_args.PER_NODE_EMBED:
-                obs_embed = (obs[:, :, :, None] * self.limb_embed_weights[:, unimal_ids, :, :]).sum(dim=-2, keepdim=False) + self.limb_embed_bias[:, unimal_ids, :]
-            else:
-                obs_embed = self.limb_embed(obs)
-        
-        if self.model_args.EMBEDDING_SCALE: # default to true
+        # --- Input Embedding & PE ---
+        obs_embed = self.limb_embed(obs_proprio_t) # (Seq, Batch, d_model)
+        if self.model_args.get('EMBEDDING_SCALE', True):
             obs_embed *= math.sqrt(self.d_model)
-
-        attention_maps = None
-
-        # add PE
-        if self.model_args.POS_EMBEDDING in ["learnt", "abs"]:
+        if self.pos_embedding is not None:
             obs_embed = self.pos_embedding(obs_embed)
-        if self.model_args.USE_SWAT_PE:
-            obs_embed = self.swat_PE_encoder(obs_embed, morphology_info['traversals'])
 
-        # dropout
-        if self.model_args.EMBEDDING_DROPOUT:
-            if self.model_args.CONSISTENT_DROPOUT:
-                # do dropout in a consistent way. Refer to Appendix in the paper
-                if dropout_mask is None:
-                    obs_embed_after_dropout = self.dropout(obs_embed)
-                    dropout_mask = torch.where(obs_embed_after_dropout == 0., 0., 1.).permute(1, 0, 2)
-                    obs_embed = obs_embed_after_dropout
-                else:
-                    obs_embed = obs_embed * dropout_mask.permute(1, 0, 2) / 0.9
-            else:
-                # do dropout in an inconsistent way, as in MetaMorph
-                obs_embed = self.dropout(obs_embed)
-                dropout_mask = 0.
-        else:
-            # do not do dropout
-            dropout_mask = 0.
+        # --- H-field and Extroceptive Processing ---
+        hfield_embedding_late = None
+        if self.hfield_encoder is not None and obs_env and "hfield" in obs_env:
+            hfield_obs = self.hfield_encoder(obs_env["hfield"]) # (Batch, hfield_feat_dim)
+            if self.ext_feat_fusion == "late":
+                hfield_embedding_late = hfield_obs.unsqueeze(0).repeat(self.seq_len, 1, 1) # (Seq, Batch, hfield_feat_dim)
 
-        if self.model_args.FIX_ATTENTION:
-            context_to_base = context_embedding_attention
-        else:
-            context_to_base = None
-        
-        if self.model_args.USE_SWAT_RE:
-            attn_mask = morphology_info['SWAT_RE']
-        else:
-            attn_mask = None
-        src_key_padding_mask = obs_mask
+        extroceptive_embedding_late = None
+        if self.extroceptive_encoder is not None and self.extroceptive_keys:
+            extro_list = [obs_env[k].view(batch_size, -1) for k in self.extroceptive_keys if k in obs_env]
+            if extro_list:
+                 extro_cat = torch.cat(extro_list, dim=1)
+                 extro_encoded = self.extroceptive_encoder(extro_cat) # (Batch, extro_feat_dim)
+                 if self.ext_feat_fusion == "late":
+                     extroceptive_embedding_late = extro_encoded.unsqueeze(0).repeat(self.seq_len, 1, 1) # (Seq, Batch, extro_feat_dim)
+
+        # --- Apply Dropout ---
+        if self.model_args.get('EMBEDDING_DROPOUT', True):
+             obs_embed = self.dropout(obs_embed)
+
+        # --- Context for FA/HN ---
+        context_for_attention = None
+        if self.model_args.get('FIX_ATTENTION', False) and self.context_encoder_attention is not None:
+             context_embed = self.context_embed_attention(obs_context_t) # Use dedicated context embed
+             context_for_attention = self.context_encoder_attention(context_embed)
+        # Add HN logic here if implemented
+
+        # --- Transformer Encoder ---
+        # Mask should be (Batch, Seq)
+        src_key_padding_mask = obs_mask.bool() if obs_mask is not None else None
 
         if return_attention:
-            obs_embed_t, attention_maps = self.transformer_encoder.get_attention_maps(
-                obs_embed, 
-                mask=attn_mask, 
-                src_key_padding_mask=src_key_padding_mask, 
-                context=context_to_base, 
-                morphology_info=morphology_info
-            )
+             obs_encoded, attention_maps = self.transformer_encoder.get_attention_maps(
+                 obs_embed, src_key_padding_mask=src_key_padding_mask, context=context_for_attention)
         else:
-            # (num_limbs, batch_size, d_model)
-            obs_embed_t = self.transformer_encoder(
-                obs_embed, 
-                mask=attn_mask, 
-                src_key_padding_mask=src_key_padding_mask, 
-                context=context_to_base, 
-                morphology_info=morphology_info
-            )
+             attention_maps = None
+             obs_encoded = self.transformer_encoder(
+                 obs_embed, src_key_padding_mask=src_key_padding_mask, context=context_for_attention)
 
-        # ---Late fusion of extroceptive features---
-        decoder_input = obs_embed_t
-        # if "hfield" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion == "late":
-        #     decoder_input = torch.cat([decoder_input, hfield_obs], axis=2)
-        if hfield_embedding_late is not None:
-            decoder_input = torch.cat([decoder_input, hfield_embedding_late], dim=-1)
+        # --- Late Fusion & Decoder ---
+        decoder_input = obs_encoded
+        if self.ext_feat_fusion == "late":
+             if hfield_embedding_late is not None:
+                  decoder_input = torch.cat([decoder_input, hfield_embedding_late], dim=-1)
+             if extroceptive_embedding_late is not None:
+                  decoder_input = torch.cat([decoder_input, extroceptive_embedding_late], dim=-1)
 
-        if extroceptive_embedding_late is not None:
-            decoder_input = torch.cat([decoder_input, extroceptive_embedding_late], dim=-1)
-        
-        # ---Decoder---
-        # (num_limbs, batch_size, J)
-        if self.model_args.HYPERNET and self.model_args.HN_DECODER:
-            output = decoder_input
-            # HN generated decoder W/b
-            layer_num = len(self.hnet_decoder_weight)
-            for i in range(layer_num):
-                layer_w = self.hnet_decoder_weight[i](context_embedding_HN).reshape(self.seq_len, batch_size, self.decoder_dims[i], self.decoder_dims[i + 1])
-                layer_b = self.hnet_decoder_bias[i](context_embedding_HN)
-                output = (output[:, :, :, None] * layer_w).sum(dim=-2, keepdim=False) + layer_b
-                if i != (layer_num - 1):
-                    output = F.relu(output)
-        else:
-            if self.model_args.PER_NODE_DECODER:
-                output = (decoder_input[:, :, :, None] * self.decoder_weights[:, unimal_ids, :, :]).sum(dim=-2, keepdim=False) + self.decoder_bias[:, unimal_ids, :]
-            else:
-                # MLP
-                output = self.decoder(decoder_input)
+        output = self.decoder(decoder_input) # (Seq, Batch, decoder_out_dim)
 
-        # (batch_size, num_limbs, J)
-        output = output.permute(1, 0, 2)
-        # (batch_size, num_limbs * J)
-        output = output.reshape(batch_size, -1)
+        # --- Reshape Output ---
+        output = output.permute(1, 0, 2) # (Batch, Seq, decoder_out_dim)
+        output = output.reshape(batch_size, -1) # (Batch, Seq * decoder_out_dim)
 
-        return output, attention_maps, dropout_mask
+        # --- Return dummy dropout masks (as tuple) ---
+        # These placeholders are needed to match ActorCritic unpacking logic
+        dummy_dropout_mask_v = torch.ones(batch_size, 12, 128, device=output.device) # Shape from buffer init
+        dummy_dropout_mask_mu = torch.ones(batch_size, 12, 128, device=output.device)
+
+        return output, attention_maps, (dummy_dropout_mask_v, dummy_dropout_mask_mu)
 
 
-class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, seq_len, dropout=0., batch_first=False):
-        super().__init__()
-        self.dropout = nn.Dropout(p=dropout)
-        if batch_first:
-            self.pe = nn.Parameter(torch.randn(1, seq_len, d_model))
-        else:
-            self.pe = nn.Parameter(torch.randn(seq_len, 1, d_model))
-
-    def forward(self, x):
-        """
-        Args:
-            x: Tensor, shape [seq_len, batch_size, embedding_dim]
-        """
-        x = x + self.pe
-        return x
-
-
-class SWATPEEncoder(nn.Module):
-    def __init__(self, d_model, seq_len, dropout=0.):
-        super().__init__()
-        self.seq_len = seq_len
-        self.d_model = d_model
-        self.pe_dim = [d_model // len(cfg.MODEL.TRANSFORMER.TRAVERSALS) for _ in cfg.MODEL.TRANSFORMER.TRAVERSALS]
-        self.pe_dim[-1] = d_model - self.pe_dim[0] * (len(cfg.MODEL.TRANSFORMER.TRAVERSALS) - 1)
-        print (self.pe_dim)
-        self.swat_pe = nn.ModuleList([nn.Embedding(seq_len, dim) for dim in self.pe_dim])
-
-    def forward(self, x, indexes):
-        """
-        Args:
-            x: Tensor, shape [seq_len, batch_size, embedding_dim]
-        """
-        embeddings = []
-        batch_size = x.size(1)
-        for i in range(len(cfg.MODEL.TRANSFORMER.TRAVERSALS)):
-            idx = indexes[:, :, i]
-            pe = self.swat_pe[i](idx)
-            embeddings.append(pe)
-        embeddings = torch.cat(embeddings, dim=-1)
-        x = x + embeddings
-        return x
-
-# TODO: rename it to HFieldEncoder
-class MLPObsEncoder(nn.Module):
-    """Encoder for env obs like hfield."""
-
-    def __init__(self, obs_dim):
-        super(MLPObsEncoder, self).__init__()
-        mlp_dims = [obs_dim] + cfg.MODEL.TRANSFORMER.EXT_HIDDEN_DIMS
-        self.encoder = tu.make_mlp_default(mlp_dims)
-        self.obs_feat_dim = mlp_dims[-1]
-
-    def forward(self, obs):
-        return self.encoder(obs)
-
-# TODO: we can just modify the keys to keep and remove this 
-# --- Encoder for extroceptive features (robosuite)---
-class ExtroceptiveEncoder(nn.Module):
-    def __init__(self, obs_dim):
-        super(ExtroceptiveEncoder, self).__init__()
-        mlp_dims = [obs_dim] + cfg.MODEL.EXTROCEPTIVE_ENCODER.HIDDEN_DIMS 
-        self.encoder = tu.make_mlp_default(mlp_dims)
-        self.obs_feat_dim = mlp_dims[-1]
-
-    def forward(self, obs):
-        return self.encoder(obs)
-
-
+# === ActorCritic ===
 class ActorCritic(nn.Module):
     def __init__(self, obs_space, action_space):
         super(ActorCritic, self).__init__()
         self.seq_len = cfg.MODEL.MAX_LIMBS
+        is_dict_obs = isinstance(obs_space, (spaces.Dict, OrderedDict))
+
+        # --- Model Selection ---
         if cfg.MODEL.TYPE == 'transformer':
-            self.v_net = TransformerModel(obs_space, 1)
-        else:
-            # MLP network
-            self.v_net = MLPModel(obs_space, cfg.MODEL.MAX_LIMBS)
+            if not is_dict_obs: raise ValueError("Transformer model requires Dict observation space.")
+            print("[ActorCritic] Using TransformerModel")
+            self.v_net = TransformerModel(obs_space, 1) # Critic output dim = 1
 
-        if cfg.ENV_NAME == "Unimal-v0":
-            if cfg.MODEL.TYPE == 'transformer':
-                self.mu_net = TransformerModel(obs_space, 2)
-            else:
-                self.mu_net = MLPModel(obs_space, cfg.MODEL.MAX_LIMBS * 2)
-            self.num_actions = cfg.MODEL.MAX_LIMBS * 2
-        elif cfg.ENV_NAME == 'Modular-v0':
-            if cfg.MODEL.TYPE == 'transformer':
-                self.mu_net = TransformerModel(obs_space, 1)
-            else:
-                self.mu_net = MLPModel(obs_space, cfg.MODEL.MAX_LIMBS)
-            self.num_actions = cfg.MODEL.MAX_LIMBS
-        elif cfg.ENV_NAME == "Robosuite-v0":
-            if cfg.MODEL.TYPE == "transformer":
-                self.mu_net = TransformerModel(obs_space, 1) # action per node the eef isn't include (TODO: ADD IT)
-            else:
-                self.mu_net = MLPModel(obs_space, cfg.MODEL.MAX_LIMBS)
-            self.num_actions = cfg.MODEL.MAX_LIMBS
+            # Determine action dim per node based on env
+            action_dim_per_node = 1 # Default for Robosuite/Modular
+            if cfg.ENV_NAME == "Unimal-v0": action_dim_per_node = 2
 
+            self.mu_net = TransformerModel(obs_space, action_dim_per_node)
+            self.num_actions_total_padded = self.seq_len * action_dim_per_node
+
+        elif cfg.MODEL.TYPE == 'mlp':
+             if not is_dict_obs: raise ValueError("MLP model requires Dict observation space.")
+             print("[ActorCritic] Using MLPModel")
+             base_action_dim = action_space.shape[0]
+             self.v_net = MLPModel(obs_space, 1)
+             self.mu_net = MLPModel(obs_space, base_action_dim)
+             self.num_actions_total_padded = base_action_dim
         else:
-            raise ValueError("Unsupported ENV_NAME")
+             raise ValueError(f"Unsupported MODEL.TYPE: {cfg.MODEL.TYPE}")
+
+        # --- Action STD ---
+        action_std_dim = self.num_actions_total_padded
+        print(f"[ActorCritic] Action std dimension set to: {action_std_dim}")
 
         if cfg.MODEL.ACTION_STD_FIXED:
-            log_std = np.log(cfg.MODEL.ACTION_STD)
-            self.log_std = nn.Parameter(
-                log_std * torch.ones(1, self.num_actions), requires_grad=False,
-            )
+             log_std_val = np.log(cfg.MODEL.ACTION_STD)
+             self.log_std = nn.Parameter(log_std_val * torch.ones(1, action_std_dim), requires_grad=False)
         else:
-            self.log_std = nn.Parameter(torch.zeros(1, self.num_actions))
+             self.log_std = nn.Parameter(torch.zeros(1, action_std_dim))
 
     def forward(self, obs, act=None, return_attention=False, dropout_mask_v=None, dropout_mask_mu=None, unimal_ids=None, compute_val=True):
-                
-        if act is not None:
-            batch_size = cfg.PPO.BATCH_SIZE
-        else:
-            #batch_size = cfg.PPO.NUM_ENVS
-            batch_size = obs["proprioceptive"].shape[0] if cfg.MODEL.TYPE == "mlp" else obs["proprioceptive"].shape[1] 
 
-        obs_env = {k: obs[k] for k in cfg.ENV.KEYS_TO_KEEP}
-        if "obs_padding_cm_mask" in obs:
-            obs_cm_mask = obs["obs_padding_cm_mask"]
-        else:
-            obs_cm_mask = None
-        obs_dict = obs
-        obs, obs_mask, act_mask, obs_context, edges = (
-            obs["proprioceptive"],
-            obs["obs_padding_mask"],
-            obs["act_padding_mask"],
-            obs["context"], 
-            obs["edges"], 
-        )
+        batch_size = next(iter(obs.values())).shape[0] # Get batch size from first obs tensor
 
-        morphology_info = {}
-        if cfg.MODEL.TRANSFORMER.USE_SWAT_PE:
-            # (batch_size, seq_len, traversal_num) ->(seq_len, batch_size, traversal_num)
-            morphology_info['traversals'] = obs_dict['traversals'].permute(1, 0, 2).long()
-        if cfg.MODEL.TRANSFORMER.USE_SWAT_RE:
-            # (batch_size, seq_len, traversal_num) ->(seq_len, batch_size, traversal_num)
-            morphology_info['SWAT_RE'] = obs_dict['SWAT_RE']
-        
-        if len(morphology_info.keys()) == 0:
-            morphology_info = None
+        # Initialize outputs
+        val = torch.zeros(batch_size, 1, device=next(iter(obs.values())).device)
+        v_attention_maps, mu_attention_maps = None, None
+        # Initialize dropout masks using the input arguments as defaults
+        dropout_mask_v_out = dropout_mask_v
+        dropout_mask_mu_out = dropout_mask_mu
 
-        obs_mask = obs_mask.bool()
-        act_mask = act_mask.bool()
-
-        # reshape the obs for transformer input
+        # --- Prepare inputs based on model type ---
         if cfg.MODEL.TYPE == 'transformer':
-            obs = obs.reshape(batch_size, self.seq_len, -1).permute(1, 0, 2)
-            obs_context = obs_context.reshape(batch_size, self.seq_len, -1).permute(1, 0, 2)
+            # Extract Tensors, using .get() for safety
+            obs_proprio = obs.get("proprioceptive")
+            obs_context = obs.get("context")
+            obs_mask = obs.get("obs_padding_mask")
+            act_mask = obs.get("act_padding_mask")
 
-        # do not need to compute value function during evaluation to save time
-        if compute_val:
-            # Per limb critic values
-            limb_vals, v_attention_maps, dropout_mask_v = self.v_net(
-                obs, obs_mask, obs_env, obs_cm_mask, obs_context, morphology_info, 
-                return_attention=return_attention, dropout_mask=dropout_mask_v, 
-                unimal_ids=unimal_ids, 
-            )
-            # Zero out mask values
-            limb_vals = limb_vals * (1 - obs_mask.int())
-            # Use avg/max to keep the magnitidue same instead of sum
-            num_limbs = self.seq_len - torch.sum(obs_mask.int(), dim=1, keepdim=True)
-            val = torch.divide(torch.sum(limb_vals, dim=1, keepdim=True), num_limbs)
+            if obs_proprio is None or obs_context is None or obs_mask is None:
+                raise ValueError("Missing required observation keys for Transformer.")
+            if act_mask is None: # Needed later for masking
+                raise ValueError("Missing 'act_padding_mask' key for Transformer.")
+
+            # Prepare obs_env dict from non-core keys
+            core_keys_t = {"proprioceptive", "context", "edges", "obs_padding_mask", "act_padding_mask"}
+            obs_env_t = {k: v for k, v in obs.items() if k not in core_keys_t}
+
+            # Prepare morphology info (minimal example)
+            morphology_info_t = None # Set to None if no relevant keys found
+
+            obs_mask_t = obs_mask.bool()
+            act_mask_t = act_mask.bool()
+
+            # --- Critic Path ---
+            if compute_val:
+                 # Call v_net (TransformerModel expects specific args)
+                 raw_limb_vals, v_attention_maps, (dropout_mask_v_out, dropout_mask_mu_out) = self.v_net(
+                     obs_proprio=obs_proprio, obs_mask=obs_mask_t, obs_env=obs_env_t,
+                     obs_context=obs_context, morphology_info=morphology_info_t,
+                     return_attention=return_attention, dropout_mask=dropout_mask_v, unimal_ids=unimal_ids)
+                 # Aggregate value
+                 limb_vals = raw_limb_vals.view(batch_size, self.seq_len, 1)
+                 mask_for_val = (~obs_mask_t).float().unsqueeze(-1) # Invert mask: True=Valid
+                 limb_vals = limb_vals * mask_for_val
+                 num_limbs = torch.clamp(mask_for_val.sum(dim=1), min=1.0)
+                 val = torch.sum(limb_vals, dim=1) / num_limbs # (Batch, 1)
+
+            # --- Actor Path ---
+            # Call mu_net, potentially overwriting dropout masks if compute_val was False
+            mu, mu_attention_maps, (current_dropout_v, current_dropout_mu) = self.mu_net(
+                 obs_proprio=obs_proprio, obs_mask=obs_mask_t, obs_env=obs_env_t,
+                 obs_context=obs_context, morphology_info=morphology_info_t,
+                 return_attention=return_attention, dropout_mask=dropout_mask_mu, unimal_ids=unimal_ids)
+            # Update masks only if val wasn't computed (otherwise keep masks from v_net)
+            if not compute_val:
+                 dropout_mask_v_out = current_dropout_v
+                 dropout_mask_mu_out = current_dropout_mu
+
+        elif cfg.MODEL.TYPE == 'mlp':
+            # --- MLP Path ---
+            obs_proprio_flat = obs.get("proprioceptive")
+            if obs_proprio_flat is None: raise ValueError("Missing 'proprioceptive' for MLP.")
+            # MLP might not use obs_env, pass empty dict if needed
+            obs_env_mlp = {}
+
+            if compute_val:
+                 val, _, (dropout_mask_v_out, dropout_mask_mu_out) = self.v_net(obs_proprio=obs_proprio_flat, obs_env=obs_env_mlp)
+            # else: val remains zeros, masks keep input values
+
+            mu, _, (current_dropout_v, current_dropout_mu) = self.mu_net(obs_proprio=obs_proprio_flat, obs_env=obs_env_mlp)
+            if not compute_val: # Update masks if val wasn't computed
+                 dropout_mask_v_out = current_dropout_v
+                 dropout_mask_mu_out = current_dropout_mu
         else:
-            val, v_attention_maps, dropout_mask_v = 0., None, 0.
+            raise ValueError(f"Unsupported MODEL.TYPE: {cfg.MODEL.TYPE}")
 
-        mu, mu_attention_maps, dropout_mask_mu = self.mu_net(
-            obs, obs_mask, obs_env, obs_cm_mask, obs_context, morphology_info, 
-            return_attention=return_attention, dropout_mask=dropout_mask_mu, 
-            unimal_ids=unimal_ids, 
-        )
+        # --- Action Distribution ---
         std = torch.exp(self.log_std)
+        # Basic shape check and attempt to broadcast std
+        if mu.shape[1] != std.shape[1]:
+            if std.shape[0] == 1 and std.shape[1] < mu.shape[1]:
+                 print(f"Warning: std dim {std.shape[1]} < mu dim {mu.shape[1]}. Padding std.")
+                 std_padded = torch.zeros_like(mu[0:1,:]) # Shape (1, mu_dim)
+                 std_padded[:, :std.shape[1]] = std
+                 std = std_padded
+            elif std.shape[0]==1 and std.shape[1] > mu.shape[1]:
+                 print(f"Warning: std dim {std.shape[1]} > mu dim {mu.shape[1]}. Truncating std.")
+                 std = std[:, :mu.shape[1]]
+            else:
+                 raise ValueError(f"Unresolvable shape mismatch: mu {mu.shape}, std {std.shape}")
+
         pi = Normal(mu, std)
 
+        # --- Calculate Log Prob and Entropy if Action is Provided ---
         if act is not None:
+            if act.shape != mu.shape: raise ValueError(f"Action shape {act.shape} != mu shape {mu.shape}.")
             logp = pi.log_prob(act)
-            logp[act_mask] = 0.0
-            self.limb_logp = logp
+
+            # Masking logic needs the correct mask based on model type
+            if cfg.MODEL.TYPE == 'transformer':
+                 current_act_mask = act_mask_t # (Batch, Seq) boolean mask
+                 action_dim_per_node = self.mu_net.decoder_out_dim
+                 # Repeat mask if multi-dim action per node
+                 if action_dim_per_node > 1:
+                      current_act_mask = current_act_mask.unsqueeze(-1).repeat(1, 1, action_dim_per_node).view(batch_size, -1)
+            else: # MLP
+                 current_act_mask = torch.zeros_like(logp, dtype=torch.bool) # No masking needed
+
+            logp[current_act_mask] = 0.0 # Apply mask (True means mask out)
             logp = logp.sum(-1, keepdim=True)
+
             entropy = pi.entropy()
-            entropy[act_mask] = 0.0
-            entropy = entropy.mean()
-            return val, pi, logp, entropy, dropout_mask_v, dropout_mask_mu
+            entropy[current_act_mask] = 0.0 # Apply mask
+            # Average entropy over valid dimensions
+            num_valid_actions = (~current_act_mask).float().sum(dim=1, keepdim=True)
+            num_valid_actions = torch.clamp(num_valid_actions, min=1.0)
+            entropy = (entropy.sum(-1, keepdim=True) / num_valid_actions).mean() # Mean over batch
+
+            return val, pi, logp, entropy, dropout_mask_v_out, dropout_mask_mu_out
         else:
+            # Return values when no action is provided (e.g., for agent.act)
             if return_attention:
-                return val, pi, v_attention_maps, mu_attention_maps, dropout_mask_v, dropout_mask_mu
+                return val, pi, v_attention_maps, mu_attention_maps, dropout_mask_v_out, dropout_mask_mu_out
             else:
-                return val, pi, None, None, dropout_mask_v, dropout_mask_mu
+                return val, pi, None, None, dropout_mask_v_out, dropout_mask_mu_out
 
-
+# === Agent ===
 class Agent:
     def __init__(self, actor_critic):
         self.ac = actor_critic
 
     @torch.no_grad()
     def act(self, obs, return_attention=False, dropout_mask_v=None, dropout_mask_mu=None, unimal_ids=None, compute_val=True):
-        val, pi, v_attention_maps, mu_attention_maps, dropout_mask_v, dropout_mask_mu = self.ac(obs, return_attention=return_attention, dropout_mask_v=dropout_mask_v, dropout_mask_mu=dropout_mask_mu, unimal_ids=unimal_ids, compute_val=compute_val)
-        self.pi = pi
+        # Get outputs from ActorCritic, passing act=None
+        val, pi, v_attention_maps, mu_attention_maps, dropout_mask_v_out, dropout_mask_mu_out = self.ac(
+            obs, act=None, return_attention=return_attention,
+            dropout_mask_v=dropout_mask_v, dropout_mask_mu=dropout_mask_mu,
+            unimal_ids=unimal_ids, compute_val=compute_val)
+
+        self.pi = pi # Store distribution if needed elsewhere
+
+        # Sample or take mean action
         if not cfg.DETERMINISTIC:
-            act = pi.sample()
+            act_out = pi.sample()
         else:
-            act = pi.loc
-        logp = pi.log_prob(act)
-        act_mask = obs["act_padding_mask"].bool()
-        logp[act_mask] = 0.0
-        logp = logp.sum(-1, keepdim=True)
-        return val, act, logp, dropout_mask_v, dropout_mask_mu
+            act_out = pi.loc
+
+        # Calculate logp of the action *taken*
+        logp = pi.log_prob(act_out)
+        act_mask = obs.get("act_padding_mask", None) # Get mask from observation
+
+        if act_mask is not None:
+            act_mask_bool = act_mask.bool()
+            # Reshape mask if needed (only for Transformer multi-dim action per node)
+            if cfg.MODEL.TYPE == 'transformer':
+                action_dim_per_node = getattr(self.ac.mu_net, 'decoder_out_dim', 1)
+                if action_dim_per_node > 1:
+                     batch_size = act_mask_bool.shape[0]
+                     act_mask_bool = act_mask_bool.unsqueeze(-1).repeat(1, 1, action_dim_per_node).view(batch_size, -1)
+
+            logp[act_mask_bool] = 0.0 # Apply mask (True means mask out)
+        # else: Assume no mask needed (e.g., MLP)
+
+        logp = logp.sum(-1, keepdim=True) # Sum log probabilities across action dimension
+
+        # Return action (potentially padded) and masked logp
+        return val, act_out, logp, dropout_mask_v_out, dropout_mask_mu_out
+
 
     @torch.no_grad()
     def get_value(self, obs, dropout_mask_v=None, dropout_mask_mu=None, unimal_ids=None):
-        val, _, _, _, _, _ = self.ac(obs, dropout_mask_v=dropout_mask_v, dropout_mask_mu=dropout_mask_mu, unimal_ids=unimal_ids)
+        # Ensure compute_val=True when calling ActorCritic
+        val, _, _, _, _, _ = self.ac(
+            obs, act=None, return_attention=False,
+            dropout_mask_v=dropout_mask_v, dropout_mask_mu=dropout_mask_mu,
+            unimal_ids=unimal_ids, compute_val=True)
         return val
