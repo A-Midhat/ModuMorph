@@ -1,5 +1,5 @@
 ENV_NAME: "Robosuite-v0"
-OUT_DIR: "out/1409/robosuite_Panda_Lift_transformer_1409"
+OUT_DIR: "out/1409/robosuite_Panda_Lift_mlp_1409"
 RNG_SEED: 1409
 
 ROBOSUITE:
@@ -10,26 +10,27 @@ ROBOSUITE:
 ENV:
   MOUDLES: []
   WRAPPERS: []
-  #KEYS_TO_KEEP: ["proprioceptive"]
-  #KEYS_TO_KEEP: ["object_state", "gripper_to_object", "eef_pos", "eef_quat", "gripper_qpos", "gripper_qvel"]
-  #TASK: "robosuite_lift"
+  KEYS_TO_KEEP: ["proprioceptive"]
+  #     "context",
+  #     "edges",
+  #     "obs_padding_mask",
+  #     "act_padding_mask",
+  #     "object-state", 
+  #   ]
 
 MODEL:
-  TYPE: "transformer"
-  MAX_LIMBS: 8
-  MAX_JOINTS: 7
+  TYPE: "mlp"
+  MAX_LIMBS: 12
+  MAX_JOINTS: 11
   # we define them as None to bypass any possible errors even if we are using mlp
   TRANSFORMER:
-    EXT_MIX: "late" 
+    EXT_MIX: None 
 
 
 
 PPO:
   MAX_STATE_ACTION_PAIRS: 1e6
-  TIMESTEPS: 1024
-  EPOCHS: 8
-  BATCH_SIZE: 512
-  NUM_ENVS: 4
+  NUM_ENVS: 8
 
 LOGGING:
   USE_WANDB: True

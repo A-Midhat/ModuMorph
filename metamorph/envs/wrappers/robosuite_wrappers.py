@@ -1353,71 +1353,71 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
 
         return clipped_action.astype(np.float32)
 
-# --- debugging ---
-if __name__ == "__main__":
-    print("--- Testing Robosuite Wrappers ---")
-    # Configure for Panda Lift (as an example)
-    cfg.defrost()
-    cfg.ENV_NAME = "Robosuite-v0"
-    cfg.ROBOSUITE.ENV_NAME = "Lift"
-    cfg.ROBOSUITE.ROBOTS = ["Panda"]
-    cfg.ROBOSUITE.CONTROLLER =  "JOINT_VELOCITY"#"OSC_POSE" # Example controller
-    cfg.MODEL.MAX_LIMBS = 11 # Ensure sufficient for Base+7Links+Hand+GripperNode=10
-    cfg.MODEL.MAX_JOINTS = 10 # Ensure sufficient for 7 arm + 1 gripper = 8 < 10
-    cfg.ROBOSUITE.GRIPPER_DIM = 1 # Panda gripper control dimension
-    cfg.freeze()
+# # --- debugging ---
+# if __name__ == "__main__":
+#     print("--- Testing Robosuite Wrappers ---")
+#     # Configure for Panda Lift (as an example)
+#     cfg.defrost()
+#     cfg.ENV_NAME = "Robosuite-v0"
+#     cfg.ROBOSUITE.ENV_NAME = "Lift"
+#     cfg.ROBOSUITE.ROBOTS = ["Panda"]
+#     cfg.ROBOSUITE.CONTROLLER =  "JOINT_VELOCITY"#"OSC_POSE" # Example controller
+#     cfg.MODEL.MAX_LIMBS = 11 # Ensure sufficient for Base+7Links+Hand+GripperNode=10
+#     cfg.MODEL.MAX_JOINTS = 10 # Ensure sufficient for 7 arm + 1 gripper = 8 < 10
+#     cfg.ROBOSUITE.GRIPPER_DIM = 1 # Panda gripper control dimension
+#     cfg.freeze()
 
-    # 1. Create Base Environment
-    base_env = RobosuiteEnvWrapper(
-        robosuite_env_name=cfg.ROBOSUITE.ENV_NAME,
-        robot_name=cfg.ROBOSUITE.ROBOTS[0],
-        controller_name=cfg.ROBOSUITE.CONTROLLER,
-        robosuite_cfg=cfg.ROBOSUITE,
-        horizon=50 # Short horizon for testing
-    )
-    print("\n[Base Env]")
-    print("Obs Space:", base_env.observation_space)
-    print("Act Space:", base_env.action_space)
+#     # 1. Create Base Environment
+#     base_env = RobosuiteEnvWrapper(
+#         robosuite_env_name=cfg.ROBOSUITE.ENV_NAME,
+#         robot_name=cfg.ROBOSUITE.ROBOTS[0],
+#         controller_name=cfg.ROBOSUITE.CONTROLLER,
+#         robosuite_cfg=cfg.ROBOSUITE,
+#         horizon=50 # Short horizon for testing
+#     )
+#     print("\n[Base Env]")
+#     print("Obs Space:", base_env.observation_space)
+#     print("Act Space:", base_env.action_space)
 
-    # 2. Wrap with Observation Wrapper
-    obs_wrapped_env = RobosuiteNodeCentricObservation(base_env)
-    print("\n[Obs Wrapped Env]")
-    print("Obs Space:", obs_wrapped_env.observation_space)
-    print("Act Space:", obs_wrapped_env.action_space) # Should be same as base
+#     # 2. Wrap with Observation Wrapper
+#     obs_wrapped_env = RobosuiteNodeCentricObservation(base_env)
+#     print("\n[Obs Wrapped Env]")
+#     print("Obs Space:", obs_wrapped_env.observation_space)
+#     print("Act Space:", obs_wrapped_env.action_space) # Should be same as base
 
-    # 3. Wrap with Action Wrapper
-    act_wrapped_env = RobosuiteNodeCentricAction(obs_wrapped_env)
-    print("\n[Action Wrapped Env]")
-    print("Obs Space:", act_wrapped_env.observation_space) # Should be same as obs_wrapped
-    print("Act Space:", act_wrapped_env.action_space) # Should now be padded (MAX_LIMBS,)
+#     # 3. Wrap with Action Wrapper
+#     act_wrapped_env = RobosuiteNodeCentricAction(obs_wrapped_env)
+#     print("\n[Action Wrapped Env]")
+#     print("Obs Space:", act_wrapped_env.observation_space) # Should be same as obs_wrapped
+#     print("Act Space:", act_wrapped_env.action_space) # Should now be padded (MAX_LIMBS,)
 
-    # 4. Test Reset
-    print("\n--- Testing Reset ---")
-    obs = act_wrapped_env.reset()
-    print("Reset Obs Keys:", list(obs.keys()))
-    for key, val in obs.items():
-        expected_shape = act_wrapped_env.observation_space[key].shape
-        print(f"  {key}: Shape={val.shape}, Expected={expected_shape}, Dtype={val.dtype}")
-        assert val.shape == expected_shape, f"Shape mismatch for {key}"
-        assert val.dtype == act_wrapped_env.observation_space[key].dtype, f"Dtype mismatch for {key}"
+#     # 4. Test Reset
+#     print("\n--- Testing Reset ---")
+#     obs = act_wrapped_env.reset()
+#     print("Reset Obs Keys:", list(obs.keys()))
+#     for key, val in obs.items():
+#         expected_shape = act_wrapped_env.observation_space[key].shape
+#         print(f"  {key}: Shape={val.shape}, Expected={expected_shape}, Dtype={val.dtype}")
+#         assert val.shape == expected_shape, f"Shape mismatch for {key}"
+#         assert val.dtype == act_wrapped_env.observation_space[key].dtype, f"Dtype mismatch for {key}"
 
-    # 5. Test Step
-    print("\n--- Testing Step ---")
-    # Sample action from the *final wrapped* space
-    action_from_policy = act_wrapped_env.action_space.sample()
-    print("Action from Policy (Padded):", action_from_policy.shape, action_from_policy)
-    # The action wrapper will internally convert this before passing to base_env
-    next_obs, reward, done, info = act_wrapped_env.step(action_from_policy)
-    print("Step Result:")
-    print("  Reward:", reward)
-    print("  Done:", done)
-    print("  Info Keys:", list(info.keys()))
-    print("  Next Obs Keys:", list(next_obs.keys()))
-    # Check next_obs shapes/dtypes again
-    for key, val in next_obs.items():
-        expected_shape = act_wrapped_env.observation_space[key].shape
-        assert val.shape == expected_shape, f"Shape mismatch for {key} after step"
-        assert val.dtype == act_wrapped_env.observation_space[key].dtype, f"Dtype mismatch for {key} after step"
+#     # 5. Test Step
+#     print("\n--- Testing Step ---")
+#     # Sample action from the *final wrapped* space
+#     action_from_policy = act_wrapped_env.action_space.sample()
+#     print("Action from Policy (Padded):", action_from_policy.shape, action_from_policy)
+#     # The action wrapper will internally convert this before passing to base_env
+#     next_obs, reward, done, info = act_wrapped_env.step(action_from_policy)
+#     print("Step Result:")
+#     print("  Reward:", reward)
+#     print("  Done:", done)
+#     print("  Info Keys:", list(info.keys()))
+#     print("  Next Obs Keys:", list(next_obs.keys()))
+#     # Check next_obs shapes/dtypes again
+#     for key, val in next_obs.items():
+#         expected_shape = act_wrapped_env.observation_space[key].shape
+#         assert val.shape == expected_shape, f"Shape mismatch for {key} after step"
+#         assert val.dtype == act_wrapped_env.observation_space[key].dtype, f"Dtype mismatch for {key} after step"
 
-    print("\n--- Wrapper Test Complete ---")
-    act_wrapped_env.close()
+#     print("\n--- Wrapper Test Complete ---")
+#     act_wrapped_env.close()
