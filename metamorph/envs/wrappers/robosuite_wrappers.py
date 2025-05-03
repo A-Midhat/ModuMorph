@@ -12,319 +12,331 @@ import time # For potential timing debug
 from metamorph.config import cfg
 from metamorph.utils import spaces as spu
 
-class RobosuiteEnvWrapper(gym.Env):
-    """
-    Wraps a robosuite environment to make it compatible with gym.Env.
-    """
-    metadata = {'render.modes': ['human', 'rgb_array']}
+# class RobosuiteEnvWrapper(gym.Env):
+#     """
+#     Wraps a robosuite environment to make it compatible with gym.Env.
+#     """
+#     metadata = {'render.modes': ['human', 'rgb_array']}
 
-    def __init__(self, robosuite_env_name, robot_name, horizon=100, controller_name=None, robosuite_cfg=None):
-        """
-        robotsuite_env_name: the task (i.e. Lift).
-        robot_name: the robot (i.e. Panda).
-        controller_name: Method of controlling joints (i.e. JOINT_POSITION).
-        robosuite_cfg: a dict of robosuite.make() kwargs.
-        """
-        super().__init__()
-        self.robosuite_env_name = robosuite_env_name
-        self.robot_name = robot_name
-        self.robosuite_cfg = robosuite_cfg if robosuite_cfg is not None else {}
+#     def __init__(self, robosuite_env_name, robot_name, horizon=100, controller_name=None, robosuite_cfg=None):
+#         """
+#         robotsuite_env_name: the task (i.e. Lift).
+#         robot_name: the robot (i.e. Panda).
+#         controller_name: Method of controlling joints (i.e. JOINT_POSITION).
+#         robosuite_cfg: a dict of robosuite.make() kwargs.
+#         """
+#         super().__init__()
+#         self.robosuite_env_name = robosuite_env_name
+#         self.robot_name = robot_name
+#         self.robosuite_cfg = robosuite_cfg if robosuite_cfg is not None else {}
 
-        # --- Controller Setup --- 
-        # The problem with the different controllers is that they have different action spaces.
-        # TODO: try and make the action space the same for all controllers. Or generalize the action space.
+#         # --- Controller Setup --- 
+#         # The problem with the different controllers is that they have different action spaces.
+#         # TODO: try and make the action space the same for all controllers. Or generalize the action space.
 
-        controller_name = controller_name 
-        if controller_name not in ALL_CONTROLLERS:
-            print("[RobosuiteEnvWrapper] Warning: controller_name not in ALL_CONTROLLERS. Using default controller. (JOINT_POSITION)")
-            self.controller_name = "JOINT_POSITION"
+#         controller_name = controller_name 
+#         if controller_name not in ALL_CONTROLLERS:
+#             print("[RobosuiteEnvWrapper] Warning: controller_name not in ALL_CONTROLLERS. Using default controller. (JOINT_POSITION)")
+#             self.controller_name = "JOINT_POSITION"
         
-        try: 
-            self.controller_config = load_controller_config(default_controller=controller_name)
-        except Exception as e:
-            print(f"[RobosuiteEnvWrapper] Error loading controller_config: {e}")
-            self.controller_config = load_controller_config(default_controller="JOINT_POSITION")
+#         try: 
+#             self.controller_config = load_controller_config(default_controller=controller_name)
+#         except Exception as e:
+#             print(f"[RobosuiteEnvWrapper] Error loading controller_config: {e}")
+#             self.controller_config = load_controller_config(default_controller="JOINT_POSITION")
 
-        # --- Env Setup --- 
-        # TODO: Add to config file
-        robosuite_init_args = {
-            "env_name": self.robosuite_env_name,
-            "robots": self.robot_name,
-            "controller_configs": self.controller_config,
-            "has_renderer": False, # False for training
-            "has_offscreen_renderer": False, # TODO: Set True to use camera observations as exteroceptive observations
-            "ignore_done": False, # Use PPO for termniation (TODO:Uncomment)
-            "use_camera_obs": False, # TODO: Set True to use camera observations as exteroceptive observations
-            "control_freq":20,
-            "hard_reset": False, # TODO: check if it is really faster during training 
-            "horizon":100,
-            "reward_shaping": True
-        }
+#         # --- Env Setup --- 
+#         # TODO: Add to config file
+#         robosuite_init_args = {
+#             "env_name": self.robosuite_env_name,
+#             "robots": self.robot_name,
+#             "controller_configs": self.controller_config,
+#             "has_renderer": False, # False for training
+#             "has_offscreen_renderer": False, # TODO: Set True to use camera observations as exteroceptive observations
+#             "ignore_done": False, # Use PPO for termniation (TODO:Uncomment)
+#             "use_camera_obs": False, # TODO: Set True to use camera observations as exteroceptive observations
+#             "control_freq":20,
+#             "hard_reset": False, # TODO: check if it is really faster during training 
+#             "horizon":100,
+#             "reward_shaping": True
+#         }
 
-        robosuite_init_args.update(self.robosuite_cfg.get("ENV_ARGS", {}))
-        print("Robosuite init args: ", robosuite_init_args)
+#         robosuite_init_args.update(self.robosuite_cfg.get("ENV_ARGS", {}))
+#         # print("Robosuite init args: ", robosuite_init_args)
 
-        # Create the env
-        self.env = robosuite.make(**robosuite_init_args)
+#         # Create the env
+#         self.env = robosuite.make(**robosuite_init_args)
         
-        self.horizon = self.env.horizon
-        self._max_episode_steps = self.horizon
+#         self.horizon = self.env.horizon
+#         self._max_episode_steps = self.horizon
 
 
-        # --- Gym Interfase Setup ---
-        act_low, act_high = self.env.action_spec
-        self.action_space = spaces.Box(low=act_low, high=act_high, dtype=np.float32)
+#         # --- Gym Interfase Setup ---
+#         act_low, act_high = self.env.action_spec
+#         self.action_space = spaces.Box(low=act_low, high=act_high, dtype=np.float32)
 
-        # the following obs will be overriden by the observation wrapper
-        obs_spec = self.env.observation_spec()
-        gym_obs_spaces = {}
-        for key, spec in obs_spec.items():
-            try:
-                _shape = spec.shape
-                _dtype = spec.dtype
+#         # the following obs will be overriden by the observation wrapper
+#         obs_spec = self.env.observation_spec()
+#         gym_obs_spaces = {}
+#         for key, spec in obs_spec.items():
+#             try:
+#                 _shape = spec.shape
+#                 _dtype = spec.dtype
 
-                _dtype = np.float32 if _dtype == np.float64 else _dtype
-                gym_obs_spaces[key] = spaces.Box(low=-np.inf, high=np.inf, shape=_shape, dtype=_dtype)
-            except Exception as e:
-                print(f"[RobosuiteEnvWrapper] Error processing obs spec: {e}")
-                continue
-        self.observation_space = spaces.Dict(gym_obs_spaces) # new obs space 
+#                 _dtype = np.float32 if _dtype == np.float64 else _dtype
+#                 gym_obs_spaces[key] = spaces.Box(low=-np.inf, high=np.inf, shape=_shape, dtype=_dtype)
+#             except Exception as e:
+#                 print(f"[RobosuiteEnvWrapper] Error processing obs spec: {e}")
+#                 continue
+#         self.observation_space = spaces.Dict(gym_obs_spaces) # new obs space 
         
-        # ---Metadata--- 
-        self._robot_metadata = self._extract_robot_metadata()
-        self.metadata["robot_metadata"] = self._robot_metadata 
-        # for multi-robot envs, we will use robot_name 
-        #TODO: add some kind of unique Id (when using same robot but differen kinamtics)
-        self._elapsed_steps = 0 # for timelimt wrapper  
+#         # ---Metadata--- 
+#         self._robot_metadata = self._extract_robot_metadata()
+#         self.metadata["robot_metadata"] = self._robot_metadata 
+#         # for multi-robot envs, we will use robot_name 
+#         #TODO: add some kind of unique Id (when using same robot but differen kinamtics)
+#         self._elapsed_steps = 0 # for timelimt wrapper  
 
-    def _extract_robot_metadata(self):
-        """
-        Extracts static metadata from the robot.
-        # TODO: add more metadata if needed 
-        """
+#     def _extract_robot_metadata(self):
 
-        metadata = {}
-        if hasattr(self.env, "robots") and len(self.env.robots) > 0:
-            robot = self.env.robots[0]
-            metadata["robot_name"] = robot.name 
-            metadata['num_arm_joints'] = len(robot._ref_joint_indexes) # use _ref_joint_indexes instead of arm_joint_names, returns list of len (num of joints) without gripper
-            metadata['num_gripper_joints'] = robot.gripper.dof # for 1 gripper it returns 1, if i want the real joints we can use i.e. robot._gripper_joint_pos_indexes (2)
+#         metadata = {}
+#         if hasattr(self.env, "robots") and len(self.env.robots) > 0:
+#             robot = self.env.robots[0]
+#             metadata["robot_name"] = robot.name 
+#             metadata['num_arm_joints'] = len(robot._ref_joint_indexes) # use _ref_joint_indexes instead of arm_joint_names, returns list of len (num of joints) without gripper
+#             metadata['num_gripper_joints'] = robot.gripper.dof # for 1 gripper it returns 1, if i want the real joints we can use i.e. robot._gripper_joint_pos_indexes (2)
             
-            # Number of nodes (DoF + Gripper)
-            metadata['num_nodes'] = metadata['num_arm_joints'] + metadata['num_gripper_joints']
-            # TODO: add the following (lower, upper, damping, armature, friction) physical properties (check dir(robot))
-            metadata['joint_names'] = robot.robot_joints 
-            metadata['g_joint_name'] = robot.gripper_joints 
-            # should I combine them? TODO: check again
-            #metadata['joint_names'] = robot.robot_joints + robot.gripper_joints
+#             # Number of nodes (DoF + Gripper)
+#             metadata['num_nodes'] = metadata['num_arm_joints'] + metadata['num_gripper_joints']
+#             # TODO: add the following (lower, upper, damping, armature, friction) physical properties (check dir(robot))
+#             metadata['joint_names'] = robot.robot_joints 
+#             metadata['g_joint_name'] = robot.gripper_joints 
+#             # should I combine them? TODO: check again
+#             #metadata['joint_names'] = robot.robot_joints + robot.gripper_joints
 
-        else: 
-            # dummyy values
-            print("[RobosuiteEnvWrapper] Warning: No robot found in the environment. Metadata will set to None.")
-            metadata['robot_name'] = "Unkown"
-            metadata['num_arm_joints'] = 0
-            metadata['num_gripper_joints'] = 0
-            metadata['num_nodes'] = 0
-            metadata['joint_names'] = []
-            #metadata['link_names'] = []
+#         else: 
+#             # dummyy values
+#             print("[RobosuiteEnvWrapper] Warning: No robot found in the environment. Metadata will set to None.")
+#             metadata['robot_name'] = "Unkown"
+#             metadata['num_arm_joints'] = 0
+#             metadata['num_gripper_joints'] = 0
+#             metadata['num_nodes'] = 0
+#             metadata['joint_names'] = []
+#             #metadata['link_names'] = []
         
-        #print("Robot metadata: ", metadata)
-        return metadata
+#         #print("Robot metadata: ", metadata)
+#         return metadata
     
-    def step(self, action):
-        action = np.clip(action, self.action_space.low, self.action_space.high) # enusre [-1, 1] range
-        try:
-            # done here is ignored 
-            obs_dict, reward, done, info = self.env.step(action)
-            #done = False # TODO: UNCOMMNET
-            #---Debug ---
-            # if self.ep_step_count %20==0 or reward !=0:
-            #     print(f" [RobosuiteEnvWrapper Step {self.ep_step_count}] Raw Reward: {reward}")
-            #-------------
-        except Exception as e:
-            print(f"[RobosuiteEnvWrapper] ERROR during Robosuite step: Robot=`{self.robot_name}`, Env=`{self.robosuite_env_name}`, Action=`{action}`, Error={e}")
-            raise e # for debugging 
-            # TODO: add a flag to skip the step and return None for training stablity (UNCOMMENT)
-            obs_dict = self.observation_space.sample() # dummy obs
-            reward = -10 # heavily penelized 
-            done = True 
-            info = {'error': str(e), 'name': self.robot_name}
+#     def step(self, action):
+#         action = np.clip(action, self.action_space.low, self.action_space.high) # enusre [-1, 1] range
+#         try:
+#             # done here is ignored 
+#             obs_dict, reward, done, info = self.env.step(action)
+#             #done = False # TODO: UNCOMMNET
+#             #---Debug ---
+#             # if self.ep_step_count %20==0 or reward !=0:
+#             #     print(f" [RobosuiteEnvWrapper Step {self.ep_step_count}] Raw Reward: {reward}")
+#             #-------------
+#         except Exception as e:
+#             print(f"[RobosuiteEnvWrapper] ERROR during Robosuite step: Robot=`{self.robot_name}`, Env=`{self.robosuite_env_name}`, Action=`{action}`, Error={e}")
+#             raise e # for debugging 
+#             # TODO: add a flag to skip the step and return None for training stablity (UNCOMMENT)
+#             obs_dict = self.observation_space.sample() # dummy obs
+#             reward = -10 # heavily penelized 
+#             done = True 
+#             info = {'error': str(e), 'name': self.robot_name}
         
-        # --- Post-processing of obs---
-        processed_obs = self._convert_observation(obs_dict)
+#         # --- Post-processing of obs---
+#         processed_obs = self._convert_observation(obs_dict)
         
-        # ---Custom info---
-        #info['robot_name'] = self.robot_name # causing error at meter
-        info['name'] = self.robot_name
-        info['raw_reward'] = reward
-        info['action'] = action
-        info['success'] = self.env._check_success()
+#         # ---Custom info---
+#         #info['robot_name'] = self.robot_name # causing error at meter
+#         info['name'] = self.robot_name
+#         info['raw_reward'] = reward
+#         info['action'] = action
+#         info['success'] = self.env._check_success()
 
-        self._elapsed_steps += 1
+#         self._elapsed_steps += 1
 
-        return processed_obs, reward, done, info
+#         return processed_obs, reward, done, info
 
-    def reset(self):
-        try: 
-            obs_dict = self.env.reset()
-        except Exception as e:
-            print(f"[RobosuiteEnvWrapper] ERROR during Robosuite reset: Robot=`{self.robot_name}`, Env=`{self.robosuite_env_name}`, Error={e}")
-            raise e # for debugging
-            # TODO: add a flag to skip the reset and return None for training stablity (UNCOMMENT)
-            #obs_dict = self.observation_space.sample() # dummy obs
-            #reward = -10 # heavily penelized
-            # done = True
-        processed_obs = self._convert_observation(obs_dict)
-        return processed_obs
+#     def reset(self):
+#         try: 
+#             obs_dict = self.env.reset()
+#         except Exception as e:
+#             print(f"[RobosuiteEnvWrapper] ERROR during Robosuite reset: Robot=`{self.robot_name}`, Env=`{self.robosuite_env_name}`, Error={e}")
+#             raise e # for debugging
+#             # TODO: add a flag to skip the reset and return None for training stablity (UNCOMMENT)
+#             #obs_dict = self.observation_space.sample() # dummy obs
+#             #reward = -10 # heavily penelized
+#             # done = True
+#         processed_obs = self._convert_observation(obs_dict)
+#         return processed_obs
     
-    def _convert_observation(self, obs_dict):
-        """
-        Converts the flat observation dict from robosuite into 
-        preliminary structured dict, grouping related info logically, 
-        before we pass it through the NodeCentricObservationWrapper.
-        """
+#     def _convert_observation(self, obs_dict):
+#         """
+#         Converts the flat observation dict from robosuite into 
+#         preliminary structured dict, grouping related info logically, 
+#         before we pass it through the NodeCentricObservationWrapper.
+#         """
 
-        prelim_obs = {}
+#         prelim_obs = {}
+#         if self.robosuite_env_name.startswith("TwoArm"):
+#             """
+#             odict_keys(['gripper0_to_handle0', 'gripper1_to_handle1', 'handle0_xpos',
+#              'handle1_xpos', 'object-state', 'pot_pos', 'pot_quat', 'robot0_eef_pos', 
+#              'robot0_eef_quat', 'robot0_gripper_qpos', 'robot0_gripper_qvel', 'robot0_joint_pos_cos', 'robot0_joint_pos_sin', 
+#              'robot0_joint_vel', 'robot0_proprio-state', 'robot1_eef_pos', 
+#              'robot1_eef_quat', 'robot1_gripper_qpos', 'robot1_gripper_qvel', 'robot1_joint_pos_cos',
+#              'robot1_joint_pos_sin', 'robot1_joint_vel', 'robot1_proprio-state'])
+#             """
+#             robot_proprio_keys = [f'robot{i}_proprio-state' for i in range(2)] 
+#             for key in robot_proprio_keys:
+#                 if key in obs_dict:
+#                     prelim_obs[key] = obs_dict[key]
+              
+#             return prelim_obs            
+#         else: 
+#             print(f"[RobosuiteEnvWrapper] Converting obs for SingleArm")
+#             # ---Propricopetive State--- 
+#             # we can use the combined state provided by robotsuite 
+#             # TODO: try and handle this for multiple robots 
+#             robot_proprio_key = f'robot0_proprio-state' # change the '0' to the robot index if we have multiple robots (guess?)
+#             if robot_proprio_key in obs_dict:
+#                 prelim_obs[robot_proprio_key] = obs_dict[robot_proprio_key]
+#             else:
+#                 print(f"[RobosuiteEnvWrapper] Warning: {robot_proprio_key} state not found for robot {self.robot_name} in the observation dictionary.")
+#                 # the problem is this is robot-dependent naming [Not Generalized]
+#                 parts = []
+#                 keys_to_try = [
+#                     f'robot0_joint_pos_cos', f'robot0_joint_pos_sin', # Use sin/cos for angles
+#                     f'robot0_joint_vel',
+#                     f'robot0_eef_pos', f'robot0_eef_quat',
+#                     f'robot0_gripper_qpos', f'robot0_gripper_qvel'
+#                 ]
+#                 for key in keys_to_try:
+#                     if key in obs_dict:
+#                         parts.append(obs_dict[key].astype(np.float32))
+#                     else:
+#                         # either pad or raise an error ? 
+#                         print(f"[RobosuiteEnvWrapper] Missing key: {key}")
+#                         # skip for now 
+#                         pass 
+#                 if not parts:
+#                     # create a dummy observation (zeros)
+#                     # Problem we need to know the shape of the observation
+#                     print(f"[RobosuiteEnvWrapper] ERROR: Could not assemble robot-state for {self.robot_name}.")
+#                     prelim_obs['robot0_proprio-state'] = np.zeros(1, dtype=np.float32) # leads to problem better to raise an error
+#                 else :
+#                     prelim_obs['robot0_proprio-state'] = np.concatenate(parts)
+            
+#             # ---Object State---
+#             if 'object-state' in obs_dict:
+#                 prelim_obs['object-state'] = obs_dict['object-state'].astype(np.float32)
+#             else:
+#                 # Either Env doesnt have object or is it disabled
+#                 print(f"[RobosuiteEnvWrapper] Warning: object-state not found in the observation dictionary.")
+#                 # create a dummy observation (zeros)
+#                 prelim_obs['object-state'] = np.zeros([], dtype=np.float32)
+            
+#             # TODO: Combined states (proprio + obj) for MLP (single robot)
+#             # combined_state = np.concatenate([obs_dict[robot_proprio_key], obs_dict['object-state']])
+#             # --------------------------------------------------------------------------------------
+#             # ---Gripper to Object Distance--- (This is the last 3 elements of object-state) redundant with object-state
+#             # TODO: alt we can use the eef_pos and gripper_to_object directly
+#             # obj_pos_key = 'object-state' # gripper to obj is the last 3 elemtns in object-state 
+#             # eef_pos_key = f'robot0_eef_pos' # change `0` to the robot index if we have multiple robots (guess)
+#             # if obj_pos_key in obs_dict and eef_pos_key in obs_dict:
+#             #     obj_pos = obs_dict[obj_pos_key][-3:]
+#             #     eef_pos = obs_dict[eef_pos_key]
+#             #     prelim_obs['gripper_to_object'] = (obj_pos - eef_pos).astype(np.float32)
+#             # else:
+#             #     print(f"[RobosuiteEnvWrapper] Warning: {obj_pos_key} or {eef_pos_key} not found in the observation dictionary.")
+#             #     # create a dummy observation (zeros)
+#             #     prelim_obs['gripper_to_object'] = np.zeros(3, dtype=np.float32) # TODO: better to set high value 
 
-        # ---Propricopetive State--- 
-        # we can use the combined state provided by robotsuite 
-        # TODO: try and handle this for multiple robots 
-        robot_proprio_key = f'robot0_proprio-state' # change the '0' to the robot index if we have multiple robots (guess?)
-        if robot_proprio_key in obs_dict:
-            prelim_obs[robot_proprio_key] = obs_dict[robot_proprio_key]
-        else:
-            print(f"[RobosuiteEnvWrapper] Warning: {robot_proprio_key} state not found for robot {self.robot_name} in the observation dictionary.")
-            # the problem is this is robot-dependent naming 
-            parts = []
-            keys_to_try = [
-                f'robot0_joint_pos_cos', f'robot0_joint_pos_sin', # Use sin/cos for angles
-                f'robot0_joint_vel',
-                f'robot0_eef_pos', f'robot0_eef_quat',
-                f'robot0_gripper_qpos', f'robot0_gripper_qvel'
-            ]
-            for key in keys_to_try:
-                if key in obs_dict:
-                    parts.append(obs_dict[key].astype(np.float32))
-                else:
-                    # either pad or raise an error ? 
-                    print(f"[RobosuiteEnvWrapper] Missing key: {key}")
-                    # skip for now 
-                    pass 
-            if not parts:
-                # create a dummy observation (zeros)
-                # Problem we need to know the shape of the observation
-                print(f"[RobosuiteEnvWrapper] ERROR: Could not assemble robot-state for {self.robot_name}.")
-                prelim_obs['robot0_proprio-state'] = np.zeros(1, dtype=np.float32) # leads to problem better to raise an error
-            else :
-                prelim_obs['robot0_proprio-state'] = np.concatenate(parts)
-        
-        # ---Object State---
-        if 'object-state' in obs_dict:
-            prelim_obs['object-state'] = obs_dict['object-state'].astype(np.float32)
-        else:
-            # Either Env doesnt have object or is it disabled
-            print(f"[RobosuiteEnvWrapper] Warning: object-state not found in the observation dictionary.")
-            # create a dummy observation (zeros)
-            prelim_obs['object-state'] = np.zeros([], dtype=np.float32)
-        
-        # TODO: Combined states (proprio + obj) for MLP (single robot)
-        # combined_state = np.concatenate([obs_dict[robot_proprio_key], obs_dict['object-state']])
-        # --------------------------------------------------------------------------------------
-        # ---Gripper to Object Distance--- (This is the last 3 elements of object-state) redundant with object-state
-        # TODO: alt we can use the eef_pos and gripper_to_object directly
-        # obj_pos_key = 'object-state' # gripper to obj is the last 3 elemtns in object-state 
-        # eef_pos_key = f'robot0_eef_pos' # change `0` to the robot index if we have multiple robots (guess)
-        # if obj_pos_key in obs_dict and eef_pos_key in obs_dict:
-        #     obj_pos = obs_dict[obj_pos_key][-3:]
-        #     eef_pos = obs_dict[eef_pos_key]
-        #     prelim_obs['gripper_to_object'] = (obj_pos - eef_pos).astype(np.float32)
-        # else:
-        #     print(f"[RobosuiteEnvWrapper] Warning: {obj_pos_key} or {eef_pos_key} not found in the observation dictionary.")
-        #     # create a dummy observation (zeros)
-        #     prelim_obs['gripper_to_object'] = np.zeros(3, dtype=np.float32) # TODO: better to set high value 
+#             # ---EEF State--- (TODO: add this As a direct input to EXT_MIX)
+#             # TODO: make the name consistent with the other keys
+#             eef_pos_key = f'robot0_eef_pos' # change `0` to the robot index if we have multiple robots (guess)
+#             if eef_pos_key in obs_dict:
+#                 prelim_obs['robot0_eef_pos'] = obs_dict[eef_pos_key].astype(np.float32)
+#             else:
+#                 print(f"[RobosuiteEnvWrapper] Warning: {eef_pos_key} not found in the observation dictionary.")
+#                 # create a dummy observation (zeros)
+#                 prelim_obs['robot0_eef_pos'] = np.zeros(3, dtype=np.float32)
+            
+#             eef_quat_key = f'robot0_eef_quat' # change `0` to the robot index if we have multiple robots (guess)
+#             if eef_quat_key in obs_dict:
+#                 prelim_obs['robot0_eef_quat'] = obs_dict[eef_quat_key].astype(np.float32)
+#             else:
+#                 print(f"[RobosuiteEnvWrapper] Warning: {eef_quat_key} not found in the observation dictionary.")
+#                 prelim_obs['robot0_eef_quat'] = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32) # Default Identity 
+#             # f'robot0_gripper_qpos', f'robot0_gripper_qvel'
+#             # ---Gripper State---
+#             gripper_qpos_key = f'robot0_gripper_qpos'
+#             if gripper_qpos_key in obs_dict:
+#                 prelim_obs['robot0_gripper_qpos'] = obs_dict[gripper_qpos_key].astype(np.float32)
+#             else:
+#                 print(f"[RobosuiteEnvWrapper] Warning: {gripper_qpos_key} not found in the observation dictionary.")
+#                 prelim_obs['robot0_gripper_qpos'] = np.zeros(1, dtype=np.float32)
 
-        # ---EEF State--- (TODO: add this As a direct input to EXT_MIX)
-        # TODO: make the name consistent with the other keys
-        eef_pos_key = f'robot0_eef_pos' # change `0` to the robot index if we have multiple robots (guess)
-        if eef_pos_key in obs_dict:
-            prelim_obs['robot0_eef_pos'] = obs_dict[eef_pos_key].astype(np.float32)
-        else:
-            print(f"[RobosuiteEnvWrapper] Warning: {eef_pos_key} not found in the observation dictionary.")
-            # create a dummy observation (zeros)
-            prelim_obs['robot0_eef_pos'] = np.zeros(3, dtype=np.float32)
+#             gripper_qvel_key = f'robot0_gripper_qvel'
+#             if gripper_qvel_key in obs_dict:
+#                 prelim_obs['robot0_gripper_qvel'] = obs_dict[gripper_qvel_key].astype(np.float32)
+#             else:
+#                 print(f"[RobosuiteEnvWrapper] Warning: {gripper_qvel_key} not found in the observation dictionary.")
+#                 prelim_obs['robot0_gripper_qvel'] = np.zeros(1, dtype=np.float32)
+#             # --- Robot Context (Static Info) --- 
+#             # features extracted from the _robot_metadata so node-centric wrapper can easily distribute it to all nodes
+#             prelim_obs['robot_context_dict'] = self.metadata['robot_metadata']
+#             # TODO: Combine all eef and gripper obs into a single combined state (similar to the object-state/proprio)
+#             return prelim_obs
         
-        eef_quat_key = f'robot0_eef_quat' # change `0` to the robot index if we have multiple robots (guess)
-        if eef_quat_key in obs_dict:
-            prelim_obs['robot0_eef_quat'] = obs_dict[eef_quat_key].astype(np.float32)
-        else:
-            print(f"[RobosuiteEnvWrapper] Warning: {eef_quat_key} not found in the observation dictionary.")
-            prelim_obs['robot0_eef_quat'] = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32) # Default Identity 
-        # f'robot0_gripper_qpos', f'robot0_gripper_qvel'
-        # ---Gripper State---
-        gripper_qpos_key = f'robot0_gripper_qpos'
-        if gripper_qpos_key in obs_dict:
-            prelim_obs['robot0_gripper_qpos'] = obs_dict[gripper_qpos_key].astype(np.float32)
-        else:
-            print(f"[RobosuiteEnvWrapper] Warning: {gripper_qpos_key} not found in the observation dictionary.")
-            prelim_obs['robot0_gripper_qpos'] = np.zeros(1, dtype=np.float32)
-
-        gripper_qvel_key = f'robot0_gripper_qvel'
-        if gripper_qvel_key in obs_dict:
-            prelim_obs['robot0_gripper_qvel'] = obs_dict[gripper_qvel_key].astype(np.float32)
-        else:
-            print(f"[RobosuiteEnvWrapper] Warning: {gripper_qvel_key} not found in the observation dictionary.")
-            prelim_obs['robot0_gripper_qvel'] = np.zeros(1, dtype=np.float32)
-        # --- Robot Context (Static Info) --- 
-        # features extracted from the _robot_metadata so node-centric wrapper can easily distribute it to all nodes
-        prelim_obs['robot_context_dict'] = self.metadata['robot_metadata']
-        # TODO: Combine all eef and gripper obs into a single combined state (similar to the object-state/proprio)
-        return prelim_obs
-        
-    def close(self):
-        self.env.close()
+#     def close(self):
+#         self.env.close()
     
-    def render(self, mode='human', width=512, height=512, camera_name=None):
-        if mode == "rgb_array":
-            if self.env.has_offscreen_renderer:
-                cam_name = camera_name if camera_name else self.env.render_camera 
-                img = self.env.sim.render(
-                    camera_name=cam_name,
-                    width=width,
-                    height=height,
-                    depth=False
-                )
-                img = img[::-1]             
-                return img  
-            else :
-                print("Warning: Offscreen rendering is not available for this environment")
-                img =  self.env.sim.render(
-                    mode='offscreen',
-                    width=width,
-                    height=height,
-                    depth=False
-                ) # alt return zeros (blank)
-                img = img[::-1]             
-                return img 
-        elif mode == "human":
-            if self.env.has_renderer:
-                self.env.render()
-            else:
-                print("Warning: 'human' Rendering is not available for this environment")
-        else:
-            return super().render(mode=mode)
+#     def render(self, mode='human', width=512, height=512, camera_name=None):
+#         if mode == "rgb_array":
+#             if self.env.has_offscreen_renderer:
+#                 cam_name = camera_name if camera_name else self.env.render_camera 
+#                 img = self.env.sim.render(
+#                     camera_name=cam_name,
+#                     width=width,
+#                     height=height,
+#                     depth=False
+#                 )
+#                 img = img[::-1]             
+#                 return img  
+#             else :
+#                 print("Warning: Offscreen rendering is not available for this environment")
+#                 img =  self.env.sim.render(
+#                     mode='offscreen',
+#                     width=width,
+#                     height=height,
+#                     depth=False
+#                 ) # alt return zeros (blank)
+#                 img = img[::-1]             
+#                 return img 
+#         elif mode == "human":
+#             if self.env.has_renderer:
+#                 self.env.render()
+#             else:
+#                 print("Warning: 'human' Rendering is not available for this environment")
+#         else:
+#             return super().render(mode=mode)
     
-    def seed(self, seed=None):
-        # Normally robosuite handles this when robosuite.make is called
+#     def seed(self, seed=None):
+#         # Normally robosuite handles this when robosuite.make is called
 
-        if hasattr(self.env, "seed") and callable(self.env.seed):
-            self.env.seed(seed)
-        self.action_space.seed(seed)
+#         if hasattr(self.env, "seed") and callable(self.env.seed):
+#             self.env.seed(seed)
+#         self.action_space.seed(seed)
     
-    def sample_action(self):
-        # mimic the gym action_space.sample()
-        low, high = self.action_space.low, self.action_space.high 
-        action = np.random.uniform(low, high)
-        return action.astype(self.action_space.dtype)
+#     def sample_action(self):
+#         # mimic the gym action_space.sample()
+#         low, high = self.action_space.low, self.action_space.high 
+#         action = np.random.uniform(low, high)
+#         return action.astype(self.action_space.dtype)
 
 
 class RobosuiteMLPFlattener(gym.ObservationWrapper):
@@ -405,452 +417,1007 @@ class RobosuiteMLPFlattener(gym.ObservationWrapper):
         return action
 
 
-# --------------Node-Centric Wrappers------------------------
+# metamorph/envs/wrappers/robosuite_wrappers.py
+import gym
+import numpy as np
+from gym import spaces
+from gym.spaces import Box, Dict
+import robosuite
+from robosuite.controllers import load_controller_config, ALL_CONTROLLERS
+from robosuite.utils.mjcf_utils import find_elements # Helper for finding joints
+
+from collections import OrderedDict, defaultdict
+import time # For potential timing debug
+
+from metamorph.config import cfg
+from metamorph.utils import spaces as spu
+# from metamorph.utils import mjpy as mu # For MuJoCo IDs if needed (for context)
+
+# === RobosuiteEnvWrapper (Minor adjustments possible) ===
+class RobosuiteEnvWrapper(gym.Env):
+    """
+    Wraps a robosuite environment to make it compatible with gym.Env.
+    Sources dynamic observations from the environment's obs_dict.
+    Provides access to sim.model for static context.
+    """
+    metadata = {'render.modes': ['human', 'rgb_array']}
+
+    # --- Keep __init__ largely the same ---
+    def __init__(self, robosuite_env_name, robot_name, horizon=100, controller_name=None, robosuite_cfg=None):
+        super().__init__()
+        self.robosuite_env_name = robosuite_env_name
+        self.robot_name = robot_name # Store the primary robot name
+        self.robosuite_cfg = robosuite_cfg if robosuite_cfg is not None else {}
+
+        # --- Controller Setup ---
+        controller_name = controller_name if controller_name else cfg.ROBOSUITE.CONTROLLER
+        if controller_name not in ALL_CONTROLLERS:
+            print(f"[RobosuiteEnvWrapper] Warning: controller '{controller_name}' not in ALL_CONTROLLERS. Using default JOINT_VELOCITY.")
+            controller_name = "JOINT_VELOCITY" # A common default
+        self.controller_name = controller_name
+
+        try:
+            self.controller_config = load_controller_config(default_controller=self.controller_name)
+        except Exception as e:
+            print(f"[RobosuiteEnvWrapper] Error loading controller_config for '{self.controller_name}': {e}")
+            print("[RobosuiteEnvWrapper] Falling back to JOINT_VELOCITY config.")
+            self.controller_config = load_controller_config(default_controller="JOINT_VELOCITY")
+            self.controller_name = "JOINT_VELOCITY"
+
+        # --- Env Setup ---
+        robosuite_init_args = {
+            "env_name": self.robosuite_env_name,
+            "robots": self.robot_name, # Accepts single string or list
+            "controller_configs": self.controller_config,
+            "has_renderer": False,
+            "has_offscreen_renderer": False, # Keep false unless camera obs are used
+            "ignore_done": False, # Let the env terminate naturally based on horizon or task
+            "use_camera_obs": False,
+            "control_freq": 20,
+            "hard_reset": False,
+            "horizon": horizon, # Use passed horizon
+            "reward_shaping": True # Usually good for training
+        }
+        # Allow overrides from config
+        robosuite_init_args.update(self.robosuite_cfg.get("ENV_ARGS", {}))
+
+        # Create the env
+        print(f"[RobosuiteEnvWrapper] Creating robosuite env with args: {robosuite_init_args}")
+        try:
+            self.env = robosuite.make(**robosuite_init_args)
+        except Exception as e:
+            print(f"!!! Failed to create robosuite environment: {e} !!!")
+            raise
+
+        self.horizon = self.env.horizon
+        self._max_episode_steps = self.horizon # For compatibility with some gym checks
+
+        # --- Gym Interface Setup ---
+        # Action Space: Get directly from Robosuite
+        act_low, act_high = self.env.action_spec
+        self.action_space = spaces.Box(low=act_low, high=act_high, dtype=np.float32)
+
+        # Observation Space: Define based on Robosuite's spec. This will be
+        # *overridden* by the NodeCentricObservation wrapper later, but is useful
+        # for introspection and provides the keys for _convert_observation.
+        obs_spec = self.env.observation_spec()
+        gym_obs_spaces = OrderedDict() # Use OrderedDict
+        for key, spec in obs_spec.items():
+            # Ensure spec has shape and dtype (handle potential non-array obs)
+            if hasattr(spec, 'shape') and hasattr(spec, 'dtype'):
+                # Ensure dtype is float32 or bool, etc. (no float64)
+                dtype = np.float32 if spec.dtype == np.float64 else spec.dtype
+                # Ensure shape is a tuple
+                shape = tuple(spec.shape)
+                gym_obs_spaces[key] = spaces.Box(low=-np.inf, high=np.inf, shape=shape, dtype=dtype)
+            # else:
+                # print(f"[RobosuiteEnvWrapper] Skipping observation spec key '{key}' - not a standard array spec.")
+        self.observation_space = spaces.Dict(gym_obs_spaces)
+
+        # --- Metadata ---
+        self._robot_metadata = self._extract_robot_metadata()
+        self.metadata["robot_metadata"] = self._robot_metadata
+
+        self._elapsed_steps = 0
+
+    def _extract_robot_metadata(self):
+        # (Keep your existing implementation - it seems reasonable for single robot)
+        metadata = {}
+        if hasattr(self.env, "robots") and len(self.env.robots) > 0:
+            # TODO: Handle multiple robots if necessary in the future
+            robot = self.env.robots[0] # Assume single robot for now
+            metadata["robot_name"] = robot.name
+            # Use robot properties directly
+            metadata['num_arm_joints'] = robot.dof - robot.gripper.dof # Arm DoF
+            metadata['num_gripper_joints'] = robot.gripper.dof # Gripper DoF (often 1 or 2 conceptually)
+            metadata['num_nodes'] = metadata['num_arm_joints'] + metadata['num_gripper_joints'] # Example - might be refined
+            metadata['action_dim'] = robot.action_dim # Total action dim for this robot
+            metadata['robot_joints'] = robot.robot_joints # List of joint names
+            metadata['gripper_joints'] = robot.gripper.joints # List of gripper joint names
+            # Potentially add more: base type (fixed/mobile), etc.
+        else:
+            # Dummy values
+            print("[RobosuiteEnvWrapper] Warning: No robot found. Metadata set to defaults.")
+            metadata = {'robot_name': "Unknown", 'num_arm_joints': 0, 'num_gripper_joints': 0, 'num_nodes': 0, 'action_dim': 0, 'robot_joints': [], 'gripper_joints': []}
+        return metadata
+
+    def _convert_observation(self, obs_dict):
+        # This function primarily ensures correct dtypes and potentially
+        # prepares keys needed by downstream wrappers.
+        # It *doesn't* structure into node-centric format here.
+        processed_obs = OrderedDict()
+        for key, value in obs_dict.items():
+            if isinstance(value, np.ndarray):
+                # Ensure float32 dtype
+                dtype = np.float32 if value.dtype == np.float64 else value.dtype
+                processed_obs[key] = value.astype(dtype)
+            else:
+                processed_obs[key] = value # Pass non-array data through
+
+        # Add the static metadata dict - the node-centric wrapper will use this AND sim.model
+        processed_obs['robot_metadata'] = self.metadata['robot_metadata']
+
+        return processed_obs
+
+    def step(self, action):
+        # Clip action
+        action = np.clip(action, self.action_space.low, self.action_space.high)
+        try:
+            obs_dict, reward, done, info = self.env.step(action)
+            # Note: 'done' might be True due to horizon limit even if ignore_done=True was set in make()
+        except Exception as e:
+            print(f"[RobosuiteEnvWrapper] ERROR during Robosuite step: Robot=`{self.robot_name}`, Env=`{self.robosuite_env_name}`, Action=`{action}`")
+            print(f"Error details: {e}")
+            # Handle error: maybe return last valid obs? or crash?
+            # For now, re-raise to make debugging clear
+            raise e
+            # Alternative:
+            # obs_dict = self.observation_space.sample() # Risky, might not have correct keys/dtypes
+            # reward = -10
+            # done = True
+            # info = {'error': str(e)}
+
+        self._elapsed_steps += 1
+
+        # Check for horizon limit separately
+        if self._elapsed_steps >= self.horizon:
+            done = True
+            info['TimeLimit.truncated'] = True # Standard gym key
+
+        processed_obs = self._convert_observation(obs_dict)
+
+        # Add standard diagnostic info
+        info['name'] = self.robot_name # For multi-env differentiation
+        info['raw_reward'] = reward
+        info['action'] = action # Log the action taken
+        info['success'] = self.env._check_success() # Standard Robosuite success check
+
+        return processed_obs, reward, done, info
+
+    def reset(self):
+        self._elapsed_steps = 0
+        try:
+            obs_dict = self.env.reset()
+        except Exception as e:
+            print(f"[RobosuiteEnvWrapper] ERROR during Robosuite reset: Robot=`{self.robot_name}`, Env=`{self.robosuite_env_name}`")
+            print(f"Error details: {e}")
+            raise e
+        processed_obs = self._convert_observation(obs_dict)
+        return processed_obs
+
+    # --- Keep render, seed, close, sample_action methods as before ---
+    def close(self):
+        self.env.close()
+
+    def render(self, mode='human', width=512, height=512, camera_name=None):
+        # Find default camera if not specified
+        if camera_name is None:
+            camera_name = self.env.render_camera if hasattr(self.env, 'render_camera') else "frontview"
+            if camera_name not in self.env.sim.model.camera_names:
+                 camera_name = self.env.sim.model.camera_names[0] if len(self.env.sim.model.camera_names) > 0 else None
+
+        if mode == "rgb_array":
+             if camera_name and self.env.viewer is None: # Check if offscreen context exists implicitely
+                 try:
+                     img = self.env.sim.render(
+                         camera_name=camera_name,
+                         width=width,
+                         height=height,
+                         depth=False
+                     )
+                     return img[::-1] # MuJoCo renders upside down
+                 except Exception as e:
+                     print(f"Warning: Failed to render rgb_array with camera '{camera_name}': {e}")
+                     return np.zeros((height, width, 3), dtype=np.uint8) # Return blank image on error
+             elif self.env.viewer is not None and self.env.viewer.is_running: # Onscreen viewer exists
+                 self.env.render() # Ensure viewer is up-to-date
+                 # The following gets pixels from the *onscreen* viewer
+                 img = self.env.viewer.read_pixels(width, height, depth=False)
+                 return img[::-1]
+             else:
+                 print("Warning: RGB array rendering requires an offscreen renderer context or an active onscreen viewer.")
+                 return np.zeros((height, width, 3), dtype=np.uint8) # Return blank image
+        elif mode == "human":
+            self.env.render()
+        else:
+            return super().render(mode=mode) # Let gym handle other modes
+
+    def seed(self, seed=None):
+        # Robosuite envs typically handle seeding internally via np.random.seed,
+        # but exposing this follows the gym API.
+        if hasattr(self.env, 'seed') and callable(self.env.seed):
+            self.env.seed(seed)
+        # Seed the action space for sampling consistency if needed
+        self.action_space.seed(seed)
+
+    def sample_action(self):
+        return self.action_space.sample()
+
+
+# === Node-Centric Observation Wrapper ===
 class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
+    """
+    Transforms RoboSuite observations into a node-centric format for Transformer.
+    Nodes represent links. Extracts dynamic state from obs_dict and static
+    context from sim.model. Handles padding.
+    """
     def __init__(self, env):
         super().__init__(env)
+        print("[Wrapper Init] RobosuiteNodeCentricObservation")
 
-        # Check inheritance chain
-        if not isinstance(self.env, RobosuiteEnvWrapper):
-             parent = self.env
-             is_base_wrapper = False
-             while hasattr(parent, 'env'):
-                  if isinstance(parent, RobosuiteEnvWrapper):
-                      is_base_wrapper = True
-                      break
-                  parent = parent.env
-             if not is_base_wrapper:
-                  raise TypeError(f"[RobosuiteNodeCentricObservation] must wrap a RobosuiteEnvWrapper instance, but got {type(self.env)}.")
+        # --- 1. Get References and Basic Metadata ---
+        self.base_env_ref = self._get_base_wrapper_ref(RobosuiteEnvWrapper)
+        self.sim = self.base_env_ref.env.sim
+        self.model = self.sim.model
+        # Use metadata stored by the base wrapper
+        self.robot_metadata = self.base_env_ref.metadata['robot_metadata']
+        self.robot_name = self.robot_metadata['robot_name']
 
-        # Need to access metadata from the correct env instance in the chain
-        self.base_env_ref = self.env # Keep ref to immediate parent
-        while not isinstance(self.base_env_ref, RobosuiteEnvWrapper):
-            if not hasattr(self.base_env_ref, 'env'):
-                 raise TypeError("[RobosuiteNodeCentricObservation] Could not find RobosuiteEnvWrapper in the wrapper stack.")
-            self.base_env_ref = self.base_env_ref.env
+        self.max_limbs = cfg.MODEL.MAX_LIMBS
+        self.max_joints = cfg.MODEL.MAX_JOINTS # Max *controllable* joints for edge padding
 
-        self.robot_metadata = self.base_env_ref.metadata.get('robot_metadata', {})
-        if not self.robot_metadata:
-            raise ValueError("[RobosuiteNodeCentricObservation] Robot metadata not found in underlying env.")
-        self.robot_name = self.robot_metadata.get('robot_name', 'Unknown')
+        # --- 2. Define Node Structure (Link-Based) ---
+        self._define_node_structure() # Sets self.node_body_names, self.num_nodes, etc.
 
-        # --- Define Node Structure (Simplified Plan) ---
-        # Node 0: Base (Placeholder features) Assuming Fixed Base (TODO: account for mobile base)
-        # Node 1-N: Arm Link/Joint (N=num_arm_joints)
-        self.num_arm_joints = self.robot_metadata.get('num_arm_joints', 0)
-        # Use N+1 nodes: Base + one node per *arm* joint/link it controls
-        self.num_nodes = self.num_arm_joints + 1
-        self.num_gripper_joints = self.robot_metadata.get('num_gripper_joints', 0)
+        # --- 3. Define Features and Calculate Dimensions ---
+        self._define_feature_sets() # Sets self.proprio_feature_keys, self.context_feature_attrs, etc.
+        self.limb_obs_size = self._calculate_feature_dim(self.proprio_feature_config)
+        self.context_obs_size = self._calculate_feature_dim(self.context_feature_config)
+        print(f"  [{self.robot_name}] Nodes Defined: {self.num_nodes}")
+        print(f"  [{self.robot_name}] Proprio Dim/Node: {self.limb_obs_size}")
+        print(f"  [{self.robot_name}] Context Dim/Node: {self.context_obs_size}")
 
-        self.max_limbs = cfg.MODEL.MAX_LIMBS # Max sequence length (nodes)
-        self.max_joints = cfg.MODEL.MAX_JOINTS # Max controllable joints (related to edges)
+        # --- 4. Build Static Structures (Edges, Masks) ---
+        self._create_kinematic_structure() # Sets self.edges_padded
+        self._create_padding_masks()       # Sets self.obs_padding_mask, self.act_padding_mask
+        # Store action mask in metadata for the action wrapper
+        self.metadata['act_padding_mask'] = self.act_padding_mask
 
-        # TODO: This should never happen
-        # Add code to get the MAX_LIMBS and MAX_JOINTS from the list of ROBOTS and overwrite the config
-        if self.num_nodes > self.max_limbs:
-             raise ValueError(f"Robot {self.robot_name} needs {self.num_nodes} nodes, but config MODEL.MAX_LIMBS is only {self.max_limbs}.")
-        # Check edge count against max_joints
-        num_real_edges = self.num_nodes - 1
-        if num_real_edges > self.max_joints:
-             raise ValueError(f"Robot {self.robot_name} has {num_real_edges} kinematic edges, but config MODEL.MAX_JOINTS is only {self.max_joints}.")
+        # --- 5. Define Final Observation Space ---
+        self.observation_space = self._define_observation_space()
+        print(f"  [{self.robot_name}] Observation Space Defined. Keys: {list(self.observation_space.spaces.keys())}")
 
-        # Calculate padding required
+        # --- 6. Initialize Feature Arrays (Pre-allocation) ---
+        self._init_feature_arrays()
+
+
+    def _get_base_wrapper_ref(self, base_wrapper_type):
+        """Finds the instance of base_wrapper_type in the wrapper stack."""
+        env = self.env
+        while hasattr(env, 'env'):
+            if isinstance(env, base_wrapper_type):
+                return env
+            env = env.env
+        # If loop finishes, check the final env itself
+        if isinstance(env, base_wrapper_type):
+             return env
+        raise TypeError(f"Could not find {base_wrapper_type.__name__} in wrapper stack.")
+
+    def _define_node_structure(self):
+        """Identifies bodies for nodes: Base, Arm Links, Hand, Gripper Conceptual Node."""
+        robot_model = self.base_env_ref.env.robots[0] # Assume single robot
+        self.node_body_names = []
+        self.node_types = [] # Store type ('base', 'arm', 'hand', 'gripper')
+
+        # 1. Base Node
+        base_name = robot_model.robot_model.root_body # Often 'robot0_base' or similar
+        self.node_body_names.append(base_name)
+        self.node_types.append('base')
+
+        # 2. Arm Link Nodes (Iterate through controlled joints)
+        # Assumes arm joints connect links sequentially from base/link0
+        self.arm_joint_names = robot_model.robot_joints
+        self.arm_link_names = [] # Store names of links driven by arm joints
+        last_link_name = base_name
+        for j_name in self.arm_joint_names:
+            joint_id = self.model.joint_name2id(j_name)
+            body_id = self.model.jnt_bodyid[joint_id]
+            body_name = self.model.body_id2name(body_id)
+            # Avoid duplicates and ensure it's not the base again
+            if body_name != base_name and body_name not in self.node_body_names:
+                self.node_body_names.append(body_name)
+                self.node_types.append('arm')
+                self.arm_link_names.append(body_name)
+            last_link_name = body_name # Keep track of the last arm link
+
+        # 3. Hand Node (Body connected to the last arm joint, often EEF mount)
+        # We might have already added it if it was directly driven by last joint
+        hand_name = last_link_name # Assume hand is the last link body
+        if hand_name not in self.node_body_names: # Should usually be there already
+             self.node_body_names.append(hand_name)
+             self.node_types.append('hand')
+             print(f"Warning: Hand body '{hand_name}' added separately.")
+        else:
+             # Find its index and change type
+             hand_idx = self.node_body_names.index(hand_name)
+             self.node_types[hand_idx] = 'hand'
+
+        # 4. Conceptual Gripper Node (Anchored to Hand for structure)
+        self.gripper_node_anchor_name = hand_name # Use hand as structural parent
+        self.node_body_names.append(self.gripper_node_anchor_name + "_gripper_conceptual") # Unique name
+        self.node_types.append('gripper')
+
+        self.num_nodes = len(self.node_body_names)
         self.num_node_pads = self.max_limbs - self.num_nodes
 
-        # --- Determine Per-Node Feature Sizes (Simplified Plan) ---
-        self.limb_obs_size = self._get_proprio_feature_dim() # Proprioceptive features per node
-        self.context_obs_size = self._get_context_feature_dim() # Context features per node
-        print(f"[RobosuiteNodeCentricObservation][{self.robot_name}] Nodes: {self.num_nodes}, ProprioDim/Node: {self.limb_obs_size}, ContextDim/Node: {self.context_obs_size}")
+        if self.num_nodes > self.max_limbs:
+             raise ValueError(f"Robot {self.robot_name} requires {self.num_nodes} nodes ({self.node_body_names}), but MAX_LIMBS={self.max_limbs}")
 
-        # --- Create Padding Masks and Edge List ---
-        self._create_padding_masks_and_edges()
-        # Store masks in metadata for the action wrapper and potentially the model
-        self.metadata['act_padding_mask'] = self.act_padding_mask
-        # self.metadata['num_nodes'] = self.num_nodes # Pass actual node count TODO: remove this redundant metadata metadata['robot_metadata']['num_nodes']
+        # Create mapping for easy lookup
+        self.body_name_to_node_idx = {name: i for i, name in enumerate(self.node_body_names) if not name.endswith("_gripper_conceptual")}
+        self.gripper_node_idx = self.node_body_names.index(self.gripper_node_anchor_name + "_gripper_conceptual")
 
-        # --- Define the NEW Observation Space ---
-        self.observation_space = self._define_observation_space()
-        print(f"[RobosuiteNodeCentricObservation][{self.robot_name}] Final Observation Space Defined.")
+    def _define_feature_sets(self):
+        """Define the keys/attributes to extract for proprioceptive and context features."""
+        # --- Proprioceptive Features (Dynamic, from obs_dict) ---
+        self.proprio_feature_config = {
+            # 'common': [], # Features common to all nodes?
+            'base': [ # Fixed base assumed for now
+                ('fixed_encoding', 3), # e.g., [1,0,0,0...] one-hot/indicator
+            ],
+            'arm': [
+                # Joint state (relative to this link's parent joint)
+                ('joint_pos_cos', 1),
+                ('joint_pos_sin', 1),
+                ('joint_vel', 1),
+                # Link state (relative to world or base?) - Use world for now
+                ('body_pos_world', 3), # We might need RobosuiteEnvWrapper to add this if not standard
+                ('body_quat_world', 4),
+                ('body_velp_world', 3),
+                ('body_velr_world', 3),
+            ],
+            'hand': [ # Often same as arm, plus EEF state
+                ('joint_pos_cos', 1),
+                ('joint_pos_sin', 1),
+                ('joint_vel', 1),
+                # EEF world state
+                ('eef_pos', 3), # Key from RobosuiteEnvWrapper
+                ('eef_quat', 4), # Key from RobosuiteEnvWrapper
+                 # Link velocities (optional but potentially useful)
+                ('body_velp_world', 3),
+                ('body_velr_world', 3),
+            ],
+            'gripper': [ # Conceptual node state
+                 ('gripper_qpos', cfg.ROBOSUITE.GRIPPER_DIM), # Use configured dim
+                 ('gripper_qvel', cfg.ROBOSUITE.GRIPPER_DIM),
+            ]
+        }
+        # We need RobosuiteEnvWrapper to ensure keys like 'body_pos_world' are available,
+        # potentially by calculating them from sim.data if not direct observables.
+        # Let's assume for now the necessary keys are in the obs_dict passed to observation().
 
-    # TODO: This function should be able to calc the proprioceptive observation from the env
-    def _get_proprio_feature_dim(self):
-        """Calculate the dimension of proprioceptive features per node (Simplified Plan)."""
-        # Node 0 (Base): Placeholder = 3 dims (e.g., zeros or fixed encoding).
-        # Node i (1-N): Joint i state [sin(pos), cos(pos), vel] = 3 dims.
-        # Let's make them consistent for simplicity.
-        return 3
+        # --- Context Features (Static, from sim.model) ---
+        self.context_feature_config = {
+             'base': [
+                 ('node_type_encoding', 4), # e.g., [1,0,0,0] for Base, Arm, Hand, Gripper
+                 ('is_fixed', 1), # 1 if fixed, 0 if mobile
+             ],
+            'arm': [
+                ('node_type_encoding', 4),
+                # Joint properties (connecting to parent)
+                ('joint_type', 1), # 0=free, 1=ball, 2=slide, 3=hinge
+                ('joint_limits', 2), # range min, max
+                ('joint_damping', 1),
+                ('joint_frictionloss', 1),
+                ('joint_armature', 1),
+                # Link Properties
+                ('body_mass', 1),
+                ('body_inertia_diag', 3),
+                ('geom_type', 1), # 0=plane..6=mesh; only take primary geom?
+                ('geom_size', 3), # Max 3 size params
+            ],
+            'hand': [ # Similar to arm, maybe different node type encoding
+                ('node_type_encoding', 4),
+                ('joint_type', 1),
+                ('joint_limits', 2),
+                ('joint_damping', 1),
+                ('joint_frictionloss', 1),
+                ('joint_armature', 1),
+                ('body_mass', 1),
+                ('body_inertia_diag', 3),
+                ('geom_type', 1),
+                ('geom_size', 3),
+            ],
+            'gripper': [ # Properties of the gripper joint(s)
+                 ('node_type_encoding', 4),
+                 ('joint_type', 1), # Should reflect gripper joint(s) type
+                 ('joint_limits', 2 * cfg.ROBOSUITE.GRIPPER_DIM), # Adapt based on gripper dim
+                 ('joint_damping', 1 * cfg.ROBOSUITE.GRIPPER_DIM),
+                 ('joint_frictionloss', 1 * cfg.ROBOSUITE.GRIPPER_DIM),
+                 ('joint_armature', 1 * cfg.ROBOSUITE.GRIPPER_DIM),
+                 # Maybe add gripper max force/velocity if available?
+            ]
+        }
 
-    def _get_context_feature_dim(self):
-        """Calculate the dimension of context features per node (Simplified Plan)."""
-        # Node 0 (Base): Placeholder = 5 dims (e.g., zeros or fixed encoding).
-        # Node i (1-N): Joint i static props [limit_low, limit_high, damping, armature, frictionloss] = 5 dims.
-        # Let's make them consistent for simplicity.
-        return 5
+    def _calculate_feature_dim(self, feature_config):
+        """Calculates max dimension across node types for padding."""
+        max_dim = 0
+        for node_type, features in feature_config.items():
+            current_dim = sum(dim for _, dim in features)
+            max_dim = max(max_dim, current_dim)
+        return max_dim
 
-    def _create_padding_masks_and_edges(self):
-        """Generates padding masks and the padded edge list based on the simplified plan."""
-        # --- Obs Padding Mask (for Transformer input) ---
-        self.obs_padding_mask = np.asarray([False] * self.num_nodes + [True] * self.num_node_pads, dtype=bool)
+    def _init_feature_arrays(self):
+        """Pre-allocate numpy arrays for efficiency."""
+        self.node_proprio = np.zeros((self.max_limbs, self.limb_obs_size), dtype=np.float32)
+        self.node_context = np.zeros((self.max_limbs, self.context_obs_size), dtype=np.float32)
 
-        # --- Edge List (Kinematic Chain 0->1->...->N) ---
-        num_real_edges = self.num_nodes - 1 # Base doesn't have a parent
-        real_edges = []
-        if num_real_edges > 0:
-            # Edges: [child1, parent1, child2, parent2, ...]
-            parents = list(range(self.num_nodes - 1)) # Nodes 0 to N-1 are parents
-            children = list(range(1, self.num_nodes)) # Nodes 1 to N are children
-            real_edges = np.array(list(zip(children, parents)), dtype=np.int32).flatten()
+    def _get_required_obs_keys(self):
+        """Figure out which keys MUST be in the input obs_dict."""
+        keys = set()
+        for node_type, features in self.proprio_feature_config.items():
+            for key, dim in features:
+                 # Simple keys are assumed to be directly from obs_dict
+                 # More complex ones might need specific handling later
+                 if key not in ['fixed_encoding']: # Skip placeholders
+                     keys.add(key)
+        # Add global keys needed
+        keys.add('object-state') # Example global key
+        return list(keys)
 
-        # Pad edges up to max_joints length
-        num_real_edge_pairs = len(real_edges) // 2
-        self.num_joint_pads = self.max_joints - num_real_edge_pairs # max_joints relates to EDGES here
+    def _create_kinematic_structure(self):
+        """Builds padded edge list from sim.model based on defined nodes."""
+        parent_ids = self.model.body_parentid
+        edges = []
+        self.node_idx_to_mujoco_joint_ids = defaultdict(list) # Map node idx to relevant MuJoCo joint IDs
 
-        # Pad with dummy edges (e.g., self-loops on the dummy padding node index)
-        pad_value = self.max_limbs - 1 # Use last possible node index as dummy padding index
-        padded_edges = np.full(2 * self.max_joints, pad_value, dtype=np.int32) # Total length matches config
-        if len(real_edges) > 0:
-             if len(real_edges) > len(padded_edges):
-                 print(f"[RobsouiteNodeCentricObservation] Warning: Robot {self.robot_name} has more edges ({num_real_edge_pairs}) than MAX_JOINTS ({self.max_joints}). Truncating edges.")
-                 padded_edges[:] = real_edges[:2 * self.max_joints]
-             else:
-                 padded_edges[:len(real_edges)] = real_edges
-        self.edges = padded_edges.astype(np.float32) # Convert to float for obs space compatibility
+        # Get MuJoCo joint info
+        joint_parent_body_ids = []
+        joint_child_body_ids = []
+        for j_id in range(self.model.njnt):
+            j_type = self.model.jnt_type[j_id]
+            if j_type == 0: continue # Skip free joints (usually world)
+            child_body_id = self.model.jnt_bodyid[j_id]
+            parent_body_id = parent_ids[child_body_id]
+            joint_parent_body_ids.append(parent_body_id)
+            joint_child_body_ids.append(child_body_id)
 
-        # --- Action Padding Mask ---
-        # Policy main decoder outputs `max_limbs` potential actions, 1 per node.
-        # Valid actions correspond to nodes 1 to num_arm_joints.
-        is_valid_action = [False] # Action for base node (node 0) is invalid # TODO: Need to account for mobile base
-        is_valid_action.extend([True] * self.num_arm_joints) # Actions for nodes 1 to N_arm are valid arm joints
-        # Pad remaining node slots up to max_limbs
-        is_valid_action.extend([False] * (self.max_limbs - (self.num_arm_joints + 1)))
-        # Invert it for the masking
-        self.act_padding_mask = np.array(~np.array(is_valid_action), dtype=bool)
+            # Store mapping for context extraction
+            child_body_name = self.model.body_id2name(child_body_id)
+            if child_body_name in self.body_name_to_node_idx:
+                 child_node_idx = self.body_name_to_node_idx[child_body_name]
+                 self.node_idx_to_mujoco_joint_ids[child_node_idx].append(j_id)
 
-        if len(self.act_padding_mask) != self.max_limbs:
-             raise ValueError(f"[RobsouiteNodeCentricObservation] Action padding mask length ({len(self.act_padding_mask)}) doesn't match MAX_LIMBS ({self.max_limbs}). Check logic.")
-        if (~self.act_padding_mask).sum() != self.num_arm_joints:
-             print(f"[RobsouiteNodeCentricObservation] Warning: Action mask expects {self.num_arm_joints} valid arm actions, but mask has {(~self.act_padding_mask).sum()} valid entries.")
+        # Build edges based on nodes
+        for child_body_name, node_idx in self.body_name_to_node_idx.items():
+            if node_idx == 0: continue # Base has no parent edge in this structure
+            child_mujoco_id = self.model.body_name2id(child_body_name)
+            parent_mujoco_id = parent_ids[child_mujoco_id]
+            parent_body_name = self.model.body_id2name(parent_mujoco_id)
+
+            if parent_body_name in self.body_name_to_node_idx:
+                parent_node_idx = self.body_name_to_node_idx[parent_body_name]
+                edges.extend([node_idx, parent_node_idx]) # Child -> Parent
+
+        # Add conceptual gripper edge (Hand -> Gripper)
+        hand_node_idx = self.node_types.index('hand') # Find hand node index
+        edges.extend([self.gripper_node_idx, hand_node_idx])
+
+        self.edges_unpadded = np.array(edges, dtype=np.int32)
+        num_real_edges = len(self.edges_unpadded) // 2
+
+        if num_real_edges > self.max_joints:
+             print(f"Warning: Robot {self.robot_name} has {num_real_edges} edges, exceeding MAX_JOINTS={self.max_joints}. Truncating.")
+             self.edges_unpadded = self.edges_unpadded[:2 * self.max_joints]
+             num_real_edges = self.max_joints
+
+        # Pad edges
+        num_edge_pads = self.max_joints - num_real_edges
+        pad_value = self.max_limbs - 1 # Dummy node index for padding
+        # Pad with (dummy_idx, dummy_idx) self-loops
+        padded_edges_flat = np.full(2 * self.max_joints, pad_value, dtype=np.int32)
+        padded_edges_flat[:len(self.edges_unpadded)] = self.edges_unpadded
+        self.edges_padded = padded_edges_flat.astype(np.float32) # Store as float
+
+    def _create_padding_masks(self):
+        """Creates observation and action padding masks."""
+        # Observation Mask: False for real nodes, True for padding
+        self.obs_padding_mask = np.array([False] * self.num_nodes + [True] * self.num_node_pads, dtype=bool)
+
+        # Action Mask: True for non-actuated nodes, False for actuated ones
+        self.act_padding_mask = np.ones(self.max_limbs, dtype=bool) # Start all masked (True)
+        num_arm_joints_actual = len(self.arm_joint_names)
+        node_indices_with_arm_action = []
+        node_indices_with_gripper_action = []
+
+        for node_idx, node_type in enumerate(self.node_types):
+            if node_idx >= self.num_nodes: break # Stop at real nodes
+            if node_type == 'arm' or node_type == 'hand':
+                 # Arm/Hand nodes correspond to arm joints before them
+                 # This assumes a sequential structure mapping
+                 if (node_idx - 1) < num_arm_joints_actual: # node_idx 1 maps to joint 0, etc.
+                      self.act_padding_mask[node_idx] = False
+                      node_indices_with_arm_action.append(node_idx)
+            elif node_type == 'gripper':
+                 self.act_padding_mask[node_idx] = False
+                 node_indices_with_gripper_action.append(node_idx)
+            # Base node (index 0) remains True (masked)
+
+        # Store indices for action wrapper
+        self.metadata['arm_action_node_indices'] = node_indices_with_arm_action
+        self.metadata['gripper_action_node_indices'] = node_indices_with_gripper_action # Should be just one index
+        self.metadata['act_padding_mask'] = self.act_padding_mask # Store the final mask
 
 
     def _define_observation_space(self):
-        """Defines the final, padded observation space dictionary."""
+        """Defines the final Dict observation space."""
         inf = np.float32(np.inf)
         obs_spaces = OrderedDict()
 
-        # Padded Node-Centric Observations - SHOULD BE FLATTENED
-        obs_spaces['proprioceptive'] = Box(-inf, inf, (self.max_limbs * self.limb_obs_size,), np.float32) # Flattened
-        obs_spaces['context'] = Box(-inf, inf, (self.max_limbs * self.context_obs_size,), np.float32)    # Flattened
+        # Node-centric features (Flattened)
+        obs_spaces['proprioceptive'] = Box(-inf, inf, (self.max_limbs * self.limb_obs_size,), np.float32)
+        obs_spaces['context'] = Box(-inf, inf, (self.max_limbs * self.context_obs_size,), np.float32)
 
-        # Padded Structural Information
-        obs_spaces['edges'] = Box(-np.inf, np.inf, (2 * self.max_joints,), np.float32) # Use np.inf for consistency
+        # Structure
+        obs_spaces['edges'] = Box(-inf, inf, (2 * self.max_joints,), np.float32) # Use inf for consistency
 
-        # Padding Masks
-        obs_spaces['obs_padding_mask'] = Box(False, True, (self.max_limbs,), dtype=bool) # For transformer input
-        obs_spaces['act_padding_mask'] = Box(False, True, (self.max_limbs,), dtype=bool) # Matches arm action output structure
+        # Masks
+        obs_spaces['obs_padding_mask'] = Box(False, True, (self.max_limbs,), dtype=bool)
+        obs_spaces['act_padding_mask'] = Box(False, True, (self.max_limbs,), dtype=bool)
 
-        # Extroceptive Information (passed through) - Get shapes from underlying env's observation spec
-        base_obs_space_dict = self.base_env_ref.observation_space.spaces
+        # --- Global Extroceptive Features ---
+        # Get the observation space from the *base wrapper* to find available global keys
+        base_obs_space = self.base_env_ref.observation_space.spaces
+        # Keys we might want to pass globally (these are usually present in RoboSuite)
+        global_keys_to_pass = ['object-state']#, 'robot0_eef_pos', 'robot0_eef_quat']
+        # Also include any specifically requested keys from cfg
+        global_keys_to_pass.extend(cfg.ROBOSUITE.get("EXTERO_KEYS", []))
+        global_keys_to_pass = list(set(global_keys_to_pass)) # Unique keys
 
-        # Define keys expected from RobosuiteEnvWrapper._convert_observation to be passed through
-        # obs keys after RobosuiteEnvWrapper => ['robot0_proprio-state', 'object-state', 'eef_pos', 'eef_quat', 'robot_context_dict']
-        # extro_keys_to_check = ['object-state', 'gripper_to_object', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos', 'robot0_gripper_qvel']
-        extro_keys_to_check = ['object-state', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos', 'robot0_gripper_qvel']
-        for key in extro_keys_to_check:
-            if key in base_obs_space_dict:
-                 spec = base_obs_space_dict[key]
-                 shape = spec.shape
-                 # Ensure shape is valid (not zero size if key exists)
-                 if np.prod(shape) > 0:
-                     dtype = np.float32 if spec.dtype == np.float64 else spec.dtype # Ensure float32
-                     obs_spaces[key] = Box(-inf, inf, shape, dtype)
+        for key in global_keys_to_pass:
+            if key in base_obs_space:
+                 spec = base_obs_space[key]
+                 if hasattr(spec, 'shape') and np.prod(spec.shape) > 0:
+                     dtype = np.float32 if spec.dtype == np.float64 else spec.dtype
+                     obs_spaces[key] = Box(-inf, inf, spec.shape, dtype)
                  else:
-                     print(f"[RobosuiteNodeCentricObservation] Warning: Base observation key '{key}' has size 0, omitting from final obs space.")
-            # else: Key simply won't be added to the final space
+                      print(f"[NodeCentricObs] Warning: Global key '{key}' has zero size or invalid spec, omitting.")
+            # else:
+            #      print(f"[NodeCentricObs] Warning: Global key '{key}' requested but not found in base observation space.")
 
         return Dict(obs_spaces)
 
-
     def _extract_features_per_node(self, obs_dict):
+        """Extracts features for each node based on defined config."""
+        # Reset pre-allocated arrays
+        self.node_proprio.fill(0)
+        self.node_context.fill(0)
 
-        """
-        Distributes features from the preliminary observation dictionary
-        into per-node feature vectors according to the simplified plan.
-        """
-        node_proprio = np.zeros((self.max_limbs, self.limb_obs_size), dtype=np.float32)
-        node_context = np.zeros((self.max_limbs, self.context_obs_size), dtype=np.float32)
+        # Get robot state keys dynamically (handle potential variations)
+        joint_pos_cos_key = f'robot0_joint_pos_cos' # TODO: Adapt for multi-robot (robot{idx}_...)
+        joint_pos_sin_key = f'robot0_joint_pos_sin'
+        joint_vel_key = f'robot0_joint_vel'
+        eef_pos_key = f'robot0_eef_pos'
+        eef_quat_key = f'robot0_eef_quat'
+        gripper_qpos_key = f'robot0_gripper_qpos'
+        gripper_qvel_key = f'robot0_gripper_qvel'
+        # Add more keys if needed based on proprio_feature_config
 
-        # --- Extract Base Robosuite Obs ---
-        robot_state = obs_dict.get(f'robot0_proprio-state', None) # should never return None
-        if robot_state is None:
-            # This case should ideally be handled in RobosuiteEnvWrapper, but add check here
-            print(f"[RobosuiteNodeCentricObservation] ERROR: 'robot0_proprio-state' missing from input observation.")
-            return node_proprio, node_context # Return zeros
-
-        # Need to parse the flat robot_state based on robosuite's internal order
-        # Check robosuite/utils/observables.py and specific robot files (e.g., panda.py)
-        
-        jv_dim = self.num_arm_joints
-        gq_dim = self.num_gripper_joints * 1 # qpos
-        gqv_dim = self.num_gripper_joints * 1 # qvel
-
-        joint_pos = robot_state[0:jv_dim]
-        joint_vel = robot_state[jv_dim : jv_dim * 2]
-        # Skip gripper state here, handled separately or via extroceptive keys
-        # gripper_qpos = robot_state[jv_dim*2 : jv_dim*2 + gq_dim]
-        # gripper_qvel = robot_state[jv_dim*2 + gq_dim : jv_dim*2 + gq_dim + gqv_dim]
-
-        # Convert joint positions to sin/cos
-        joint_pos_sin = np.sin(joint_pos)
-        joint_pos_cos = np.cos(joint_pos)
-
-        # --- Extract Context (Static Properties) from MuJoCo model ---
-        try:
-            sim = self.base_env_ref.env.sim
-            robot_model = self.base_env_ref.env.robots[0]
-            ref_joint_indexes = robot_model._ref_joint_indexes      # MuJoCo joint IDs (e.g., 1, 2, ... 7 for Panda arm)
-            ref_joint_vel_indexes = robot_model._ref_joint_vel_indexes   # MuJoCo DoF IDs (e.g., 6, 7, ... 12 for Panda arm)
-        except AttributeError as e:
-            print(f"[RobosuiteNodeCentricObservation] ERROR: Could not access sim or robot model for context extraction: {e}")
-            # Return zeros if context cannot be extracted
-            return node_proprio, node_context
-
-        num_arm_joints_to_use = self.num_arm_joints
-
-        # Pre-allocate context arrays
-        joint_limits = np.zeros((num_arm_joints_to_use, 2), dtype=np.float32)
-        joint_damping = np.zeros(num_arm_joints_to_use, dtype=np.float32)
-        joint_armature = np.zeros(num_arm_joints_to_use, dtype=np.float32)
-        joint_friction = np.zeros(num_arm_joints_to_use, dtype=np.float32)
-
-        # Extract context for each arm joint (node)
-        for i in range(num_arm_joints_to_use):
-            try:
-                joint_id_model = ref_joint_indexes[i]
-                dof_id_model = ref_joint_vel_indexes[i]
-
-                joint_limits[i] = sim.model.jnt_range[joint_id_model]
-                joint_damping[i] = sim.model.dof_damping[dof_id_model]
-                joint_armature[i] = sim.model.dof_armature[dof_id_model]
-                joint_friction[i] = sim.model.dof_frictionloss[dof_id_model]
-            except IndexError as e:
-                 print(f"[RobosuiteNodeCentricObservation] Error accessing MuJoCo model properties for joint index {i}: {e}. Using zeros.")
-                 # Keep default zeros for this joint's context
-
-        # --- Populate Node Features (Nodes 1 to N_arm) ---
-        for i in range(num_arm_joints_to_use):
-            node_idx = i + 1 # Node index (1-based for arm joints)
-            if node_idx < self.max_limbs:
-                # Proprioceptive: [sin(pos_i), cos(pos_i), vel_i] # TODO:add more obs
-                if i < len(joint_pos_sin): # Check bounds
-                    proprio_feat = [joint_pos_sin[i], joint_pos_cos[i], joint_vel[i]]
-                    node_proprio[node_idx, :3] = np.array(proprio_feat, dtype=np.float32)
-                else:
-                    print(f"[RobosuiteNodeCentricObservation] Warning: Index {i} out of bounds for joint pos/vel arrays.")
-
-                # Context: [limit_low, limit_high, damping, armature, frictionloss]
-                if i < len(joint_limits): # Check bounds
-                    context_feat = [joint_limits[i, 0], joint_limits[i, 1], joint_damping[i], joint_armature[i], joint_friction[i]]
-                    node_context[node_idx, :5] = np.array(context_feat, dtype=np.float32)
-                else:
-                     print(f"[RobosuiteNodeCentricObservation] Warning: Index {i} out of bounds for joint context arrays.")
+        # --- Extract Dynamic Data Once ---
+        joint_pos_cos = obs_dict.get(joint_pos_cos_key)
+        joint_pos_sin = obs_dict.get(joint_pos_sin_key)
+        joint_vel = obs_dict.get(joint_vel_key)
+        eef_pos = obs_dict.get(eef_pos_key)
+        eef_quat = obs_dict.get(eef_quat_key)
+        gripper_qpos = obs_dict.get(gripper_qpos_key)
+        gripper_qvel = obs_dict.get(gripper_qvel_key)
+        # Get body poses/vels if needed (might require adding to RobosuiteEnvWrapper._convert_observation)
+        # body_pos_world = obs_dict.get('all_body_pos_world') # Example key needed
+        # body_quat_world = obs_dict.get('all_body_quat_world')
+        # body_velp_world = obs_dict.get('all_body_velp_world')
+        # body_velr_world = obs_dict.get('all_body_velr_world')
 
 
-        # --- Populate Node 0 (Base) ---
-        # Keep as zeros for now in this simplified plan.
+        # --- Iterate through Nodes ---
+        for node_idx in range(self.num_nodes):
+            node_type = self.node_types[node_idx]
+            is_conceptual_gripper = self.node_body_names[node_idx].endswith("_gripper_conceptual")
+            body_name = self.node_body_names[node_idx] if not is_conceptual_gripper else self.gripper_node_anchor_name
+            mujoco_body_id = self.model.body_name2id(body_name)
 
-        return node_proprio, node_context
+            proprio_features = []
+            context_features = []
 
+            # --- A. Extract Proprioceptive Features (Dynamic) ---
+            config = self.proprio_feature_config[node_type]
+            for key, expected_dim in config:
+                feature = None
+                # --- Handle different keys ---
+                if key == 'fixed_encoding': feature = np.array([1.0, 0.0, 0.0]) # Example
+                elif key == 'joint_pos_cos': feature = joint_pos_cos[node_idx - 1:node_idx] if joint_pos_cos is not None and node_idx > 0 and (node_idx-1) < len(joint_pos_cos) else np.zeros(1)
+                elif key == 'joint_pos_sin': feature = joint_pos_sin[node_idx - 1:node_idx] if joint_pos_sin is not None and node_idx > 0 and (node_idx-1) < len(joint_pos_sin) else np.zeros(1)
+                elif key == 'joint_vel': feature = joint_vel[node_idx - 1:node_idx] if joint_vel is not None and node_idx > 0 and (node_idx-1) < len(joint_vel) else np.zeros(1)
+                elif key == 'eef_pos': feature = eef_pos if eef_pos is not None else np.zeros(3)
+                elif key == 'eef_quat': feature = eef_quat if eef_quat is not None else np.array([1.,0.,0.,0.])
+                elif key == 'gripper_qpos': feature = gripper_qpos if gripper_qpos is not None else np.zeros(cfg.ROBOSUITE.GRIPPER_DIM)
+                elif key == 'gripper_qvel': feature = gripper_qvel if gripper_qvel is not None else np.zeros(cfg.ROBOSUITE.GRIPPER_DIM)
+                # Add world body states if needed (requires modification to RobosuiteEnvWrapper)
+                # elif key == 'body_pos_world': feature = body_pos_world[mujoco_body_id] if body_pos_world is not None else np.zeros(3)
+                # ... etc ...
+                else: feature = np.zeros(expected_dim) # Default zero padding if key logic is missing
+
+                # Verify and append
+                feature = np.asarray(feature).flatten()
+                if feature.size != expected_dim:
+                     # Pad or truncate feature if dimension mismatch
+                     actual_dim = feature.size
+                     corrected_feature = np.zeros(expected_dim, dtype=np.float32)
+                     copy_len = min(actual_dim, expected_dim)
+                     corrected_feature[:copy_len] = feature[:copy_len]
+                     feature = corrected_feature
+                     # print(f"Warning: Node {node_idx} ({body_name}), Proprio Key '{key}': Dim mismatch (Expected {expected_dim}, Got {actual_dim}). Corrected.")
+                proprio_features.append(feature)
+            # Concatenate and pad the whole node feature vector
+            node_proprio_vec = np.concatenate(proprio_features).astype(np.float32)
+            if node_proprio_vec.size < self.limb_obs_size:
+                padding = np.zeros(self.limb_obs_size - node_proprio_vec.size, dtype=np.float32)
+                node_proprio_vec = np.concatenate([node_proprio_vec, padding])
+            self.node_proprio[node_idx, :] = node_proprio_vec[:self.limb_obs_size] # Truncate just in case
+
+            # --- B. Extract Context Features (Static) ---
+            config = self.context_feature_config[node_type]
+            # Define node type one-hot encoding
+            type_encoding = {'base': 0, 'arm': 1, 'hand': 2, 'gripper': 3}
+            node_type_one_hot = np.zeros(4)
+            node_type_one_hot[type_encoding[node_type]] = 1.0
+
+            # Get associated MuJoCo joint IDs (if any) for this node
+            mujoco_joint_ids = self.node_idx_to_mujoco_joint_ids.get(node_idx, [])
+            # Use first joint for properties if multiple drive the body (simplification)
+            # For gripper, use the gripper joints from robot metadata
+            joint_id_for_context = mujoco_joint_ids[0] if mujoco_joint_ids else None
+            if node_type == 'gripper':
+                 # Find gripper joint IDs from robot metadata
+                 robot_model_instance = self.base_env_ref.env.robots[0]
+                 gripper_jnt_names = robot_model_instance.gripper.joints
+                 if gripper_jnt_names:
+                      joint_id_for_context = [self.model.joint_name2id(j) for j in gripper_jnt_names]
+                 else: joint_id_for_context = None # No specific joint
+
+            for key, expected_dim in config:
+                feature = None
+                # --- Handle different keys ---
+                if key == 'node_type_encoding': feature = node_type_one_hot
+                elif key == 'is_fixed': feature = np.array([1.0]) # Assume fixed base for now
+                # --- Joint Properties ---
+                elif key == 'joint_type':
+                     j_type = self.model.jnt_type[joint_id_for_context[0]] if isinstance(joint_id_for_context, list) and joint_id_for_context else (self.model.jnt_type[joint_id_for_context] if joint_id_for_context is not None else -1)
+                     feature = np.array([j_type])
+                elif key == 'joint_limits':
+                     # Handle single vs multiple joints (for gripper)
+                     if isinstance(joint_id_for_context, list): # Gripper with potentially >1 DoF
+                          limits = np.concatenate([self.model.jnt_range[j_id] for j_id in joint_id_for_context]) if joint_id_for_context else np.zeros(2*cfg.ROBOSUITE.GRIPPER_DIM)
+                     elif joint_id_for_context is not None:
+                          limits = self.model.jnt_range[joint_id_for_context]
+                     else: limits = np.zeros(2)
+                     feature = limits
+                elif key == 'joint_damping' or key == 'joint_frictionloss' or key == 'joint_armature':
+                    # These are DoF properties, need DoF ID
+                    dof_id = None
+                    if isinstance(joint_id_for_context, list): # Gripper
+                        if joint_id_for_context: dof_id = self.model.jnt_dofadr[joint_id_for_context[0]] # Use first DoF
+                    elif joint_id_for_context is not None:
+                        dof_id = self.model.jnt_dofadr[joint_id_for_context]
+
+                    if dof_id is not None:
+                        if key == 'joint_damping': feature = self.model.dof_damping[dof_id:dof_id+expected_dim]
+                        elif key == 'joint_frictionloss': feature = self.model.dof_frictionloss[dof_id:dof_id+expected_dim]
+                        elif key == 'joint_armature': feature = self.model.dof_armature[dof_id:dof_id+expected_dim]
+                    else: feature = np.zeros(expected_dim) # Default if no DoF
+                # --- Body Properties ---
+                elif key == 'body_mass': feature = np.array([self.model.body_mass[mujoco_body_id]])
+                elif key == 'body_inertia_diag': feature = self.model.body_inertia[mujoco_body_id] # Diagonal elements
+                elif key == 'geom_type' or key == 'geom_size':
+                     # Find first geom attached to this body
+                     geom_ids = [g_id for g_id, b_id in enumerate(self.model.geom_bodyid) if b_id == mujoco_body_id]
+                     if geom_ids:
+                          g_id = geom_ids[0]
+                          if key == 'geom_type': feature = np.array([self.model.geom_type[g_id]])
+                          elif key == 'geom_size': feature = self.model.geom_size[g_id] # Size (up to 3 params)
+                     else: feature = np.zeros(1 if key == 'geom_type' else 3) # Default if no geom
+                else: feature = np.zeros(expected_dim) # Default
+
+                # Verify and append
+                feature = np.asarray(feature).flatten()
+                if feature.size != expected_dim:
+                     actual_dim = feature.size
+                     corrected_feature = np.zeros(expected_dim, dtype=np.float32)
+                     copy_len = min(actual_dim, expected_dim)
+                     corrected_feature[:copy_len] = feature[:copy_len]
+                     feature = corrected_feature
+                     # print(f"Warning: Node {node_idx} ({body_name}), Context Key '{key}': Dim mismatch (Expected {expected_dim}, Got {actual_dim}). Corrected.")
+                context_features.append(feature)
+            # Concatenate and pad the whole node feature vector
+            node_context_vec = np.concatenate(context_features).astype(np.float32)
+            if node_context_vec.size < self.context_obs_size:
+                padding = np.zeros(self.context_obs_size - node_context_vec.size, dtype=np.float32)
+                node_context_vec = np.concatenate([node_context_vec, padding])
+            self.node_context[node_idx, :] = node_context_vec[:self.context_obs_size] # Truncate
+
+
+        return self.node_proprio, self.node_context
 
     def observation(self, obs):
         """Processes the observation dictionary into the final node-centric format."""
-        start_time = time.time()
-
-        # Extract features and distribute them into node-based arrays
+        # Extract node-centric features
         node_proprio, node_context = self._extract_features_per_node(obs)
 
         # --- Assemble the Final Observation Dictionary ---
         final_obs = OrderedDict()
         # Store FLATTENED node features
-        final_obs['proprioceptive'] = node_proprio.flatten().astype(np.float32)
-        final_obs['context'] = node_context.flatten().astype(np.float32)
-        final_obs['edges'] = self.edges # Use pre-computed padded edges
+        final_obs['proprioceptive'] = node_proprio.flatten()
+        final_obs['context'] = node_context.flatten()
+        final_obs['edges'] = self.edges_padded
         final_obs['obs_padding_mask'] = self.obs_padding_mask
         final_obs['act_padding_mask'] = self.act_padding_mask
 
-        # --- Pass Through Extroceptive & Other Global Features ---
-        # Ensure keys match those defined in self._define_observation_space()
-        # for key in ['object-state', 'gripper_to_object', 'eef_pos', 'eef_quat', 'gripper_qpos', 'gripper_qvel']:
-        for key in ['object-state', 'robot0_eef_pos', 'robot0_eef_quat', 'robot0_gripper_qpos', 'robot0_gripper_qvel']:
-            if key in self.observation_space.spaces and key in obs:
-                final_obs[key] = obs[key].astype(np.float32) # Ensure correct type
-            elif key in self.observation_space.spaces and key not in obs:
-                print(f"[RobosuiteNodeCentricObservation] Warning: Key '{key}' expected in final obs space but missing from intermediate obs.")
-                # Add placeholder with correct shape/type if needed
-                # final_obs[key] = np.zeros(self.observation_space[key].shape, dtype=np.float32)
-            else:
-                print(f"[RobosuiteNodeCentricObservation] Warning: Key '{key}' expected in final obs space but missing from intermediate obs.")
+        # --- Pass Through Global Features ---
+        for key in self.observation_space.spaces:
+            if key not in final_obs and key in obs:
+                # Check if the shape matches the defined space (important if base obs changes)
+                if obs[key].shape == self.observation_space[key].shape:
+                     final_obs[key] = obs[key]
+                # else:
+                #      print(f"Warning: Shape mismatch for global key '{key}'. Env: {obs[key].shape}, Space: {self.observation_space[key].shape}. Skipping.")
+
+        # Ensure all keys defined in the space are present
+        for key in self.observation_space.spaces:
+             if key not in final_obs:
+                  print(f"Warning: Key '{key}' defined in observation space but missing from final observation dict. Adding zeros.")
+                  final_obs[key] = np.zeros(self.observation_space[key].shape, dtype=self.observation_space[key].dtype)
 
 
-        end_time = time.time()
-        # print(f"Obs wrapper time: {end_time - start_time:.6f}s")
         return final_obs
 
     def reset(self, **kwargs):
         """Resets the environment and processes the initial observation."""
-        # Reset the underlying environment chain first
         observation = self.env.reset(**kwargs)
-
-        # --- Re-sync metadata and recompute masks/edges after reset ---
-        # Access the *correct* base env reference after potential reset changes
-        self.base_env_ref = self.env
-        while not isinstance(self.base_env_ref, RobosuiteEnvWrapper):
-             if not hasattr(self.base_env_ref, 'env'): break # Reached top
-             self.base_env_ref = self.base_env_ref.env
-
-        if isinstance(self.base_env_ref, RobosuiteEnvWrapper):
-             current_metadata = self.base_env_ref.metadata.get('robot_metadata', {})
-             if not current_metadata:
-                  print("[RobosuiteNodeCentricObservation] Warning: Robot metadata missing during reset in NodeCentricObservation wrapper.")
-             else:
-                 # Update internal state based on potentially new metadata
-                 self.robot_metadata = current_metadata
-                 self.robot_name = self.robot_metadata.get('robot_name', 'Unknown')
-                 new_num_arm_joints = self.robot_metadata.get('num_arm_joints', 0)
-                 new_num_nodes = new_num_arm_joints + 1
-                 new_num_gripper_joints = self.robot_metadata.get('num_gripper_joints', 0)
-
-                 # Recompute only if relevant properties changed
-                 if (new_num_nodes != self.num_nodes or
-                     new_num_arm_joints != self.num_arm_joints): # Add other checks if needed
-                     print(f"[RobosuiteNodeCentricObservation][{self.robot_name}] Metadata changed on reset. Recomputing masks/edges.")
-                     self.num_arm_joints = new_num_arm_joints
-                     self.num_nodes = new_num_nodes
-                     self.num_gripper_joints = new_num_gripper_joints
-                     self.num_node_pads = self.max_limbs - self.num_nodes
-                     # Regenerate masks and edges
-                     self._create_padding_masks_and_edges()
-                     # Update metadata dict accessible by other wrappers (like action wrapper)
-                     self.metadata['act_padding_mask'] = self.act_padding_mask
-                     self.metadata['num_nodes'] = self.num_nodes
-
-        # Process the initial observation using the (potentially updated) internal state
+        # Re-sync metadata and potentially rebuild structures if needed
+        # (For ST-SR, structure is fixed, so just process observation)
+        # self.robot_metadata = self.base_env_ref.metadata.get('robot_metadata', {}) # Refresh if needed
+        # self._define_node_structure() # Re-run if structure could change
+        # self._create_kinematic_structure()
+        # self._create_padding_masks()
+        self._init_feature_arrays() # Reset internal arrays
         return self.observation(observation)
 
 
-
+# === Node-Centric Action Wrapper ===
 class RobosuiteNodeCentricAction(gym.ActionWrapper):
     """
-    Wrapper to convert the padded action vector from the policy's main decoder
-    (assumed to be arm actions) into the correct format for the underlying
-    Robosuite environment. It assumes gripper actions are either constant or
-    come from a separate source/policy head (not handled here).
+    Maps the policy's padded action output (per-node) to the base
+    RoboSuite environment's action space.
     """
     def __init__(self, env):
         super().__init__(env)
-
-        # Find the base RobosuiteEnvWrapper to get its action space and metadata
-        self.base_env_ref = self.env
-        while not isinstance(self.base_env_ref, RobosuiteEnvWrapper):
-            if not hasattr(self.base_env_ref, 'env'):
-                raise TypeError("[RobosuiteNodeCentricAction] Could not find RobosuiteEnvWrapper in the wrapper stack for ActionWrapper.")
-            self.base_env_ref = self.base_env_ref.env
-
+        print("[Wrapper Init] RobosuiteNodeCentricAction")
+        # --- Get References and Metadata ---
+        self.base_env_ref = self._get_base_wrapper_ref(RobosuiteEnvWrapper)
+        self.obs_wrapper_ref = self._get_base_wrapper_ref(RobosuiteNodeCentricObservation)
         self.base_action_space = self.base_env_ref.action_space
-        self.robot_metadata = self.base_env_ref.metadata.get('robot_metadata', {})
-
-        self.num_arm_actions = self.robot_metadata.get('num_arm_joints', 0)
-        self.num_gripper_actions = self.robot_metadata.get('num_gripper_joints', 0) 
-        self.real_action_dim = self.base_action_space.shape[0]
-        # Verify consistency
-        if self.num_arm_actions + self.num_gripper_actions != self.real_action_dim:
-             print(f"[RobosuiteNodeCentricAction] Warning: Arm ({self.num_arm_actions}) + Gripper ({self.num_gripper_actions}) != Base Action Dim ({self.real_action_dim}). Check metadata.")
-             # Adjust arm action count as fallback if gripper seems incorrect
-             if self.num_gripper_actions == 0 and self.num_arm_actions != self.real_action_dim:
-                  print(f"[RobosuiteNodeCentricAction] Adjusting num_arm_actions to {self.real_action_dim}")
-                  self.num_arm_actions = self.real_action_dim
-
+        self.robot_metadata = self.base_env_ref.metadata['robot_metadata']
         self.max_limbs = cfg.MODEL.MAX_LIMBS
 
-        # --- Define the PADDED Action Space the Policy Outputs (Main Decoder Arm Actions) ---
-        # Assumes policy main decoder outputs `max_limbs` actions (one per potential node) # TODO: we will add gripper actions    
+        # Action dimensions from metadata (set by RobosuiteEnvWrapper)
+        self.num_arm_actions_expected = self.robot_metadata.get('num_arm_joints', 0)
+        self.num_gripper_actions_expected = self.robot_metadata.get('num_gripper_joints', 0) # Conceptual DoF
+        self.real_action_dim = self.base_action_space.shape[0]
+
+        # Verify consistency
+        if self.num_arm_actions_expected + self.num_gripper_actions_expected != self.real_action_dim:
+             print(f"[ActionWrapper] Warning: Metadata action dims ({self.num_arm_actions_expected}+{self.num_gripper_actions_expected}) != base action space dim ({self.real_action_dim}). Trusting base space.")
+             # Heuristic: Assume difference is gripper if arm count seems right based on common robots
+             if self.num_arm_actions_expected in [6, 7]: # Sawyer, Panda
+                  self.num_gripper_actions_expected = self.real_action_dim - self.num_arm_actions_expected
+             else: # Fallback: assume all are arm actions if unsure
+                  self.num_arm_actions_expected = self.real_action_dim
+                  self.num_gripper_actions_expected = 0
+
+
+        # --- Define Padded Action Space (What the Policy Sees/Outputs) ---
+        # Policy outputs one value per node slot.
         self.padded_action_dim = self.max_limbs
         low = -1.0 * np.ones(self.padded_action_dim, dtype=np.float32)
         high = 1.0 * np.ones(self.padded_action_dim, dtype=np.float32)
-        self.action_space = Box(low=low, high=high, dtype=np.float32) # This wrapper defines the space the policy sees
+        # This wrapper CHANGES the action space the agent interacts with
+        self.action_space = Box(low=low, high=high, dtype=np.float32)
 
-        # Fetch the action padding mask from metadata (set by the observation wrapper)
-        if 'act_padding_mask' not in self.env.metadata:
-            raise ValueError("[RobosuiteNodeCentricAction] Action padding mask ('act_padding_mask') not found in env metadata. Ensure RobosuiteNodeCentricObservation runs first.")
-        self.act_padding_mask = self.env.metadata['act_padding_mask']
+        # Store indices from metadata (set by obs wrapper) for easier mapping
+        self._update_indices_from_metadata()
 
-        # Verify mask length consistency
+
+    def _get_base_wrapper_ref(self, base_wrapper_type):
+        """Finds the instance of base_wrapper_type in the wrapper stack."""
+        # Needs to access the *immediately wrapping* env to get metadata reliably
+        env = self.env
+        while not isinstance(env, base_wrapper_type):
+             if not hasattr(env, 'env'):
+                  raise TypeError(f"Could not find {base_wrapper_type.__name__} in parent wrapper stack.")
+             env = env.env
+        return env
+
+    def _update_indices_from_metadata(self):
+        """Gets the latest action mask and indices from the obs wrapper metadata."""
+        if not hasattr(self.obs_wrapper_ref, 'metadata'):
+             raise ValueError("Action wrapper cannot find metadata in observation wrapper.")
+
+        self.act_padding_mask = self.obs_wrapper_ref.metadata.get('act_padding_mask')
+        self.arm_action_node_indices = self.obs_wrapper_ref.metadata.get('arm_action_node_indices')
+        self.gripper_action_node_indices = self.obs_wrapper_ref.metadata.get('gripper_action_node_indices')
+
+        if self.act_padding_mask is None or self.arm_action_node_indices is None or self.gripper_action_node_indices is None:
+            raise ValueError("Action relevant metadata missing from observation wrapper. Ensure Observation wrapper runs first and sets metadata.")
+
+        # Verify mask length
         if len(self.act_padding_mask) != self.padded_action_dim:
-            # This might happen if metadata wasn't updated correctly on reset
-            print(f"[RobosuiteNodeCentricAction] Warning: Action padding mask length ({len(self.act_padding_mask)}) in metadata does not match expected padded dimension ({self.padded_action_dim}). Using expected dim for mask slicing, but this indicates a potential issue.")
-            # Recreate a default mask based on current understanding - this is risky
-            # is_valid = [False] + [True] * self.num_arm_actions + [False] * (self.max_limbs - (self.num_arm_actions + 1))
-            # self.act_padding_mask = np.array(~np.array(is_valid), dtype=bool)
-
+             raise ValueError(f"Action mask length ({len(self.act_padding_mask)}) doesn't match padded dim ({self.padded_action_dim}).")
 
     def action(self, action):
-        """
-        Takes the padded action vector (arm actions) from the policy,
-        un-pads it, combines with a default gripper action, and clips.
-        """
-        # Ensure action has the expected padded dimension
+        """Maps the policy's padded action to the base environment's action space."""
+        action = np.asarray(action) # Ensure numpy array
+
+        # --- 1. Check Input Shape ---
         if action.shape[-1] != self.padded_action_dim:
-             raise ValueError(f"[RobosuiteNodeCentricAction] Received action shape {action.shape} doesn't match expected padded dimension {self.padded_action_dim}")
+             raise ValueError(f"Received action shape {action.shape} doesn't match expected padded dimension {self.padded_action_dim}")
 
-        # --- Refetch mask in case env reset changed it ---
-        # This relies on the observation wrapper correctly updating metadata on reset
-        current_mask = self.env.metadata.get('act_padding_mask', self.act_padding_mask)
-        if len(current_mask) != self.padded_action_dim:
-             print(f"[RobosuiteNodeCentricAction] Warning: Mask length mismatch after step! Using stored mask. This is likely an error.")
+        # --- 2. Refetch Mask/Indices (might change on reset in multi-robot case) ---
+        self._update_indices_from_metadata()
+
+        # --- 3. Select Valid Actions using Mask ---
+        # Mask is True where action should be IGNORED
+        valid_action_values = action[~self.act_padding_mask]
+
+        # --- 4. Separate Arm and Gripper Actions ---
+        # We need to know how many arm vs gripper actions are in `valid_action_values`.
+        # Assumes the order in valid_action_values corresponds to the order
+        # of False entries in act_padding_mask, which should match the node order
+        # defined in the observation wrapper.
+        num_valid_arm = len(self.arm_action_node_indices)
+        num_valid_gripper = len(self.gripper_action_node_indices) # Should be 1
+
+        if len(valid_action_values) != (num_valid_arm + num_valid_gripper):
+            print(f"ERROR: Number of valid actions extracted ({len(valid_action_values)}) doesn't match expected arm({num_valid_arm}) + gripper({num_valid_gripper}).")
+            # Fallback: Assume it's mostly arm actions and maybe a gripper
+            if len(valid_action_values) >= self.num_arm_actions_expected:
+                arm_actions = valid_action_values[:self.num_arm_actions_expected]
+                if len(valid_action_values) > self.num_arm_actions_expected and self.num_gripper_actions_expected > 0:
+                    gripper_action_raw = valid_action_values[self.num_arm_actions_expected : self.num_arm_actions_expected + self.num_gripper_actions_expected]
+                else:
+                     gripper_action_raw = np.ones(self.num_gripper_actions_expected) # Default fallback
+            else: # Not enough actions extracted, severe error
+                 print("Fallback failed, using zero action.")
+                 return np.zeros_like(self.base_action_space.low)
+
         else:
-             self.act_padding_mask = current_mask
-        #------------------------------------------------
+            # Assuming order is arm nodes then gripper node
+            arm_actions = valid_action_values[:num_valid_arm]
+            gripper_action_raw = valid_action_values[num_valid_arm:]
 
-        # Select the valid ARM action dimensions using the mask
-        unpadded_arm_action = action[~self.act_padding_mask]
+        # --- 5. Process Gripper Action ---
+        # Translate the single conceptual value [-1, 1] if needed
+        # For many grippers, directly using the value is fine (e.g., Panda, Robotiq in position mode)
+        gripper_action_final = np.clip(gripper_action_raw, -1.0, 1.0)
+        # Ensure it has the correct dimension expected by the base env
+        if gripper_action_final.size != self.num_gripper_actions_expected:
+             # Simple case: repeat the single value if base env expects more (e.g., for 2-finger symmetric gripper)
+             if self.num_gripper_actions_expected > 0 and gripper_action_final.size == 1:
+                 gripper_action_final = np.repeat(gripper_action_final, self.num_gripper_actions_expected)
+             else: # More complex mismatch, use default
+                  print(f"Warning: Gripper action size mismatch ({gripper_action_final.size} vs {self.num_gripper_actions_expected}). Using default.")
+                  gripper_action_final = np.ones(self.num_gripper_actions_expected)
 
-        # Verify the number of selected actions matches the expected arm DoFs
-        if unpadded_arm_action.shape[0] != self.num_arm_actions:
-            num_valid_mask = (~self.act_padding_mask).sum()
-            print(
-                f"[RobosuiteNodeCentricAction] ERROR: Arm action shape mismatch after unpadding! "
-                f"Robot: {self.robot_metadata.get('robot_name', 'Unknown')}. "
-                f"Expected {self.num_arm_actions} (from metadata), "
-                f"but got {unpadded_arm_action.shape[0]} (based on mask with {num_valid_mask} valid entries). "
-                f"Action received: {action.shape}, Mask: {self.act_padding_mask}"
-            )
-            # Fallback: Pad/truncate to expected size? Or raise error?
-            # For now, pad/truncate to avoid crashing, but print a clear error.
-            if unpadded_arm_action.shape[0] > self.num_arm_actions:
-                 unpadded_arm_action = unpadded_arm_action[:self.num_arm_actions]
-            else:
-                 padded_action = np.zeros(self.num_arm_actions, dtype=np.float32)
-                 padded_action[:unpadded_arm_action.shape[0]] = unpadded_arm_action
-                 unpadded_arm_action = padded_action
+        # --- 6. Combine and Clip ---
+        # Ensure arm actions match expected dimension
+        if len(arm_actions) != self.num_arm_actions_expected:
+             print(f"Warning: Arm action size mismatch ({len(arm_actions)} vs {self.num_arm_actions_expected}). Padding/truncating.")
+             corrected_arm_actions = np.zeros(self.num_arm_actions_expected, dtype=np.float32)
+             copy_len = min(len(arm_actions), self.num_arm_actions_expected)
+             corrected_arm_actions[:copy_len] = arm_actions[:copy_len]
+             arm_actions = corrected_arm_actions
 
+        # Concatenate in the order expected by the base controller
+        # Usually [arm_joint_actions..., gripper_joint_actions...]
+        final_action = np.concatenate([arm_actions, gripper_action_final])
 
-        # --- Gripper Action ---
-        # Provide a default gripper action (e.g., '1' to close)
-        # TODO: Make this configurable or learnable via a separate head
-        default_gripper_action = np.ones(self.num_gripper_actions, dtype=np.float32)
+        # Final check on dimension
+        if final_action.shape[0] != self.real_action_dim:
+             print(f"ERROR: Final combined action dim ({final_action.shape[0]}) != base env dim ({self.real_action_dim}). Clipping to base space shape.")
+             # Pad/truncate to avoid crashing downstream
+             corrected_final_action = np.zeros(self.real_action_dim, dtype=np.float32)
+             copy_len = min(len(final_action), self.real_action_dim)
+             corrected_final_action[:copy_len] = final_action[:copy_len]
+             final_action = corrected_final_action
 
-        # --- Combine and Clip ---
-        full_action = np.concatenate([unpadded_arm_action, default_gripper_action])
+        # Clip to the base environment's bounds
+        clipped_action = np.clip(final_action, self.base_action_space.low, self.base_action_space.high)
 
-        # Ensure final dimension matches base environment
-        if full_action.shape[0] != self.real_action_dim:
-             print(f"[RobosuiteNodeCentricAction] ERROR: Final combined action dim ({full_action.shape[0]}) != base env dim ({self.real_action_dim}).")
-             # Attempt to pad/truncate as fallback
-             final_action = np.zeros(self.real_action_dim, dtype=np.float32)
-             copy_len = min(len(full_action), self.real_action_dim)
-             final_action[:copy_len] = full_action[:copy_len]
-             full_action = final_action
+        return clipped_action.astype(np.float32)
 
+# --- debugging ---
+if __name__ == "__main__":
+    print("--- Testing Robosuite Wrappers ---")
+    # Configure for Panda Lift (as an example)
+    cfg.defrost()
+    cfg.ENV_NAME = "Robosuite-v0"
+    cfg.ROBOSUITE.ENV_NAME = "Lift"
+    cfg.ROBOSUITE.ROBOTS = ["Panda"]
+    cfg.ROBOSUITE.CONTROLLER =  "JOINT_VELOCITY"#"OSC_POSE" # Example controller
+    cfg.MODEL.MAX_LIMBS = 11 # Ensure sufficient for Base+7Links+Hand+GripperNode=10
+    cfg.MODEL.MAX_JOINTS = 10 # Ensure sufficient for 7 arm + 1 gripper = 8 < 10
+    cfg.ROBOSUITE.GRIPPER_DIM = 1 # Panda gripper control dimension
+    cfg.freeze()
 
-        clipped_action = np.clip(full_action, self.base_action_space.low, self.base_action_space.high)
+    # 1. Create Base Environment
+    base_env = RobosuiteEnvWrapper(
+        robosuite_env_name=cfg.ROBOSUITE.ENV_NAME,
+        robot_name=cfg.ROBOSUITE.ROBOTS[0],
+        controller_name=cfg.ROBOSUITE.CONTROLLER,
+        robosuite_cfg=cfg.ROBOSUITE,
+        horizon=50 # Short horizon for testing
+    )
+    print("\n[Base Env]")
+    print("Obs Space:", base_env.observation_space)
+    print("Act Space:", base_env.action_space)
 
-        return clipped_action
+    # 2. Wrap with Observation Wrapper
+    obs_wrapped_env = RobosuiteNodeCentricObservation(base_env)
+    print("\n[Obs Wrapped Env]")
+    print("Obs Space:", obs_wrapped_env.observation_space)
+    print("Act Space:", obs_wrapped_env.action_space) # Should be same as base
+
+    # 3. Wrap with Action Wrapper
+    act_wrapped_env = RobosuiteNodeCentricAction(obs_wrapped_env)
+    print("\n[Action Wrapped Env]")
+    print("Obs Space:", act_wrapped_env.observation_space) # Should be same as obs_wrapped
+    print("Act Space:", act_wrapped_env.action_space) # Should now be padded (MAX_LIMBS,)
+
+    # 4. Test Reset
+    print("\n--- Testing Reset ---")
+    obs = act_wrapped_env.reset()
+    print("Reset Obs Keys:", list(obs.keys()))
+    for key, val in obs.items():
+        expected_shape = act_wrapped_env.observation_space[key].shape
+        print(f"  {key}: Shape={val.shape}, Expected={expected_shape}, Dtype={val.dtype}")
+        assert val.shape == expected_shape, f"Shape mismatch for {key}"
+        assert val.dtype == act_wrapped_env.observation_space[key].dtype, f"Dtype mismatch for {key}"
+
+    # 5. Test Step
+    print("\n--- Testing Step ---")
+    # Sample action from the *final wrapped* space
+    action_from_policy = act_wrapped_env.action_space.sample()
+    print("Action from Policy (Padded):", action_from_policy.shape, action_from_policy)
+    # The action wrapper will internally convert this before passing to base_env
+    next_obs, reward, done, info = act_wrapped_env.step(action_from_policy)
+    print("Step Result:")
+    print("  Reward:", reward)
+    print("  Done:", done)
+    print("  Info Keys:", list(info.keys()))
+    print("  Next Obs Keys:", list(next_obs.keys()))
+    # Check next_obs shapes/dtypes again
+    for key, val in next_obs.items():
+        expected_shape = act_wrapped_env.observation_space[key].shape
+        assert val.shape == expected_shape, f"Shape mismatch for {key} after step"
+        assert val.dtype == act_wrapped_env.observation_space[key].dtype, f"Dtype mismatch for {key} after step"
+
+    print("\n--- Wrapper Test Complete ---")
+    act_wrapped_env.close()
