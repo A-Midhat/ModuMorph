@@ -48,27 +48,143 @@ _C.LOGGING.PROJECT = None
 # ----------------------------------------------------------------------------#
 _C.ROBOSUITE = CN()
 
-_C.ROBOSUITE.ENV_NAME = "Lift" 
+# _C.ROBOSUITE.ENV_NAME = "Lift" 
 
-# Pontentially should accept a list of robots
-_C.ROBOSUITE.ROBOTS = ["Panda"]
+# # Pontentially should accept a list of robots
+# _C.ROBOSUITE.ROBOTS = ["Panda"]
 
-_C.ROBOSUITE.CONTROLLER = "JOINT_POSITION"
+# _C.ROBOSUITE.CONTROLLER = "JOINT_POSITION"
 
-_C.ROBOSUITE.GRIPPER_DIM = 1
-# Robosuite env options
-_C.ROBOSUITE.ENV_ARGS = CN()
+# _C.ROBOSUITE.GRIPPER_DIM = 1
+# # Robosuite env options
+# _C.ROBOSUITE.ENV_ARGS = CN()
 
 
-_C.ROBOSUITE.ENV_ARGS.has_renderer = False # False for training
-_C.ROBOSUITE.ENV_ARGS.ignore_done =  False # use PPO for termniation
-_C.ROBOSUITE.ENV_ARGS.has_offscreen_renderer = False
-_C.ROBOSUITE.ENV_ARGS.use_camera_obs = False
-_C.ROBOSUITE.ENV_ARGS.control_freq = 20
-_C.ROBOSUITE.ENV_ARGS.hard_reset = False
-_C.ROBOSUITE.ENV_ARGS.horizon = 1000
-_C.ROBOSUITE.ENV_ARGS.reward_shaping = True
+# _C.ROBOSUITE.ENV_ARGS.has_renderer = False # False for training
+# _C.ROBOSUITE.ENV_ARGS.ignore_done =  False # use PPO for termniation
+# _C.ROBOSUITE.ENV_ARGS.has_offscreen_renderer = False
+# _C.ROBOSUITE.ENV_ARGS.use_camera_obs = False
+# _C.ROBOSUITE.ENV_ARGS.control_freq = 20
+# _C.ROBOSUITE.ENV_ARGS.hard_reset = False
+# _C.ROBOSUITE.ENV_ARGS.horizon = 1000
+# _C.ROBOSUITE.ENV_ARGS.reward_shaping = True
 
+# ------------------TESTING MR-ST Logic----------------------------------------
+#------------------------------------------------------------------------------
+# metamorph/config.py
+
+# ...
+
+_C.ROBOSUITE = CN()
+
+# --- List of Morphologies to Train On ---
+# Each entry defines one morphology setup.
+# Can be a string (for single arm) or a list (for two-arm).
+_C.ROBOSUITE.TRAINING_MORPHOLOGIES = [
+    "Panda",                      # Single Panda Lift
+    "Jaco",                     # Single Sawyer Lift
+    ["Panda", "Panda"],           # TwoArm Panda Lift
+    ["Kinova3", "Jaco"]           # TwoArm Kinova3/Jaco (if task supports)
+]
+
+# --- Corresponding Task Names ---
+# Must have the same length as TRAINING_MORPHOLOGIES.
+# Determines which Robosuite env_name to use for each morphology.
+_C.ROBOSUITE.ENV_NAMES = [
+    "Lift",
+    "Lift",
+    "TwoArmLift",
+    "TwoArmLift" # Example: TwoArm tasks might differ
+]
+
+# --- Corresponding Controller Names ---
+# Can be single string (applied to all) or list of lists/strings.
+# If a morphology is a list (TwoArm), the controller entry should also be a list.
+_C.ROBOSUITE.CONTROLLERS = [
+    "JOINT_VELOCITY",                    # For Panda
+    "JOINT_VELOCITY",                    # For Sawyer
+    ["OSC_POSE", "OSC_POSE"],            # For TwoArm Panda (needs OSC)
+    ["JOINT_VELOCITY", "JOINT_VELOCITY"] # For TwoArm Kinova3/Jaco
+]
+
+# --- Padding based on the LARGEST morphology in the training set ---
+# These should be calculated based on TRAINING_MORPHOLOGIES before training starts.
+# We won't use MAX_ROBOTS anymore in the padding calculation.
+
+
+# --- Other existing keys ---
+_C.ROBOSUITE.GRIPPER_DIM = 1 # Example, might vary per robot
+_C.ROBOSUITE.ENV_ARGS = CN() # Keep this for common args like horizon, etc.
+_C.ROBOSUITE.EXTERO_KEYS = []
+
+# --- Helper Function in config.py ---
+def calculate_robosuite_padding(cfg_node):
+    """Calculates MAX_LIMBS and MAX_JOINTS based on TRAINING_MORPHOLOGIES."""
+    max_limbs_needed = 0
+    max_joints_needed = 0
+    print("[Config] Calculating Robosuite padding requirements...")
+
+    if not cfg_node.ROBOSUITE.TRAINING_MORPHOLOGIES:
+        print("Warning: TRAINING_MORPHOLOGIES is empty. Using default padding.")
+        cfg_node.MODEL.MAX_LIMBS = cfg_node.MODEL.get('MAX_LIMBS', 11) # Default fallback
+        cfg_node.MODEL.MAX_JOINTS = cfg_node.MODEL.get('MAX_JOINTS', 10) # Default fallback
+        return
+
+    # Need to instantiate minimal envs to get accurate counts
+    # Use a simple controller for inspection
+    controller_config = load_controller_config(default_controller="JOINT_VELOCITY")
+
+    for i, morph in enumerate(cfg_node.ROBOSUITE.TRAINING_MORPHOLOGIES):
+        env_name = cfg_node.ROBOSUITE.ENV_NAMES[i]
+        robots = get_list_cfg(morph) # Ensure list
+
+        temp_env = None
+        try:
+            # Use minimal args for inspection
+            temp_env = robosuite.make(
+                env_name=env_name,
+                robots=robots,
+                controller_configs=[controller_config] * len(robots), # Use simple controller config
+                has_renderer=False, has_offscreen_renderer=False, horizon=10,
+                ignore_done=True, use_camera_obs=False
+            )
+
+            current_total_limbs = 0
+            current_total_joints = 0
+            for robot_instance in temp_env.robots:
+                # --- Node/Joint Counting Logic (MATCH WRAPPERS!) ---
+                # This logic MUST exactly mirror how the NodeCentric wrappers will count.
+                num_arm_joints = robot_instance.dof - robot_instance.gripper.dof
+                num_gripper_joints = robot_instance.gripper.dof # Conceptual
+                # Example node count: Base(1) + ArmLinks(num_arm_joints) + ConceptualGripper(1)
+                num_nodes = 1 + num_arm_joints + 1
+                # Example joint count: Arm Joints + Conceptual Gripper Joint(s)
+                num_joints = num_arm_joints + num_gripper_joints # This might differ based on wrapper logic!
+                # --- End Counting Logic ---
+
+                current_total_limbs += num_nodes
+                current_total_joints += num_joints
+
+            max_limbs_needed = max(max_limbs_needed, current_total_limbs)
+            max_joints_needed = max(max_joints_needed, current_total_joints)
+            print(f"  Morphology {i} ({morph}, {env_name}): Limbs={current_total_limbs}, Joints={current_total_joints}")
+
+        except Exception as e:
+            print(f"Warning: Failed to instantiate morphology {morph} ({env_name}) for padding calculation: {e}")
+        finally:
+            if temp_env:
+                try: temp_env.close()
+                except: pass # Ignore close errors during config calculation
+
+    # Apply padding factor
+    padding_needed = 1 # Add at least one padding slot
+    cfg_node.MODEL.MAX_LIMBS = max_limbs_needed + padding_needed
+    cfg_node.MODEL.MAX_JOINTS = max_joints_needed + padding_needed
+    print(f"[Config] Set Robosuite MAX_LIMBS={cfg_node.MODEL.MAX_LIMBS}, MAX_JOINTS={cfg_node.MODEL.MAX_JOINTS}")
+
+
+# ------------------TESTING MR-ST Logic----------------------------------------
+#------------------------------------------------------------------------------
 # ----------------------------------------------------------------------------#
 # Unimal Env Options
 # ----------------------------------------------------------------------------#
@@ -380,12 +496,18 @@ _C.MODEL.LIMB_EMBED_SIZE = 128
 
 _C.MODEL.JOINT_EMBED_SIZE = 128
 
-# Max number of joints across all the envs
+#-*-------------------------------------------
+# # Max number of joints across all the envs
 _C.MODEL.MAX_JOINTS = 7
 
-# Max number of limbs across all the envs
+# # Max number of limbs across all the envs
 _C.MODEL.MAX_LIMBS = 8
-
+# -------------------------------------------
+#-----------------------------------------------
+_C.MODEL.MAX_LIMBS_PER_ROBOT = 11 # Or your calculated/default value
+_C.MODEL.MAX_JOINTS_PER_ROBOT = 10 # Or your calculated/default value
+#----------------------------------------------
+#----------------------------------------------
 # Fixed std value
 _C.MODEL.ACTION_STD = 0.9
 
@@ -617,3 +739,16 @@ def load_cfg(out_dir, cfg_dest="config.yaml"):
 
 def get_default_cfg():
     return copy.deepcopy(cfg)
+
+    
+def get_list_cfg(cfg_list_or_str):
+    """Converts a config value that might be a string into a list."""
+    if isinstance(cfg_list_or_str, (list, tuple)):
+        return list(cfg_list_or_str)
+    elif isinstance(cfg_list_or_str, str):
+        return [cfg_list_or_str]
+    # Handle None case gracefully if needed
+    elif cfg_list_or_str is None:
+        return []
+    else:
+        raise ValueError(f"Expected list, tuple, string, or None, got {type(cfg_list_or_str)}")
