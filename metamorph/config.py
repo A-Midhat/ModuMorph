@@ -114,77 +114,76 @@ _C.ROBOSUITE.CONTROLLERS = [
 
 # --- Other existing keys ---
 _C.ROBOSUITE.GRIPPER_DIM = 1 # Example, might vary per robot
+
 _C.ROBOSUITE.ENV_ARGS = CN() # Keep this for common args like horizon, etc.
 _C.ROBOSUITE.EXTERO_KEYS = []
 
 # --- Helper Function in config.py ---
-def calculate_robosuite_padding(cfg_node):
-    """Calculates MAX_LIMBS and MAX_JOINTS based on TRAINING_MORPHOLOGIES."""
-    max_limbs_needed = 0
-    max_joints_needed = 0
-    print("[Config] Calculating Robosuite padding requirements...")
+# def calculate_robosuite_padding(cfg_node):
+#     """Calculates MAX_LIMBS and MAX_JOINTS based on TRAINING_MORPHOLOGIES."""
+#     max_limbs_needed = 0
+#     max_joints_needed = 0
+#     print("[Config] Calculating Robosuite padding requirements...")
 
-    if not cfg_node.ROBOSUITE.TRAINING_MORPHOLOGIES:
-        print("Warning: TRAINING_MORPHOLOGIES is empty. Using default padding.")
-        cfg_node.MODEL.MAX_LIMBS = cfg_node.MODEL.get('MAX_LIMBS', 11) # Default fallback
-        cfg_node.MODEL.MAX_JOINTS = cfg_node.MODEL.get('MAX_JOINTS', 10) # Default fallback
-        return
+#     if not cfg_node.ROBOSUITE.TRAINING_MORPHOLOGIES:
+#         print("Warning: TRAINING_MORPHOLOGIES is empty. Using default padding.")
+#         cfg_node.MODEL.MAX_LIMBS = cfg_node.MODEL.get('MAX_LIMBS', 11) # Default fallback
+#         cfg_node.MODEL.MAX_JOINTS = cfg_node.MODEL.get('MAX_JOINTS', 10) # Default fallback
+#         return
 
-    # Need to instantiate minimal envs to get accurate counts
-    # Use a simple controller for inspection
-    controller_config = load_controller_config(default_controller="JOINT_VELOCITY")
+#     # Need to instantiate minimal envs to get accurate counts
+#     # Use a simple controller for inspection
+#     controller_config = load_controller_config(default_controller="JOINT_VELOCITY")
 
-    for i, morph in enumerate(cfg_node.ROBOSUITE.TRAINING_MORPHOLOGIES):
-        env_name = cfg_node.ROBOSUITE.ENV_NAMES[i]
-        robots = get_list_cfg(morph) # Ensure list
+#     for i, morph in enumerate(cfg_node.ROBOSUITE.TRAINING_MORPHOLOGIES):
+#         env_name = cfg_node.ROBOSUITE.ENV_NAMES[i]
+#         robots = get_list_cfg(morph) # Ensure list
 
-        temp_env = None
-        try:
-            # Use minimal args for inspection
-            temp_env = robosuite.make(
-                env_name=env_name,
-                robots=robots,
-                controller_configs=[controller_config] * len(robots), # Use simple controller config
-                has_renderer=False, has_offscreen_renderer=False, horizon=10,
-                ignore_done=True, use_camera_obs=False
-            )
+#         temp_env = None
+#         try:
+#             # Use minimal args for inspection
+#             temp_env = robosuite.make(
+#                 env_name=env_name,
+#                 robots=robots,
+#                 controller_configs=[controller_config] * len(robots), # Use simple controller config
+#                 has_renderer=False, has_offscreen_renderer=False, horizon=10,
+#                 ignore_done=True, use_camera_obs=False
+#             )
 
-            current_total_limbs = 0
-            current_total_joints = 0
-            for robot_instance in temp_env.robots:
-                # --- Node/Joint Counting Logic (MATCH WRAPPERS!) ---
-                # This logic MUST exactly mirror how the NodeCentric wrappers will count.
-                num_arm_joints = robot_instance.dof - robot_instance.gripper.dof
-                num_gripper_joints = robot_instance.gripper.dof # Conceptual
-                # Example node count: Base(1) + ArmLinks(num_arm_joints) + ConceptualGripper(1)
-                num_nodes = 1 + num_arm_joints + 1
-                # Example joint count: Arm Joints + Conceptual Gripper Joint(s)
-                num_joints = num_arm_joints + num_gripper_joints # This might differ based on wrapper logic!
-                # --- End Counting Logic ---
+#             current_total_limbs = 0
+#             current_total_joints = 0
+#             for robot_instance in temp_env.robots:
+#                 # --- Node/Joint Counting Logic (MATCH WRAPPERS!) ---
+#                 # This logic MUST exactly mirror how the NodeCentric wrappers will count.
+#                 num_arm_joints = robot_instance.dof - robot_instance.gripper.dof
+#                 num_gripper_joints = robot_instance.gripper.dof # Conceptual
+#                 # Example node count: Base(1) + ArmLinks(num_arm_joints) + ConceptualGripper(1)
+#                 num_nodes = 1 + num_arm_joints + 1
+#                 # Example joint count: Arm Joints + Conceptual Gripper Joint(s)
+#                 num_joints = num_arm_joints + num_gripper_joints # This might differ based on wrapper logic!
+#                 # --- End Counting Logic ---
 
-                current_total_limbs += num_nodes
-                current_total_joints += num_joints
+#                 current_total_limbs += num_nodes
+#                 current_total_joints += num_joints
 
-            max_limbs_needed = max(max_limbs_needed, current_total_limbs)
-            max_joints_needed = max(max_joints_needed, current_total_joints)
-            print(f"  Morphology {i} ({morph}, {env_name}): Limbs={current_total_limbs}, Joints={current_total_joints}")
+#             max_limbs_needed = max(max_limbs_needed, current_total_limbs)
+#             max_joints_needed = max(max_joints_needed, current_total_joints)
+#             print(f"  Morphology {i} ({morph}, {env_name}): Limbs={current_total_limbs}, Joints={current_total_joints}")
 
-        except Exception as e:
-            print(f"Warning: Failed to instantiate morphology {morph} ({env_name}) for padding calculation: {e}")
-        finally:
-            if temp_env:
-                try: temp_env.close()
-                except: pass # Ignore close errors during config calculation
+#         except Exception as e:
+#             print(f"Warning: Failed to instantiate morphology {morph} ({env_name}) for padding calculation: {e}")
+#         finally:
+#             if temp_env:
+#                 try: temp_env.close()
+#                 except: pass # Ignore close errors during config calculation
 
-    # Apply padding factor
-    padding_needed = 1 # Add at least one padding slot
-    cfg_node.MODEL.MAX_LIMBS = max_limbs_needed + padding_needed
-    cfg_node.MODEL.MAX_JOINTS = max_joints_needed + padding_needed
-    print(f"[Config] Set Robosuite MAX_LIMBS={cfg_node.MODEL.MAX_LIMBS}, MAX_JOINTS={cfg_node.MODEL.MAX_JOINTS}")
+#     # Apply padding factor
+#     padding_needed = 1 # Add at least one padding slot
+#     cfg_node.MODEL.MAX_LIMBS = max_limbs_needed + padding_needed
+#     cfg_node.MODEL.MAX_JOINTS = max_joints_needed + padding_needed
+#     print(f"[Config] Set Robosuite MAX_LIMBS={cfg_node.MODEL.MAX_LIMBS}, MAX_JOINTS={cfg_node.MODEL.MAX_JOINTS}")
 
 
-# ------------------TESTING MR-ST Logic----------------------------------------
-#------------------------------------------------------------------------------
 # ----------------------------------------------------------------------------#
 # Unimal Env Options
 # ----------------------------------------------------------------------------#
@@ -741,14 +740,14 @@ def get_default_cfg():
     return copy.deepcopy(cfg)
 
     
-def get_list_cfg(cfg_list_or_str):
+def get_list_cfg(cfg_):
     """Converts a config value that might be a string into a list."""
-    if isinstance(cfg_list_or_str, (list, tuple)):
-        return list(cfg_list_or_str)
-    elif isinstance(cfg_list_or_str, str):
-        return [cfg_list_or_str]
+    if isinstance(cfg_, (list, tuple)):
+        return list(cfg_)
+    elif isinstance(cfg_, str):
+        return [cfg_]
     # Handle None case gracefully if needed
-    elif cfg_list_or_str is None:
+    elif cfg_ is None:
         return []
     else:
-        raise ValueError(f"Expected list, tuple, string, or None, got {type(cfg_list_or_str)}")
+        raise ValueError(f"Expected list, tuple, string, or None, got {type(cfg_)}")

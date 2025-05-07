@@ -1,0 +1,7 @@
+ENV_NAME: Robosuite-v0
+ROBOSUITE: {TRAINING_MORPHOLOGIES: [Panda], ENV_NAMES: [Lift], CONTROLLERS: [JOINT_VELOCITY], ENV_ARGS: {horizon: 50}}
+MODEL: {TYPE: transformer, MAX_LIMBS: 11, MAX_JOINTS: 10, MAX_LIMBS_PER_ROBOT: 11, MAX_JOINTS_PER_ROBOT: 10, OBS_TYPES: [proprioceptive, context, edges, obs_padding_mask, act_padding_mask], OBS_TO_NORM: [proprioceptive]}
+PPO: {NUM_ENVS: 2, GAMMA: 0.99}
+VECENV: {TYPE: DummyVecEnv}
+RNG_SEED: 1
+DEVICE: cpu

@@ -20,6 +20,7 @@ register(
 
 register(
     id="Robosuite-v0",
-    entry_point="metamorph.envs.tasks.task:make_base_env"
+    entry_point="metamorph.envs.tasks.task:make_base_env",
+    max_episode_steps=1000
 )
 CUSTOM_ENVS = ["Unimal-v0", "GeneralWalker2D-v0", "Modular-v0", "Robosuite-v0"] 
