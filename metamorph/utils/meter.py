@@ -7,197 +7,284 @@ from metamorph.config import cfg
 
 
 class AgentMeter:
+    """
+    Tracks statistics for a single morphology encountered during training.
+    Uses deques to maintain sliding windows of recent episode stats and
+    deques of means to track performance over batches of episodes.
+    """
     def __init__(self, name):
         self.name = name
-        self.mean_ep_rews = defaultdict(list)
-        self.mean_pos = []
-        self.mean_vel = []
-        self.mean_metric = []
-        self.mean_ep_len = []
-        self.mean_ep_success_rate = []
-
+        
         self.ep_rew = defaultdict(lambda: deque(maxlen=10))
         self.ep_pos = deque(maxlen=10)
         self.ep_vel = deque(maxlen=10)
         self.ep_metric = deque(maxlen=10)
         self.ep_success = deque(maxlen=10)
-        self.ep_count = 0
         self.ep_len = deque(maxlen=10)
-        self.ep_len_ema = -1
 
-    def add_ep_info(self, infos):
-        for info in infos:
-            if info["name"] != self.name:
-                continue
-            if "episode" in info.keys():
-                self.ep_rew["reward"].append(info["episode"]["r"])
-                self.ep_count += 1
-                
-                if "success" in info["episode"].keys():
-                    self.ep_success.append(info["episode"]["success"])
-                
-                self.ep_len.append(info["episode"]["l"])
-                if self.ep_count == 10:
-                    self.ep_len_ema = np.mean(self.ep_len)
-                elif self.ep_count >= 10:
-                    alpha = cfg.TASK_SAMPLING.EMA_ALPHA
-                    self.ep_len_ema = (
-                        alpha * self.ep_len[-1] + (1 - alpha) * self.ep_len_ema
-                    )
+       
+        self.mean_ep_rews_queue = defaultdict(lambda: deque(maxlen=100))
+        self.mean_pos_queue = deque(maxlen=100)
+        self.mean_vel_queue = deque(maxlen=100)
+        self.mean_metric_queue = deque(maxlen=100)
+        self.mean_ep_len_queue = deque(maxlen=100)
+        self.mean_ep_success_rate_queue = deque(maxlen=100)
 
-                for rew_type, rew_ in info["episode"].items():
-                    if "__reward__" in rew_type:
-                        self.ep_rew[rew_type].append(rew_)
+        # Total episode count for this morphology
+        self.ep_count = 0
+        # Exponential moving average of episode length (optional, based on config)
+        self.ep_len_ema = -1 # Initialize EMA
 
-                if "x_pos" in info:
-                    self.ep_pos.append(info["x_pos"])
-                if "x_vel" in info:
-                    self.ep_vel.append(info["x_vel"])
-                if "metric" in info:
-                    self.ep_metric.append(info["metric"])
+    def add_single_ep_info(self, ep_info: dict):
+        """
+        Adds statistics from a *single* completed episode.
+        These stats are added to the ephemeral deques.
+        """
+        # Add basic episode stats
+        self.ep_rew["reward"].append(ep_info["r"])
+        self.ep_len.append(ep_info["l"])
+        self.ep_count += 1
 
-    def update_mean(self):
-        if len(self.ep_rew["reward"]) == 0:
-            return False
+        # Add optional stats if present in ep_info
+        if "success" in ep_info: self.ep_success.append(ep_info["success"])
+        if "x_pos" in ep_info: self.ep_pos.append(ep_info["x_pos"])
+        if "x_vel" in ep_info: self.ep_vel.append(ep_info["x_vel"])
+        if "metric" in ep_info: self.ep_metric.append(ep_info["metric"])
 
-        for rew_type, rews_ in self.ep_rew.items():
-            self.mean_ep_rews[rew_type].append(round(np.mean(rews_), 2))
+        # Add reward components if present (keys starting with __reward__)
+        for key, value in ep_info.items():
+            if "__reward__" in key and key not in self.ep_rew: # Avoid double-adding '__reward__reward'
+                 self.ep_rew[key].append(value)
 
-        self.mean_pos.append(round(np.mean(self.ep_pos), 2))
-        self.mean_vel.append(round(np.mean(self.ep_vel), 2))
-        self.mean_metric.append(round(np.mean(self.ep_metric), 2))
-        self.mean_ep_len.append(round(np.mean(self.ep_len), 2))
+        # Update EMA for episode length (This logic updates with every episode)
+        if cfg.TASK_SAMPLING.AVG_TYPE == "ema":
+             if self.ep_len_ema == -1: # First episode
+                  self.ep_len_ema = ep_info["l"]
+             else:
+                  alpha = cfg.TASK_SAMPLING.EMA_ALPHA
+                  self.ep_len_ema = alpha * ep_info["l"] + (1 - alpha) * self.ep_len_ema
+        elif cfg.TASK_SAMPLING.AVG_TYPE == "moving_window":
+             # EMA is not used, mean is over the deque window handled by maxlen
+             pass # ep_len deque already updated
 
-        if len(self.ep_success) > 0:
-            self.mean_ep_success_rate.append(round(np.mean(self.ep_success), 3))
 
-        return True
+    def calculate_and_store_mean(self) -> bool:
+        """
+        Calculates the mean of the current ephemeral deque stats and appends
+        them to the historical mean queues.
+        Returns True if any episodes were processed in this batch, False otherwise.
+        """
+        # Check if any episodes were added since the last update
+        if not self.ep_rew["reward"]:
+            return False # No new episodes to process
+
+        for rew_type, rews_list in self.ep_rew.items():
+             if rews_list: # Only calculate if deque is not empty
+                 self.mean_ep_rews_queue[rew_type].append(round(np.mean(list(rews_list)), 2)) # Convert deque to list for mean
+
+        if self.ep_pos: self.mean_pos_queue.append(round(np.mean(list(self.ep_pos)), 2))
+        if self.ep_vel: self.mean_vel_queue.append(round(np.mean(list(self.ep_vel)), 2))
+        if self.ep_metric: self.mean_metric_queue.append(round(np.mean(list(self.ep_metric)), 2))
+        if self.ep_len: self.mean_ep_len_queue.append(round(np.mean(list(self.ep_len)), 2))
+        if self.ep_success: self.mean_ep_success_rate_queue.append(round(np.mean(list(self.ep_success)), 3))
+
+
+       
+        return True 
+
 
     def log_stats(self, max_name_len):
-        #---DEBUG...---
-        #print(f"AgentMeter {self.name}: log_stats called. Reward queue len: {len(self.ep_rew['reward'])}")
-        #--------------
-        if len(self.ep_rew["reward"]) == 0:
-            return
-        ep_rew = self.ep_rew["reward"]
-        current_success_rate = self.mean_ep_success_rate[-1] if self.mean_ep_success_rate else "N/A"
-        # print(
-        #     "Agent {:>{size}}: mean/median reward {:>4.0f}/{:<4.0f}, "
-        #     "min/max reward {:>4.0f}/{:<4.0f}, "
-        #     # "#Ep: {:>7.0f}, avg/ema Ep len: {:>4.0f}/{:>4.0f}".format(
-        #     "#Ep: {:>7.0f}, success: {}, avg Ep len: {:>4.0f},".format(
-        #         self.name,
-        #         np.mean(ep_rew),
-        #         np.median(ep_rew),
-        #         np.min(ep_rew),
-        #         np.max(ep_rew),
-        #         self.ep_count,
-        #         np.mean(self.ep_len),
-        #         self.ep_len_ema,
-        #         current_success_rate,
-        #         size=max_name_len,
-                
-        #     )
-        # )
+        """Logs the most recent average stats for this specific morphology."""
+        # Check if there are any historical mean stats to log
+        if not self.mean_ep_rews_queue.get("reward"):
+            return # No stats collected yet
+
+        # Get the latest calculated mean stats from the historical mean queues
+        latest_mean_rew = self.mean_ep_rews_queue["reward"][-1]
+        latest_mean_success = self.mean_ep_success_rate_queue[-1] if self.mean_ep_success_rate_queue else "N/A"
+        latest_mean_ep_len = self.mean_ep_len_queue[-1] if self.mean_ep_len_queue else "N/A"
+
         print(
-             "Agent {:>{size}}: mean/median reward {:>4.0f}/{:<4.0f}, "
-             "min/max reward {:>4.0f}/{:<4.0f}, "
-             "#Ep: {:>7.0f}, success: {}, avg Ep len: {:>4.0f},".format(
+             "Agent {:>{size}}: mean reward {:>8.2f}, success: {}, avg Ep len: {:>5.1f}".format(
                  self.name,
-                np.mean(ep_rew) if ep_rew else 0.0, 
-                np.median(ep_rew),
-                np.min(ep_rew),
-                np.max(ep_rew),
-                self.ep_count,
-                current_success_rate,   
-                self.ep_len_ema,       
-                current_success_rate,
-                size=max_name_len,
+                 latest_mean_rew,
+                 latest_mean_success,
+                 latest_mean_ep_len,
+                 size=max_name_len,
              )
         )
 
+    def get_stats(self):
+        """
+        Returns the history of calculated mean statistics for this morphology.
+        These are the values stored in the mean_*_queue deques.
+        """
+        # Convert deques to lists for static output
+        stats = {
+            "reward": list(self.mean_ep_rews_queue["reward"]),
+            "reward_components": {k: list(v) for k, v in self.mean_ep_rews_queue.items()},
+            "pos": list(self.mean_pos_queue),
+            "vel": list(self.mean_vel_queue),
+            "metric": list(self.mean_metric_queue),
+            "ep_len": list(self.mean_ep_len_queue),
+            "success_rate": list(self.mean_ep_success_rate_queue),
+            "total_episodes": self.ep_count 
+        }
+        return stats
+
 
 class TrainMeter:
+    """
+    Aggregates statistics across all active AgentMeters for different morphologies.
+    Dynamically creates AgentMeters as new morphology names are encountered.
+    Calculates overall average statistics across all tracked morphologies.
+    """
     def __init__(self):
-        self.agents = cfg.ENV.WALKERS
-        self.max_name_len = max([len(a) for a in self.agents])
-        self.agent_meters = {agent: AgentMeter(agent) for agent in self.agents}
+        # AgentMeters are now dynamically added as morphologies are encountered
+        self.agent_meters = {} # Dictionary to store AgentMeter instances, keyed by morphology name
 
-        # Env stats
+        # Maximum length of morphology names for formatted printing
+        self.max_name_len = 0
+
+        self.overall_mean_ep_rews = defaultdict(list)
+        self.overall_mean_pos = []
+        self.overall_mean_vel = []
+        self.overall_mean_metric = []
+        self.overall_mean_ep_len = []
+        self.overall_mean_ep_success_rate = []
+
+        # Other training stats not specific to a morphology
         self.train_stats = defaultdict(list)
-        self.mean_ep_rews = defaultdict(list)
-        self.mean_pos = []
-        self.mean_vel = []
-        self.mean_metric = []
-        self.mean_ep_len = []
-        self.mean_ep_success_rate = [] # for overall success rate
 
-    def add_train_stat(self, stat_type, stat_value):
+
+    def add_train_stat(self, stat_type: str, stat_value: float):
+        """Adds a training statistic (e.g., loss, KL divergence)."""
         self.train_stats[stat_type].append(stat_value)
 
-    def add_ep_info(self, infos):
-        for _, agent_meter in self.agent_meters.items():
-            agent_meter.add_ep_info(infos)
+    def add_ep_info(self, infos: list):
+        """
+        Processes a list of info dictionaries from a VecEnv step.
+        Adds episode info to the appropriate AgentMeter.
+        Dynamically creates AgentMeters for new morphology names.
+        """
+        for info in infos:
+            if "episode" in info:
+                # Episode finished in one of the environments
+                morphology_name = info.get("name", "unknown_morphology") # Get morphology name
+
+                # Create AgentMeter if this is the first time seeing this morphology
+                if morphology_name not in self.agent_meters:
+                    self.agent_meters[morphology_name] = AgentMeter(morphology_name)
+                    self.max_name_len = max(self.max_name_len, len(morphology_name))
+                    # print(f"TrainMeter: Tracking new morphology: {morphology_name}") 
+
+                self.agent_meters[morphology_name].add_single_ep_info(info["episode"])
+
 
     def update_mean(self):
+        """
+        Updates all individual AgentMeters and then calculates the overall
+        mean statistics across all morphologies encountered so far.
+        This is typically called after collecting a batch of experience.
+        """
+        
+        updated_meters_count = 0
         for _, agent_meter in self.agent_meters.items():
-            success = agent_meter.update_mean()
-            if not success:
-                return
+            if agent_meter.calculate_and_store_mean(): # If the meter had new episodes
+                updated_meters_count += 1
 
-        metrics = ["mean_pos", "mean_vel", "mean_metric", "mean_ep_len", "mean_ep_success_rate"]
-        for metric in metrics:
-            metric_list = []
-            for _, agent_meter in self.agent_meters.items():
-                metric_list.append(getattr(agent_meter, metric)[-1])
+        # Only calculate overall means if at least one meter had new episodes processed
+        if updated_meters_count == 0:
+             return # No new stats to average
 
-            # getattr(self, metric).append(round(np.mean(metric_list), 2))
-            getattr(self, metric).append(round(np.mean(metric_list), 3))
+        # Calculate overall mean statistics by averaging the latest mean from each meter
+        # We only average over meters that have collected at least one episode in total (ep_count > 0)
+        # and had new episodes processed in this batch (indicated by calculate_and_store_mean returning True and having new mean in queue)
 
-        rew_types = self.agent_meters[self.agents[0]].mean_ep_rews.keys()
+        active_meters = [m for m in self.agent_meters.values() if m.ep_count > 0 and m.mean_ep_rews_queue.get("reward")] # Only include meters that have logged at least one mean batch
 
-        for rew_type in rew_types:
-            rew_list = []
-            for _, agent_meter in self.agent_meters.items():
-                rew_list.append(agent_meter.mean_ep_rews[rew_type][-1])
+        if not active_meters:
+            return # No active meters with logged means
 
-            self.mean_ep_rews[rew_type].append(round(np.mean(rew_list), 2))
+        # Collect the latest mean values from each active meter
+        latest_means = {
+            "reward": [], "pos": [], "vel": [], "metric": [], "ep_len": [], "success_rate": []
+        }
+        reward_component_types = set()
+        for meter in active_meters:
+            latest_means["reward"].append(meter.mean_ep_rews_queue["reward"][-1])
+            if meter.mean_pos_queue: latest_means["pos"].append(meter.mean_pos_queue[-1])
+            if meter.mean_vel_queue: latest_means["vel"].append(meter.mean_vel_queue[-1])
+            if meter.mean_metric_queue: latest_means["metric"].append(meter.mean_metric_queue[-1])
+            if meter.mean_ep_len_queue: latest_means["ep_len"].append(meter.mean_ep_len_queue[-1])
+            if meter.mean_ep_success_rate_queue: latest_means["success_rate"].append(meter.mean_ep_success_rate_queue[-1])
+
+            # Collect all reward component types across meters
+            reward_component_types.update(meter.mean_ep_rews_queue.keys())
+
+
+        # Calculate the overall average and append to overall history lists
+        if latest_means["reward"]: self.overall_mean_ep_rews["reward"].append(round(np.mean(latest_means["reward"]), 2))
+        if latest_means["pos"]: self.overall_mean_pos.append(round(np.mean(latest_means["pos"]), 2))
+        if latest_means["vel"]: self.overall_mean_vel.append(round(np.mean(latest_means["vel"]), 2))
+        if latest_means["metric"]: self.overall_mean_metric.append(round(np.mean(latest_means["metric"]), 2))
+        if latest_means["ep_len"]: self.overall_mean_ep_len.append(round(np.mean(latest_means["ep_len"]), 2))
+        if latest_means["success_rate"]: self.overall_mean_ep_success_rate.append(round(np.mean(latest_means["success_rate"]), 3))
+
+        # Calculate overall mean for reward components
+        for rew_type in reward_component_types:
+            rew_comp_means = [m.mean_ep_rews_queue[rew_type][-1] for m in active_meters if m.mean_ep_rews_queue.get(rew_type)]
+            if rew_comp_means:
+                 self.overall_mean_ep_rews[rew_type].append(round(np.mean(rew_comp_means), 2))
+
 
     def log_stats(self):
-        for _, agent_meter in self.agent_meters.items():
-            agent_meter.log_stats(self.max_name_len)
-        
-        latest_overall_success = self.mean_ep_success_rate[-1] if self.mean_ep_success_rate else "N/A"
+        """
+        Logs the most recent average stats for each individual morphology
+        and the overall average stats across all morphologies.
+        """
+        # Log stats for each individual morphology that has collected any episodes
+        for name, agent_meter in self.agent_meters.items():
+            if agent_meter.ep_count > 0: # Only log if meter is active
+                 agent_meter.log_stats(self.max_name_len)
 
-        if len(self.mean_ep_rews["reward"]) > 0:
-            # print("Agent {:>{size}}: mean/------ reward {:>4.0f}, ".format(
-            print("Agent {:>{size}}: mean reward {:>4.0f},  mean success: {}".format(
-                    "__env__",
-                    self.mean_ep_rews["reward"][-1],
-                    latest_overall_success,
-                    size=self.max_name_len
-                )
+        # Log overall environment stats if any overall stats have been calculated
+        if self.overall_mean_ep_rews.get("reward"):
+            latest_overall_reward = self.overall_mean_ep_rews["reward"][-1]
+            latest_overall_success = self.overall_mean_ep_success_rate[-1] if self.overall_mean_ep_success_rate else "N/A"
+
+            print(
+                 "Agent {:>{size}}: mean reward {:>8.2f}, mean success: {}".format(
+                     "__env__", # Special name for overall stats
+                     latest_overall_reward,
+                     latest_overall_success,
+                     size=self.max_name_len
+                 )
             )
+        else:
+             print(f"Agent {'__env__':>{self.max_name_len}}: No overall stats yet.")
+
 
     def get_stats(self):
+        """
+        Returns a dictionary containing historical mean stats for each individual
+        morphology and the overall historical mean stats.
+        """
         stats = {}
-        for agent, agent_meter in self.agent_meters.items():
-            stats[agent] = {
-                "reward": agent_meter.mean_ep_rews,
-                "pos": agent_meter.mean_pos,
-                "vel": agent_meter.mean_vel,
-                "metric": agent_meter.mean_metric,
-                "ep_len": agent_meter.mean_ep_len,
-                "success_rate": agent_meter.mean_ep_success_rate,
-            }
+        # Get stats for each individual morphology that has collected any episodes
+        for agent_name, agent_meter in self.agent_meters.items():
+            if agent_meter.ep_count > 0: # Only include active meters
+                 stats[agent_name] = agent_meter.get_stats()
 
         stats["__env__"] = {
-                "reward": self.mean_ep_rews,
-                "pos": self.mean_pos,
-                "vel": self.mean_vel,
-                "metric": self.mean_metric,
-                "ep_len": self.mean_ep_len,
-                "success_rate": self.mean_ep_success_rate,
+                "reward": list(self.overall_mean_ep_rews.get("reward", [])),
+                "reward_components": {k: list(v) for k, v in self.overall_mean_ep_rews.items()},
+                "pos": list(self.overall_mean_pos),
+                "vel": list(self.overall_mean_vel),
+                "metric": list(self.overall_mean_metric),
+                "ep_len": list(self.overall_mean_ep_len),
+                "success_rate": list(self.overall_mean_ep_success_rate),
         }
         stats["__env__"].update(dict(self.train_stats))
+
         return stats
