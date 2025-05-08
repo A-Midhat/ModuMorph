@@ -229,20 +229,16 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
         self.global_max_limbs = cfg.MODEL.MAX_LIMBS
         self.global_max_joints = cfg.MODEL.MAX_JOINTS
 
-        # --- 2. Define Feature Structure ---
         self._define_feature_sets()
         self.limb_obs_size = self._calculate_feature_dim(self.proprio_feature_config)
         self.context_obs_size = self._calculate_feature_dim(self.context_feature_config)
 
-        # --- 3. Initialize Global Arrays ---
         self._init_global_arrays()
 
-        # --- 4. Define Final Observation Space (Globally Padded) ---
         # This MUST be the observation space the wrapper exposes
         self.observation_space = self._define_observation_space()
         print(f"  [NodeCentricObs] Global Obs Space Defined. Keys: {list(self.observation_space.spaces.keys())}")
 
-        # --- 5. Initialize Structure based on Initial State ---
         # The base env was likely reset during super().__init__().
         # We now analyze the structure based on that initial state.
         self._structure_initialized = False # Set explicitly
@@ -253,7 +249,6 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
              # Handle error, maybe raise or set a flag indicating failed init
              self._structure_initialized = False # Ensure it's False on error
 
-    # --- _init_global_arrays, _define_feature_sets, _calculate_feature_dim,
     #     _define_observation_space (Keep implementations as before) ---
     def _init_global_arrays(self):
         # (Implementation from previous step)
@@ -266,7 +261,6 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
 
 
     def _define_feature_sets(self):
-        # (Implementation from previous step)
         self.proprio_feature_config = {
             'base': [('fixed_encoding', 3)],
             'arm': [('joint_pos_cos', 1), ('joint_pos_sin', 1), ('joint_vel', 1), ('body_pos_world', 3), ('body_quat_world', 4), ('body_velp_world', 3), ('body_velr_world', 3)],
@@ -281,17 +275,14 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
         }
 
     def _calculate_feature_dim(self, feature_config):
-        # (Implementation from previous step)
         max_dim = 0
         for node_type, features in feature_config.items():
             current_dim = sum(dim for _, dim in features)
             max_dim = max(max_dim, current_dim)
-        # Add safety check for zero dim
         return max_dim if max_dim > 0 else 1
 
 
     def _define_observation_space(self):
-        # (Implementation from previous step)
         inf = np.float32(np.inf)
         obs_spaces = OrderedDict()
         obs_spaces['proprioceptive'] = Box(-inf, inf, (self.global_max_limbs * self.limb_obs_size,), np.float32)
@@ -312,9 +303,7 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
 
 
     # --- Structure Definition ---
-        # Inside RobosuiteNodeCentricObservation
     def _define_structure_and_masks(self):
-        # ... (reset global arrays, get num_robots, metadata, start_indices) ...
         self._init_global_arrays() # Reset global arrays first
 
         self.num_robots_instance = self.base_env_ref.num_robots
@@ -403,7 +392,6 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
                      parent_mujoco_id = parent_ids[child_mujoco_id]
                      parent_body_name = self.model.body_id2name(parent_mujoco_id)
 
-                     # Check if parent exists within *this robot's* identified nodes
                      if parent_body_name in current_robot_body_name_to_local_node_idx:
                          parent_local_node_idx = current_robot_body_name_to_local_node_idx[parent_body_name]
                          # Calculate GLOBAL indices for the edge list
@@ -456,7 +444,7 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
                  # Arm/Hand nodes are actuated if they correspond to an arm joint
                  if node_type == 'arm' or node_type == 'hand':
                      # Map local node index back to potential arm joint index
-                     # Assumes Base=0, Link1=1 (driven by Joint0), Link2=2 (driven by Joint1)...
+                     # Assumes Base=0, Link1=1 (driven by Joint0), Link2=2 (driven by Joint1) TODO: check if our assumption of the base link si good.
                      arm_joint_local_idx = local_node_idx - 1
                      if 0 <= arm_joint_local_idx < num_arm_joints_in_metadata:
                           self.act_padding_mask_global[global_node_idx] = False
@@ -472,7 +460,6 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
             self.metadata['per_robot_action_indices'].append(robot_action_indices)
 
         # --- Finalize Global Edges Padding (after loop) ---
-        # (Logic remains the same)
         num_real_edges = len(all_edges) // 2
         if num_real_edges > self.global_max_joints:
              # print(f"Warning: Total real edges ({num_real_edges}) > MAX_JOINTS ({self.global_max_joints}). Truncating.")
@@ -490,7 +477,6 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
         self._structure_initialized = True
 
 
-    # --- Feature Extraction (`_extract_features_per_node` - Keep implementation) ---
     def _extract_features_per_node(self, obs_dict):
         # (Implementation from previous step - should work if structure is initialized)
         if not hasattr(self, '_structure_initialized') or not self._structure_initialized:
@@ -567,7 +553,6 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
                  self.node_proprio_global[global_node_idx, :] = node_proprio_vec
 
 
-                 # --- B. Extract Context ---
                  type_encoding = {'base': 0, 'arm': 1, 'hand': 2, 'gripper': 3}
                  node_type_one_hot = np.zeros(4); node_type_one_hot[type_encoding[node_type]] = 1.0
                  mujoco_joint_ids_for_node = local_node_idx_to_mujoco_joint_ids.get(local_node_idx, [])
@@ -575,7 +560,6 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
                  for key, expected_dim in config_c:
                      feature = None
                      g_dim = cfg.ROBOSUITE.get('GRIPPER_DIM', 1)
-                     # (Context extraction logic as before)
                      if key == 'node_type_encoding': feature = node_type_one_hot
                      elif key == 'is_fixed': feature = np.array([1.0])
                      elif key in ['joint_type', 'joint_limits', 'joint_damping', 'joint_frictionloss', 'joint_armature']:
@@ -636,9 +620,8 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
     # --- observation() and reset() methods ---
     def observation(self, obs):
         """Processes the raw obs dict into the final node-centric format."""
-        # Ensure structure is defined *if needed*
         if not hasattr(self, '_structure_initialized') or not self._structure_initialized:
-            # print("Structure not initialized, defining now...") # Optional print
+            # print("Structure not initialized, defining now...")
             try:
                 self._define_structure_and_masks()
             except Exception as e:
@@ -683,7 +666,6 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
 
 
 
-# === Node-Centric Action Wrapper (Phase 3 Implementation) ===
 class RobosuiteNodeCentricAction(gym.ActionWrapper):
     """
     Maps the policy's globally padded, node-centric action output to the base
@@ -694,7 +676,6 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
         super().__init__(env)
         print("[Wrapper Init] RobosuiteNodeCentricAction - Phase 3")
 
-        # --- 1. Get References and Global Config ---
         # We need access to the Obs wrapper to get metadata (masks, indices)
         # and the Base wrapper to get the base action space dims.
         self.obs_wrapper_ref = self._find_wrapper_ref(RobosuiteNodeCentricObservation)
@@ -706,7 +687,6 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
         # Global padding limits from cfg
         self.global_max_limbs = cfg.MODEL.MAX_LIMBS
 
-        # --- 2. Define Padded Action Space (Policy Output) ---
         # The policy outputs one action value potentially relevant to each *global* node slot.
         # The action mask will determine which ones are actually used.
         self.padded_action_dim_global = self.global_max_limbs
@@ -715,7 +695,6 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
         # This wrapper *redefines* the action space the agent interacts with.
         self.action_space = Box(low=low, high=high, dtype=np.float32)
 
-        # --- 3. Store Info Needed for Mapping (Fetched Dynamically) ---
         # These will be updated on reset via _update_mapping_info()
         self.current_act_mask = None
         self.current_per_robot_action_indices = None
@@ -753,7 +732,6 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
         self.current_num_robots = self.base_env_ref.num_robots
         self.current_base_action_space = self.base_env_ref.action_space # Get current base space
 
-        # --- Validation ---
         if self.current_act_mask is None or \
            self.current_per_robot_action_indices is None or \
            not isinstance(self.current_per_robot_action_indices, list) or \
@@ -772,16 +750,13 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
         """Maps the policy's padded action to the base environment's action space."""
         action = np.asarray(action)
 
-        # --- 1. Validate Input Action Shape ---
         if action.shape != self.action_space.shape:
              raise ValueError(f"Input action shape {action.shape} != expected wrapper action space {self.action_space.shape}")
 
-        # --- 2. Ensure Mapping Info is Current ---
         if self.current_act_mask is None:
             # print("Warning: Action mapping info not initialized. Attempting update.") # Optional
             self._update_mapping_info()
 
-        # --- 3. Extract Valid Action Values ---
         try:
             # Mask is True for padded/non-actuated slots
             valid_action_values = action[~self.current_act_mask]
@@ -789,7 +764,6 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
              print(f"Error applying action mask: {e}. Mask shape: {self.current_act_mask.shape}, Action shape: {action.shape}")
              return np.zeros_like(self.current_base_action_space.low)
 
-        # --- 4. Reconstruct Action Per Robot ---
         per_robot_final_actions = []
         current_index_in_valid = 0
 
@@ -818,11 +792,9 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
             values_for_robot = valid_action_values[current_index_in_valid : end_index]
             current_index_in_valid = end_index
 
-            # --- 5. Separate based on *number* of actuated nodes, but shape based on *expected dims* ---
             arm_actions_raw = values_for_robot[:num_actuated_arm_nodes]
             gripper_action_raw = values_for_robot[num_actuated_arm_nodes:]
 
-            # --- 6. Process Arm Actions - Use *true_expected_arm_dim* ---
             if len(arm_actions_raw) < true_expected_arm_dim:
                  # This shouldn't happen if node unmasking is correct, but handle defensively
                  print(f"Warning: Robot {robot_idx} read {len(arm_actions_raw)} arm values, but expected {true_expected_arm_dim}. Padding with zeros.")
@@ -836,7 +808,6 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
             else: # Length matches exactly
                  arm_actions_final = arm_actions_raw
 
-            # --- 7. Process Gripper Action - Use *expected_gripper_dim* ---
             # (Keep the logic from previous step - repeat single value if needed)
             if len(gripper_action_raw) == 1 and expected_gripper_dim >= 1:
                  gripper_action_final = np.repeat(gripper_action_raw[0], expected_gripper_dim)
@@ -849,10 +820,8 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
                  gripper_action_final = -1.0 * np.ones(expected_gripper_dim, dtype=np.float32)
 
 
-            # --- 8. Combine for this Robot ---
             final_action_r = np.concatenate([arm_actions_final, gripper_action_final])
 
-            # --- 9. Validate combined dimension for THIS robot ---
             if final_action_r.shape[0] != expected_total_dim_r:
                  print(f"ERROR: Final action dim for robot {robot_idx} ({final_action_r.shape[0]}) != expected ({expected_total_dim_r}). Correcting.") # Corrected print
                  corrected_action_r = np.zeros(expected_total_dim_r, dtype=np.float32)
@@ -862,7 +831,6 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
 
             per_robot_final_actions.append(final_action_r)
 
-        # --- 10. Concatenate All Robot Actions & Final Clip ---
         try:
             final_action_global = np.concatenate(per_robot_final_actions)
         except ValueError as e:
@@ -878,7 +846,6 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
 
         return clipped_action.astype(self.current_base_action_space.dtype)
 
-    # --- reset and _update_mapping_info methods remain the same ---
     def reset(self, **kwargs):
         ret = self.env.reset(**kwargs)
         self._update_mapping_info()
@@ -901,10 +868,8 @@ class RobosuiteMLPFlattener(gym.ObservationWrapper):
              raise TypeError("RobosuiteMLPFlattener must wrap RobosuiteEnvWrapper.")
         self.base_env_ref = self.env
 
-        # --- 1. Get Pre-calculated Max Flat Dimension ---
         self.max_flat_obs_dim = cfg.MODEL.get('MAX_FLAT_OBS_DIM')
         if self.max_flat_obs_dim is None or self.max_flat_obs_dim <= 0:
-            # This SHOULD have been calculated in train_ppo.py. Error/Fallback here.
             print("ERROR: cfg.MODEL.MAX_FLAT_OBS_DIM not set or invalid! This must be pre-calculated.")
             print("       Attempting estimation based on initial env (may be incorrect).")
             try:
@@ -920,11 +885,9 @@ class RobosuiteMLPFlattener(gym.ObservationWrapper):
                  print(f"  Fallback estimation failed: {e}. Using hardcoded 100.")
                  self.max_flat_obs_dim = 100 # Hardcoded fallback
 
-        # --- 2. Global Padding Limits for Dummy Elements ---
         self.global_max_limbs = cfg.MODEL.MAX_LIMBS
         self.global_max_joints = cfg.MODEL.MAX_JOINTS
 
-        # --- 3. Define Observation Space ---
         inf = np.float32(np.inf)
         dmsk = (self.global_max_limbs,)
         dedg = (2 * self.global_max_joints,)
