@@ -1,3 +1,4 @@
+# TODO: Finish adaptiing to robosuite 
 import argparse
 import os
 import torch
@@ -6,6 +7,7 @@ import numpy as np
 import pickle
 import json
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 from metamorph.config import cfg
 from metamorph.algos.ppo.ppo import PPO
@@ -21,7 +23,7 @@ from tools.train_ppo import set_cfg_options
 torch.manual_seed(0)
 
 
-# evaluate on a single robot
+# evaluate on a single robot for a single episode
 def evaluate(policy, env):
     episode_return = np.zeros(cfg.PPO.NUM_ENVS)
     not_done = np.ones(cfg.PPO.NUM_ENVS)
@@ -38,6 +40,65 @@ def evaluate(policy, env):
             break
     return episode_return
 
+# Mostly going to use this for robosuite (Mutliple episodes)
+def evaluate_mutli(policy, env, num_eps):
+    num_envs = cfg.PPO.NUM_ENVS 
+    all_ep_returns = []
+    ep_len = []
+    ep_successes = []
+    obs = env.reset()
+    curr_ret = np.zeros(num_envs)
+    curr_len = np.zeros(num_envs)
+    ep_completed = 0 
+
+    pbar = tqdm(total=num_eps, desc="Evaluating on Multiple Episodes", leave=False)
+
+    while ep_completed < num_eps: 
+        with torch.no_grad():
+            # we don't want val only act
+            _, act, _, _, _ = policy.act(obs, compute_val=False)
+        try:
+            obs, reward, step_dones, infos = env.step(act)
+        except:
+            print(f"Error in step. Aboritng agent eval")
+            break 
+        
+        curr_ret += reward.cpu().numpy().flatten() # we need cpu for numpy 
+        curr_len += 1  # step count for each env 
+
+        for i in range(num_envs):
+            if step_dones[i]:
+                all_ep_returns.append(curr_ret[i])
+                ep_len.append(curr_len[i])
+                success = infos[i].get("success", False) or infos[i].get("episode", {}).get("success", False)
+                ep_successes.append(success)
+                ep_completed += 1
+                pbar.update(1) 
+
+            # resets for completed episodes
+            curr_ret[i] = 0
+            curr_len[i] = 0
+        if ep_completed >= num_eps:
+            break 
+    pbar.close()
+
+    if ep_completed < num_eps:
+        print(f"Warning: Only episodes completed ({ep_completed}/{num_eps}).")
+    
+
+    results = {
+        "all_returns": all_ep_returns,
+        "mean_return": np.mean(all_ep_returns) if all_ep_returns else 0,
+        "std_return": np.std(all_ep_returns) if all_ep_returns else 0,
+        "median_return": np.median(all_ep_returns) if all_ep_returns else 0,
+        "min_return": np.min(all_ep_returns) if all_ep_returns else 0,
+        "max_return": np.max(all_ep_returns) if all_ep_returns else 0,
+        "mean_length": np.mean(ep_len) if ep_len else 0,
+        "success_rate": np.mean(ep_successes) if ep_successes else 0,
+        "num_episodes": len(all_ep_returns),
+    }
+
+    return results 
 
 def evaluate_model(model_path, agent_path, policy_folder, suffix=None, terminate_on_fall=True, deterministic=False):
     '''

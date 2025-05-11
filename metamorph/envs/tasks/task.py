@@ -7,6 +7,8 @@ from metamorph.envs.tasks.obstacle import make_env_obstacle
 from metamorph.envs.tasks.incline import make_env_incline
 from metamorph.envs.tasks.exploration import make_env_exploration
 from metamorph.envs.wrappers.select_keys import SelectKeysWrapper
+
+from metamorph.envs.wrappers.robosuite_wrappers import RobosuiteEnvWrapper
 from metamorph.utils import file as fu
 
 

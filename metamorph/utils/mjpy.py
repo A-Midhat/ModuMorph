@@ -1,8 +1,8 @@
 import itertools
 
-from lxml import etree
-from mujoco_py import MjSim
-from mujoco_py import load_model_from_xml
+# from lxml import etree
+# from mujoco_py import MjSim
+# from mujoco_py import load_model_from_xml
 
 
 def mj_name2id(sim, type_, name):
@@ -15,6 +15,8 @@ def mj_name2id(sim, type_, name):
         return sim.model.body_name2id(name)
     elif type_ == "sensor":
         return sim.model.sensor_name2id(name)
+    elif type_ == "joint":
+        return sim.model.joint_name2id(name)
     else:
         raise ValueError("type_ {} is not supported.".format(type_))
 
@@ -29,6 +31,8 @@ def mj_id2name(sim, type_, id_):
         return sim.model.body_id2name(id_)
     elif type_ == "sensor":
         return sim.model.sensor_id2name(id_)
+    elif type_ == "joint":
+        return sim.model.joint_id2name(id_)
     else:
         raise ValueError("type_ {} is not supported.".format(type_))
 

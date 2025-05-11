@@ -39,9 +39,36 @@ _C.LOGGING = CN()
 
 _C.LOGGING.USE_WANDB = False
 # change to None and write them in .yaml file
-_C.LOGGING.ENTITY = "alimidhat62-org" 
+_C.LOGGING.ENTITY = None  
 
-_C.LOGGING.PROJECT = "modumorph-ppo"
+_C.LOGGING.PROJECT = "Modumorph-Robosuite"
+
+# ----------------------------------------------------------------------------#
+# Robosuite Env Options
+# ----------------------------------------------------------------------------#
+
+_C.ROBOSUITE = CN() 
+# Either "SR" or "MR" for now its MR/SR-ST, TODO: add SR-MT
+_C.ROBOSUITE.TASK_TYPE = "SR" # the three below should be length 1
+
+# pass robosuite robot name, if using TwoArmEnv, pass a sublist, e.g. ["Sawyer", "Panda"]
+_C.ROBOSUITE.TRAINING_MORPHOLOGIES = ["Panda"]
+
+# task name, and if training on MR, we pass the same number as the number of robots
+# pass ["TwoArm<Task_name>"] for TwoArmEnv
+_C.ROBOSUITE.ENV_NAMES = ["Lift"]
+
+# For TwoArmEnv, pass sublist
+_C.ROBOSUITE.CONTROLLERS = ["JOINT_VELOCITY"]
+
+# most cases 1
+_C.ROBOSUITE.GRIPPER_DIM = 1
+
+# Robosuite env options (make)
+_C.ROBOSUITE.ENV_ARGS = CN()
+# used for late fusion in transformer (exteroceptive observation)
+_C.ROBOSUITE.EXTERO_KEYS = ["object-state"] 
+
 
 # ----------------------------------------------------------------------------#
 # Unimal Env Options
@@ -86,8 +113,9 @@ _C.ENV.KEYS_TO_KEEP = []
 # translation invariance
 _C.ENV.SKIP_SELF_POS = False
 
+# Not really used by robosuite, but just to beautify the logs in wandb
 # Specify task. Can be locomotion, manipulation
-_C.ENV.TASK = "locomotion"
+_C.ENV.TASK = "Robosuite-Manipulation"
 
 # Optional wrappers to add to task. Most wrappers for a task will eventually be
 # hardcoded in make_env_task func. Put wrappers which you want to experiment
@@ -398,7 +426,8 @@ _C.MODEL.OBS_TO_NORM = ["proprioceptive"]
 _C.MODEL.BASE_CONTEXT_NORM = 'running'
 
 # Wrappers to add specific to model
-_C.MODEL.WRAPPERS = ["MultiUnimalNodeCentricObservation", "MultiUnimalNodeCentricAction"]
+# for robosuite wrappers will be selected based on model type
+_C.MODEL.WRAPPERS = []
 
 # --------------------------------------------------------------------------- #
 # Transformer Options
@@ -527,7 +556,7 @@ _C.CFG_DEST = "config.yaml"
 _C.RNG_SEED = 1
 
 # Name of the environment used for experience collection
-_C.ENV_NAME = "Unimal-v0"
+_C.ENV_NAME = "Robosuite-v0"
 
 # Use GPU
 _C.DEVICE = "cuda:0"
@@ -561,7 +590,7 @@ _C.UNIMAL_TEMPLATE = "./metamorph/envs/assets/unimal.xml"
 _C.SAVE_HIST_WEIGHTS = False
 
 # Optional description for exp
-_C.DESC = ""
+_C.DESC = "Modumorph for Robosuite manipulation tasks"
 
 # How to handle mjstep exception
 _C.EXIT_ON_MJ_STEP_EXCEPTION = False
@@ -585,3 +614,16 @@ def load_cfg(out_dir, cfg_dest="config.yaml"):
 
 def get_default_cfg():
     return copy.deepcopy(cfg)
+
+# robosuite helper function 
+def get_list_cfg(cfg_):
+    """TO convert the list of string to list of string"""
+    if isinstance(cfg_, (list, tuple)):
+        return list(cfg_)
+    elif isinstance(cfg_, str):
+        return [cfg_]
+    elif cfg_ is None:
+        return []
+    else:
+        print(f"Warning: {cfg_} is not a list or string")
+        return []

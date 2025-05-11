@@ -6,9 +6,15 @@ import torch
 
 from gym.envs.registration import register
 
+import robosuite 
+from robosuite.controllers import load_controller_config
+
 from metamorph.algos.ppo.ppo import PPO
 from metamorph.config import cfg
 from metamorph.config import dump_cfg
+from metamorph.config import get_list_cfg
+
+from metamorph.utils import robosuite_utils as ru 
 from metamorph.utils import file as fu
 from metamorph.utils import sample as su
 from metamorph.utils import sweep as swu
@@ -16,9 +22,34 @@ from metamorph.utils import sweep as swu
 
 def set_cfg_options():
     calculate_max_iters()
-    maybe_infer_walkers()
-    calculate_max_limbs_joints()
+    maybe_infer_morphs()
+    if cfg.ENV_NAME == "Robosuite-v0":
+        calculate_max_limbs_joints_robosuite() 
+    else:
+        # modular/unimal  
+        calculate_max_limbs_joints()
+    
+def calculate_max_limbs_joints_robosuite():
+    """
+    Calculate max limbs and joints for robosuite, and updates cfg
+    """
+   
+    morphs = cfg.ROBOSUITE.TRAINING_MORPHOLOGIES # can't be empty because of the maybn_infer_morphs()
+    env_names = cfg.ROBOSUITE.ENV_NAMES
+    controllers = cfg.ROBOSUITE.CONTROLLERS 
+    # VERY BASIC SOLUTION TO FIND THE MAX LIMBS AND JOINTS
+    # we will need to instantiate simple envs for this 
+    # Could use sim but no need since this would take 1s to calc 
+    common_args = {
+        "has_renderer": False, "has_offscreen_renderer": False, 
+        "ignore_done": True, "use_camera_obs": False, 
+        "control_freq": 20, "horizon": 10
+        }
+    max_l, max_j = ru.max_limbs_joints(morphs,  env_names, controllers, common_args)
+    cfg.MODEL.MAX_LIMBS = max_l + 1 
+    cfg.MODEL.MAX_JOINTS = max_j + 1 
 
+    print(f"[Config] Set MAX_LIMBS={cfg.MODEL.MAX_LIMBS}, MAX_JOINTS={cfg.MODEL.MAX_JOINTS}")
 
 def calculate_max_limbs_joints():
     if cfg.ENV_NAME == "Unimal-v0":
@@ -62,25 +93,6 @@ def calculate_max_limbs_joints():
                 cfg.MODEL.MAX_LIMBS = 9
                 cfg.MODEL.MAX_JOINTS = 9
 
-        # num_joints, num_limbs = [], []
-
-        # metadata_paths = []
-        # print (cfg.ENV.WALKERS)
-        # for agent in cfg.ENV.WALKERS:
-        #     metadata_paths.append(os.path.join(
-        #         cfg.ENV.WALKER_DIR, "metadata", "{}.json".format(agent)
-        #     ))
-
-        # for metadata_path in metadata_paths:
-        #     metadata = fu.load_json(metadata_path)
-        #     num_joints.append(metadata["dof"])
-        #     num_limbs.append(metadata["num_limbs"])
-
-        # # Add extra 1 for max_joints; needed for adding edge padding
-        # cfg.MODEL.MAX_LIMBS = max(num_limbs)
-        # cfg.MODEL.MAX_JOINTS = cfg.MODEL.MAX_LIMBS
-
-
 def calculate_max_iters():
     # Iter here refers to 1 cycle of experience collection and policy update.
     cfg.PPO.MAX_ITERS = (
@@ -91,22 +103,57 @@ def calculate_max_iters():
     )
 
 
-def maybe_infer_walkers():
-    if cfg.ENV_NAME not in ["Unimal-v0", "Modular-v0"]:
+def maybe_infer_morphs():
+    """"
+    Populates TRAINING_MORPHOLOGIES/ENV_NAMES/CONTROLLERS for robosuite,
+    or WALKERS for unimal/modular
+    """
+    if cfg.ENV_NAME == "Robosuite-v0":
+        # TODO: add logic to know if im using SR or MR
+        if cfg.ROBOSUITE.get("TASK_TYPE", "SR"): # SINGLE ROBOT
+            if not cfg.ROBOSUITE.get("TRAINING_MORPHOLOGIES"):
+                cfg.ROBOSUITE.TRAINING_MORPHOLOGIES = ["Panda"] # default 
+
+        else: # MR 
+            if not cfg.ROBOSUITE.get("TRAINING_MORPHOLOGIES"):
+                cfg.ROBOSUITE.TRAINING_MORPHOLOGIES = ["Panda", "Jaco", "Kinova3"]  
+
+        # num_morphs = len(cfg.ROBOSUITE.TRAINING_MORPHOLOGIES) 
+
+        if not cfg.ROBOSUITE.get("ENV_NAMES") or len(cfg.ROBOSUITE.ENV_NAMES) != num_morphs:
+            # reset for the sake of simplicity
+            cfg.ROBOSUITE.ENV_NAMES = []
+            singleArm_env = "Lift"
+            twoArm_env = "TwoArmLift"
+
+            for morph in cfg.ROBOSUITE.TRAINING_MORPHOLOGIES:
+                cfg.ROBOSUITE.ENV_NAMES.append(twoArm_env if isinstance(morph, (list, tuple)) else singleArm_env) # checks for [["R1", "R2"]] or ["R1"]
+        
+        if not cfg.ROBOSUITE.get("CONTROLLERS"):
+            default_controller = "JOINT_VELOCITY"
+            cfg.ROBOSUITE.CONTROLLERS = [] 
+            for controller in cfg.ROBOSUITE.TRAINING_MORPHOLOGIES:
+                controller_ = get_list_cfg(controller)
+                cfg.ROBOSUITE.CONTROLLERS.append([default_controller]*len(controller_) if isinstance(controller_, (list, tuple)) else default_controller)
+
+        print(f"Infer Robosuite morph(s):\t{cfg.ROBOSUITE.TRAINING_MORPHOLOGIES}\nTask(s):\t{cfg.ROBOSUITE.ENV_NAMES}\nController(s):\t{cfg.ROBOSUITE.CONTROLLERS}")
+
+    elif cfg.ENV_NAME in ["Unimal-v0", "Modular-v0"]:
+        # only infer if did not specify any
+        if not cfg.ENV.get("WALKERS"):
+            walker_dir = cfg.ENV.get("WALKER_DIR", "")
+            if walker_dir and os.path.isdir(os.path.join(walker_dir, "xml")):
+                cfg.ENV.WALKERS = [
+                    f[:-4] for f in os.listdir(os.path.join(walker_dir, "xml"))
+                    if f.endswith(".xml")
+                ]
+        # for Modular, also register gym ids
+        if cfg.ENV_NAME=="Modular-v0" and cfg.ENV.WALKERS:
+            register_modular_envs()
+
+    else:
+        # no inference for other ENV_NAMEs
         return
-
-    # Only infer the walkers if this option was not specified
-    if len(cfg.ENV.WALKERS):
-        return
-
-    cfg.ENV.WALKERS = [
-        xml_file.split(".")[0]
-        for xml_file in os.listdir(os.path.join(cfg.ENV.WALKER_DIR, "xml"))
-    ]
-
-    if cfg.ENV_NAME == 'Modular-v0':
-        register_modular_envs()
-
 
 def register_modular_envs():
     """register the MuJoCo envs with Gym and return the per-agent observation size and max action value (for modular policy training)"""
@@ -209,7 +256,9 @@ def ppo_train():
     hparams = get_hparams()
     PPOTrainer.save_rewards(hparams=hparams)
     PPOTrainer.save_model(-1)
-    cleanup_tensorboard()
+    # if not using wandb 
+    if PPOTrainer.logger_backend == "tensorboard":
+        cleanup_tensorboard()
 
 
 def main():
@@ -220,6 +269,7 @@ def main():
     cfg.merge_from_file(args.cfg_file)
     cfg.merge_from_list(args.opts)
 
+    # TODO: make robosuite wrappers extracts those obs from  env.sim 
     if args.no_context_in_state:
         obs_type = [
             "body_xpos", "body_xvelp", "body_xvelr", "body_xquat", # limb
