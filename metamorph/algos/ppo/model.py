@@ -30,9 +30,10 @@ class MLPModel(nn.Module):
         self.input_layer = nn.Linear(obs_space["proprioceptive"].shape[0], self.model_args.HIDDEN_DIM)
 
         self.output_layer = nn.Linear(self.model_args.HIDDEN_DIM, out_dim)
-        
+        # for robosuite we simply concat proprio and object obs TODO: optional (results are already good)
+        # unlike in the original paper they encode the field obs
         if "hfield" in cfg.ENV.KEYS_TO_KEEP:
-            self.hfield_encoder = MLPObsEncoder(obs_space.spaces["hfield"].shape[0])
+            self.hfield_encoder = GlobalObsEncoder(obs_space.spaces["hfield"].shape[0])
             hidden_dims = [self.model_args.HIDDEN_DIM + self.hfield_encoder.obs_feat_dim] + [self.model_args.HIDDEN_DIM for _ in range(self.model_args.LAYER_NUM - 1)]
             self.hidden_layers = tu.make_mlp_default(hidden_dims)
         else:
@@ -102,11 +103,19 @@ class TransformerModel(nn.Module):
         decoder_input_dim = self.d_model
 
         # Task based observation encoder
-        if "hfield" in cfg.ENV.KEYS_TO_KEEP:
-            self.hfield_encoder = MLPObsEncoder(obs_space.spaces["hfield"].shape[0])
+        # if "hfield" in cfg.ENV.KEYS_TO_KEEP:
+        #     self.hfield_encoder = GlobalObsEncoder(obs_space.spaces["hfield"].shape[0])
+        # # for robosuite
+        # if "object-state" in cfg.ENV.KEYS_TO_KEEP:
+        #     self.object_encoder = GlobalObsEncoder(obs_space.spaces["object-state"].shape[0])
 
-        if self.ext_feat_fusion == "late":
+        if self.ext_feat_fusion == "late" and "hfield" in cfg.ENV.KEYS_TO_KEEP:
+            self.hfield_encoder = GlobalObsEncoder(obs_space.spaces["hfield"].shape[0])
             decoder_input_dim += self.hfield_encoder.obs_feat_dim
+        # for robosuite 
+        if self.ext_feat_fusion == "late" and "object-state" in cfg.ENV.KEYS_TO_KEEP:
+            self.object_encoder = GlobalObsEncoder(obs_space.spaces["object-state"].shape[0])
+            decoder_input_dim += self.object_encoder.obs_feat_dim
         self.decoder_input_dim = decoder_input_dim
 
         if self.model_args.PER_NODE_DECODER:
@@ -148,10 +157,10 @@ class TransformerModel(nn.Module):
                     modules.append(nn.Linear(self.model_args.CONTEXT_EMBED_SIZE, self.model_args.CONTEXT_EMBED_SIZE))
                     modules.append(nn.ReLU())
                 self.context_encoder_attention = nn.Sequential(*modules)
-
+            # TODO: check if i need to include object-state here (default False)
             # whether to include hfield in attention map computation: default to False
             if self.model_args.HFIELD_IN_FIX_ATTENTION:
-                self.context_hfield_encoder = MLPObsEncoder(obs_space.spaces["hfield"].shape[0])
+                self.context_hfield_encoder = GlobalObsEncoder(obs_space.spaces["hfield"].shape[0])
                 self.context_compress = nn.Sequential(
                     nn.Linear(self.model_args.EXT_HIDDEN_DIMS[-1] + self.model_args.CONTEXT_EMBED_SIZE, self.model_args.CONTEXT_EMBED_SIZE), 
                     nn.ReLU(), 
@@ -242,14 +251,22 @@ class TransformerModel(nn.Module):
         # (num_limbs, batch_size, limb_obs_size) -> (num_limbs, batch_size, d_model)
         _, batch_size, limb_obs_size = obs.shape
 
-        if "hfield" in cfg.ENV.KEYS_TO_KEEP:
-            # (batch_size, embed_size)
-            hfield_obs = self.hfield_encoder(obs_env["hfield"])
+        # if "hfield" in cfg.ENV.KEYS_TO_KEEP:
+        #     # (batch_size, embed_size)
+        #     hfield_obs = self.hfield_encoder(obs_env["hfield"])
 
-        if self.ext_feat_fusion in ["late"]:
+        # if self.ext_feat_fusion in ["late"]:
+        #     hfield_obs = hfield_obs.repeat(self.seq_len, 1)
+        #     hfield_obs = hfield_obs.reshape(self.seq_len, batch_size, -1)
+        if "hfield" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion in ["late"]:
+            hfield_obs = self.hfield_encoder(obs_env["hfield"])
             hfield_obs = hfield_obs.repeat(self.seq_len, 1)
             hfield_obs = hfield_obs.reshape(self.seq_len, batch_size, -1)
-
+        
+        if "object-state" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion in ["late"]:
+            object_obs = self.object_encoder(obs_env["object-state"])
+            object_obs = object_obs.repeat(self.seq_len, 1)
+            object_obs = object_obs.reshape(self.seq_len, batch_size, -1)
         if self.model_args.FIX_ATTENTION:
             context_embedding_attention = self.context_embed_attention(obs_context)
 
@@ -260,7 +277,7 @@ class TransformerModel(nn.Module):
                     morphology_info=morphology_info)
             else:
                 context_embedding_attention = self.context_encoder_attention(context_embedding_attention)
-
+            # TODO: ignore now for robosuite
             if self.model_args.HFIELD_IN_FIX_ATTENTION:
                 hfield_embedding = self.context_hfield_encoder(obs_env["hfield"])
                 hfield_embedding = hfield_embedding.repeat(self.seq_len, 1).reshape(self.seq_len, batch_size, -1)
@@ -342,6 +359,10 @@ class TransformerModel(nn.Module):
         decoder_input = obs_embed_t
         if "hfield" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion == "late":
             decoder_input = torch.cat([decoder_input, hfield_obs], axis=2)
+        
+        if "object-state" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion == "late":
+            #sanity check
+            decoder_input = torch.cat([decoder_input, object_obs], axis=2)
 
         # (num_limbs, batch_size, J)
         if self.model_args.HYPERNET and self.model_args.HN_DECODER:
@@ -411,11 +432,11 @@ class SWATPEEncoder(nn.Module):
         return x
 
 
-class MLPObsEncoder(nn.Module):
-    """Encoder for env obs like hfield."""
+class GlobalObsEncoder(nn.Module):
+    """Encoder for env obs like hfield/object-state"""
 
     def __init__(self, obs_dim):
-        super(MLPObsEncoder, self).__init__()
+        super(GlobalObsEncoder, self).__init__()
         mlp_dims = [obs_dim] + cfg.MODEL.TRANSFORMER.EXT_HIDDEN_DIMS
         self.encoder = tu.make_mlp_default(mlp_dims)
         self.obs_feat_dim = mlp_dims[-1]
