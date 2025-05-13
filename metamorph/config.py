@@ -66,6 +66,15 @@ _C.ROBOSUITE.GRIPPER_DIM = 1
 
 # Robosuite env options (make)
 _C.ROBOSUITE.ENV_ARGS = CN()
+
+_C.ROBOSUITE.ENV_ARGS.has_renderer = False # False for training
+_C.ROBOSUITE.ENV_ARGS.ignore_done =  False 
+_C.ROBOSUITE.ENV_ARGS.has_offscreen_renderer = False
+_C.ROBOSUITE.ENV_ARGS.use_camera_obs = False
+_C.ROBOSUITE.ENV_ARGS.control_freq = 20
+_C.ROBOSUITE.ENV_ARGS.hard_reset = False
+_C.ROBOSUITE.ENV_ARGS.horizon = 1000
+_C.ROBOSUITE.ENV_ARGS.reward_shaping = True
 # used for late fusion in transformer (exteroceptive observation)
 _C.ROBOSUITE.EXTERO_KEYS = ["object-state"] 
 

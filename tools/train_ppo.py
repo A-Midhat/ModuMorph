@@ -46,8 +46,25 @@ def calculate_max_limbs_joints_robosuite():
         "control_freq": 20, "horizon": 10
         }
     max_l, max_j = ru.max_limbs_joints(morphs,  env_names, controllers, common_args)
-    cfg.MODEL.MAX_LIMBS = max_l + 1 
-    cfg.MODEL.MAX_JOINTS = max_j + 1 
+    # HARD CODED: 
+    # limbs calc (base + joints + gripper) i.e. Panda becomes 9 instead of just 7 
+    # robosuite actions depends on the controller , i.e. osc_pose 6 + gripper dim, joint_velocisity 7 + gripper
+    # so for TwoArmEnv we have 18 and the real action dim is 16 so we substract 2
+    # for SingleArmEnv we have 9 and the real action dim is 8 so we substract 1
+    # else we would use node cetnric and it already has act masking built with in (robosuite_wrappers.py)
+    
+    if len(morphs) == 1 and isinstance(morphs[0], (list, tuple)):
+        # no need for padding for SR
+        # also we remove the base from the strucure 
+        # TODO: Add this back for mobile bases
+        cfg.MODEL.MAX_LIMBS = max_l - 2
+        cfg.MODEL.MAX_JOINTS = max_j  - 2
+    elif len(morphs) == 1 and not isinstance(morphs[0], (list, tuple)):
+        cfg.MODEL.MAX_LIMBS = max_l - 1
+        cfg.MODEL.MAX_JOINTS = max_j - 1
+    else: 
+        cfg.MODEL.MAX_LIMBS = max_l + 1 
+        cfg.MODEL.MAX_JOINTS = max_j + 1 
 
     print(f"[Config] Set MAX_LIMBS={cfg.MODEL.MAX_LIMBS}, MAX_JOINTS={cfg.MODEL.MAX_JOINTS}")
 
@@ -113,14 +130,15 @@ def maybe_infer_morphs():
         if cfg.ROBOSUITE.get("TASK_TYPE", "SR"): # SINGLE ROBOT
             if not cfg.ROBOSUITE.get("TRAINING_MORPHOLOGIES"):
                 cfg.ROBOSUITE.TRAINING_MORPHOLOGIES = ["Panda"] # default 
-
+            else:
+                return # already set
         else: # MR 
             if not cfg.ROBOSUITE.get("TRAINING_MORPHOLOGIES"):
                 cfg.ROBOSUITE.TRAINING_MORPHOLOGIES = ["Panda", "Jaco", "Kinova3"]  
+            else:
+                return
 
-        # num_morphs = len(cfg.ROBOSUITE.TRAINING_MORPHOLOGIES) 
-
-        if not cfg.ROBOSUITE.get("ENV_NAMES") or len(cfg.ROBOSUITE.ENV_NAMES) != num_morphs:
+        if not cfg.ROBOSUITE.get("ENV_NAMES") or len(cfg.ROBOSUITE.ENV_NAMES) != len(cfg.ROBOSUITE.TRAINING_MORPHOLOGIES):
             # reset for the sake of simplicity
             cfg.ROBOSUITE.ENV_NAMES = []
             singleArm_env = "Lift"
@@ -150,6 +168,8 @@ def maybe_infer_morphs():
         # for Modular, also register gym ids
         if cfg.ENV_NAME=="Modular-v0" and cfg.ENV.WALKERS:
             register_modular_envs()
+        else:
+            return # already set
 
     else:
         # no inference for other ENV_NAMEs

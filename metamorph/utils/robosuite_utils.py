@@ -37,16 +37,7 @@ def count_limbs_and_joints(env):
         joints += n_edges
 
     return limbs, joints
-from robosuite import make 
-from robosuite.controllers import load_controller_config 
 
-env = make(
-    env_name="Lift",
-    robots="Panda",
-    controller_configs=load_controller_config(default_controller="OSC_POSE"),
-    horizon=10
-)
-print("limbs, joints", count_limbs_and_joints(env))
 def max_limbs_joints(morphs, env_names, controllers, common_args):
     """
     Instantiate each (morph,env,controller) combo, count limbs/joints,

@@ -158,8 +158,8 @@ class PPO:
             self.save_sampled_agent_seq(cur_iter)
 
             self.train_meter.update_mean()
-            if len(self.train_meter.mean_ep_rews["reward"]):
-                cur_rew = self.train_meter.mean_ep_rews["reward"][-1]
+            if len(self.train_meter.overall_mean_ep_rews["reward"]):
+                cur_rew = self.train_meter.overall_mean_ep_rews["reward"][-1]
                 self.log_metric({"Reward": cur_rew}, self.env_steps_done(cur_iter))
 
             if cur_iter >= 0 and cur_iter % cfg.LOG_PERIOD == 0 and cfg.LOG_PERIOD > 0:

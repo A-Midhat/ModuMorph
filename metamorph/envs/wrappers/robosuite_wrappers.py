@@ -8,10 +8,12 @@ from robosuite.controllers import load_controller_config, ALL_CONTROLLERS
 import numpy as np 
 from collections import OrderedDict, defaultdict 
 import time 
+import os
 
 # from metamorph.utils import robosuite_utils as ru # placeholder
 from metamorph.utils import swat 
 from metamorph.utils import mjpy 
+from metamorph.utils import file as fu
 
 from metamorph.config import cfg 
 from metamorph.config import get_list_cfg
@@ -63,9 +65,9 @@ class RobosuiteEnvWrapper(gym.Env):
             "robots": self.robot_names,
             "controller_configs": self.controller_configs,
             "horizon": self._passed_horizon,
-            #**self._robosuite_args # passed from cfg 
+            **self._robosuite_args # passed from cfg 
         }
-
+        # print(f"[RobosuiteEnvWrapper] Initializing robosuite env with args: {robosuite_init_args}")
         try:
             self.env = robosuite.make(**robosuite_init_args) 
             self.num_robots = len(self.env.robots)
@@ -105,7 +107,7 @@ class RobosuiteEnvWrapper(gym.Env):
             print(f"[RobosuiteEnvWrapper] Number of actions per robot must be the same,\
                 got {self.total_action_dim} and {self.action_space.shape[0]}")
         
-        self._elapsed_time = 0 
+        self._elapsed_steps = 0 
         self.sim = self.env.sim # We will use this for the next wrappers 
 
     def _extract_robot_metadata(self):
@@ -194,14 +196,14 @@ class RobosuiteEnvWrapper(gym.Env):
 
 
     def step(self, action): 
-        action = np.clip(action, self.action_space.low, self.action_space.high) 
+        # action = np.clip(action, self.action_space.low, self.action_space.high) 
         obs, reward, done, info = self.env.step(action)
-        self._elapsed_time += 1 
+        self._elapsed_steps += 1 
 
-        # robosuite and timelimt wrapper will handle this, but to be extra safe
-        if self._elapsed_time >= self.horizon:
-            done = True
-            info["TimeLimit.truncated"] = True # std Gym info flag 
+        # # robosuite and timelimt wrapper will handle this, but to be extra safe
+        # if self._elapsed_steps >= self.horizon:
+        #     done = True
+        #     info["TimeLimit.truncated"] = True # std Gym info flag 
         
         processed_obs = self._convert_observation(obs)
 
@@ -219,7 +221,7 @@ class RobosuiteEnvWrapper(gym.Env):
         self.metadata_per_robot = self._extract_robot_metadata() 
         self.metadata["metadata_per_robot"] = self.metadata_per_robot 
 
-        self._elapsed_time = 0 # TODO: check if this is needed
+        self._elapsed_steps = 0 
         
         processed_obs = self._convert_observation(obs_dict)
         return processed_obs
@@ -1129,7 +1131,7 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
             env = env.env
         if isinstance(env, wrapper_type):
              return env
-        print(f"[RobosuiteNodeCentricAction]Warning: Could not find {wrapper_type.__name__} in wrapper stack below NodeCentricAction.")
+        print(f"[RobosuiteNodeCentricAction] Warning: Could not find {wrapper_type.__name__} in wrapper stack below NodeCentricAction.")
         return None
 
     def _update_mapping_info(self):
@@ -1270,179 +1272,266 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
 
 
 
-# ---------------------------------------------------------
-# ------------------ Multi-Morph Sampler ------------------
-# ---------------------------------------------------------
 class RobosuiteSampleWrapper(gym.Wrapper):
     """
     Wrapper that samples a morphology configuration on each reset and instantiates
-    the corresponding Robosuite environment stack for a single worker.
-    This wrapper manages dynamic morphology training for a single VecEnv worker process.
-    It wraps the full Robosuite-specific stack (RobosuiteEnvWrapper -> Node-Centric/MLP -> SelectKeys -> etc.).
+    the corresponding Robosuite environment stack. Handles dynamic morphology training
+    based on a sampling sequence read from a file (e.g., sampling.json).
     """
-    def __init__(self, env, all_morphology_configs, inner_stack_builder_fn):
+    # Corrected __init__ signature to accept worker_rank and num_workers
+    def __init__(self, env, all_morphology_configs, inner_stack_builder_fn, worker_rank, num_workers):
         """
         Args:
-            env: The dummy environment passed by the VecEnv (often just None or a placeholder).
-                 This wrapper discards it and creates its own env stack internally.
-            all_morphology_configs (list[dict]): A list of dictionaries, where each dict
-                                             defines the arguments to build a specific
-                                             Robosuite morphology environment stack.
-                                             This list represents ALL possible morphology
-                                             configurations available for training/sampling.
-            inner_stack_builder_fn (callable): A function that takes a morphology config dict
-                                             (from the list above) and returns a fully built
-                                             and initialized environment object (i.e., the top
-                                             wrapper of the inner stack, like SelectKeysWrapper).
-                                             This function encapsulates building the stack:
-                                             RobosuiteEnvWrapper -> NodeCentric/MLP -> SelectKeys -> Gym Wrappers.
+            env: A dummy environment object (often None) passed by the VecEnv.
+                 This wrapper discards it and creates its own internal env stack.
+            all_morphology_configs (list[dict]): List of all possible morphology
+                                                 configuration dictionaries.
+            inner_stack_builder_fn (callable): Function that takes a single morphology
+                                               config dict and returns a Gym env instance
+                                               (the top wrapper of the inner stack).
+            worker_rank (int): The index (rank) of this worker process.
+            num_workers (int): The total number of worker processes.
         """
-        # The base Gym Wrapper __init__ expects an env, but we create our own env stack dynamically.
-        # We will call the base __init__ *after* creating the first environment in reset()
-        # and setting the observation/action spaces.
+        # Do NOT call super().__init__(env) here. We will call it later with the active_env_stack.
+        # super().__init__(env)
 
         self.all_morphology_configs = all_morphology_configs
-        self._inner_stack_builder_fn = inner_stack_builder_fn # Store the callable
-        self.active_env_stack = None # Holds the currently active environment stack instance
+        self.inner_stack_builder_fn = inner_stack_builder_fn
+        # Store worker rank and total number of workers
+        self.worker_rank = worker_rank
+        self.num_workers = num_workers
 
-        # The observation and action spaces are dynamically determined by the active_env_stack.
-        # We need to initialize them here, but their true values are set after the first reset.
+        self.active_env_stack = None # Holds the currently active environment stack
+        self.active_morphology_index = None # Index of the config currently active
+
+        # State for sampling sequence
+        self._sampling_sequence = None
+        self._sequence_episode_idx = 0 # Tracks current position in the sequence for this worker
+
+        # The observation and action spaces will come from the currently active env stack,
+        # but we need to define them after the first environment is created on reset.
         self.observation_space = None
         self.action_space = None
 
-        # State needed for sampling based on sampling.json (managed per worker by VecEnv)
-        self._current_episode_in_sequence = 0 # Tracks episode index for THIS worker's sequence
+        # Need to call reset once to set up the initial environment and spaces
+        # The reset method will call _sample_morphology and build the stack
+        self.reset()
 
-        # The initial call to reset() will build the first active environment stack and set spaces.
-        # We pass a dummy env object to the first reset call.
-        initial_observation = self.reset()
-
-        # Now that observation_space and action_space are set, call the base Gym Wrapper __init__.
-        # This registers self.env = self.active_env_stack and enables attribute forwarding.
-        # We pass a dummy env object to the super().__init__ call as well, as it only needs the spaces/num_envs from self.active_env_stack.
-        super().__init__(self.active_env_stack) # Pass the created env stack to the base wrapper
-
-        # Re-assign spaces just in case super().__init__ altered them
-        # for safety
+        # Now call the base Gym Wrapper __init__ with the active environment
+        # This properly sets up self.env and attribute forwarding
+        # Note: gym.Wrapper __init__ expects a Gym env. The active_env_stack is our Gym env instance.
+        super().__init__(self.active_env_stack)
+        # Re-assign spaces because super().__init__ might overwrite them with self.env's initial ones
+        # These are already set by self.reset() just before super().__init__
         self.observation_space = self.active_env_stack.observation_space
         self.action_space = self.active_env_stack.action_space
+
+        # print(f"Worker {self.worker_rank}: RobosuiteSampleWrapper initialized.") # Debug
+
+
+    def _load_sampling_sequence(self):
+        """Loads or reloads the sampling sequence from sampling.json."""
+        sampling_file_path = os.path.join(cfg.OUT_DIR, "sampling.json")
+        try:
+            full_sequence = fu.load_json(sampling_file_path)
+
+            if not full_sequence:
+                 print(f"Warning: Sampling sequence file is empty: {sampling_file_path}. Sampling randomly.")
+                 # Fallback to random sampling if file is empty
+                 self._sampling_sequence = [np.random.randint(len(self.all_morphology_configs)) for _ in range(1000)] # Create a dummy random sequence
+            else:
+                 # Divide the full sequence into chunks, one for each worker.
+                 # PPO trainer should write a sequence long enough and divisible by num_workers.
+                 # Need to handle potential index errors if not divisible or too short.
+                 total_sequence_len = len(full_sequence)
+                 chunk_size = total_sequence_len // self.num_workers
+                 start_idx = self.worker_rank * chunk_size
+                 end_idx = start_idx + chunk_size if self.worker_rank < self.num_workers - 1 else total_sequence_len # Ensure last worker gets remaining
+
+                 if start_idx >= total_sequence_len:
+                     print(f"Warning: Worker {self.worker_rank}: Start index ({start_idx}) >= total sequence len ({total_sequence_len}). Sequence exhausted? Using empty chunk.")
+                     self._sampling_sequence = [] # Empty chunk
+                 else:
+                     self._sampling_sequence = full_sequence[start_idx:end_idx]
+                     # print(f"Worker {self.worker_rank}: Loaded chunk {self.worker_rank} (indices {start_idx}-{end_idx-1}) of sampling sequence (total len {total_sequence_len}, chunk size {chunk_size}). Chunk len {len(self._sampling_sequence)}") # Debug
+
+            # Reset sequence index after loading (for this worker's chunk)
+            self._sequence_episode_idx = 0
+
+        except FileNotFoundError:
+            print(f"Warning: Sampling sequence file not found at {sampling_file_path}. Sampling randomly.")
+            # Fallback to random sampling if the file doesn't exist
+            self._sampling_sequence = [np.random.randint(len(self.all_morphology_configs)) for _ in range(1000)] # Create a dummy random sequence
+            self._sequence_episode_idx = 0
+        except Exception as e:
+             print(f"Error loading or processing sampling sequence file: {e}. Sampling randomly.")
+             self._sampling_sequence = [np.random.randint(len(self.all_morphology_configs)) for _ in range(1000)] # Create a dummy random sequence
+             self._sequence_episode_idx = 0
+
+    def _sample_morphology_index(self) -> int:
+        """
+        Samples the next morphology configuration index based on the loaded sequence.
+        Reloads the sequence if necessary (end reached or file updated).
+        Returns the index into the all_morphology_configs list.
+        """
+        # Check if the sequence needs to be loaded or reloaded (end reached)
+        if self._sampling_sequence is None or self._sequence_episode_idx >= len(self._sampling_sequence):
+            # Sequence is exhausted or not loaded, try to load a new one
+            # This assumes PPO trainer periodically writes a new, longer sampling.json
+            # If the file isn't updated, we will keep loading the same exhausted sequence.
+            # A more robust check would involve checking file modification time.
+            # For simplicity, let's rely on PPO writing updates and just reload when exhausted.
+            self._load_sampling_sequence()
+
+            # If sequence is *still* empty or too short after loading, fallback to random.
+            if not self._sampling_sequence or self._sequence_episode_idx >= len(self._sampling_sequence):
+                 print(f"Warning: Sampling sequence exhausted or invalid after load attempt for worker {self.worker_rank}, episode index {self._sequence_episode_idx}. Defaulting to random sample.")
+                 return np.random.randint(len(self.all_morphology_configs))
+
+
+        # Get the next morphology configuration index from the sequence for THIS worker
+        # The values in the sequence are the indices into the *all_morphology_configs* list.
+        morph_index = self._sampling_sequence[self._sequence_episode_idx]
+
+        # Validate the sampled index
+        if morph_index < 0 or morph_index >= len(self.all_morphology_configs):
+             print(f"Warning: Sampled morphology index {morph_index} is out of bounds (0-{len(self.all_morphology_configs)-1}) in all_morphology_configs. Defaulting to random sample for worker {self.worker_rank}, seq idx {self._sequence_episode_idx}.")
+             morph_index = np.random.randint(len(self.all_morphology_configs))
+
+        # Increment the sequence index for the next episode for THIS worker
+        self._sequence_episode_idx += 1
+
+        # print(f"Worker {self.worker_rank}: Sampled morph index {morph_index} (seq idx {self._sequence_episode_idx - 1})") # Debug
+        return morph_index
 
 
     def reset(self, sample_index=None, **kwargs):
         """
-        Resets the wrapper for a new episode. Samples a morphology configuration,
-        builds/resets the corresponding inner environment stack, and returns
-        the initial observation.
+        Resets the wrapper, samples a morphology, builds/resets the inner env stack.
 
         Args:
             sample_index (int, optional): Explicitly provide the index of the morphology
-                                          configuration to sample for this episode. If None,
-                                          samples based on the sampling file (balanced sampling).
-                                          This index is typically provided by the VecEnv.
+                                          configuration to sample for this episode.
+                                          If None (default), samples from the sequence file.
+                                          This index is the index into the *all_morphology_configs* list.
             **kwargs: Additional arguments for the inner environment's reset method (e.g., seed).
-                      Expected to include 'episode_idx_in_sequence' from VecEnv.
         """
-        # Close the previously active environment stack if it exists before creating a new one
+        # Close the previously active environment stack if it exists
         if self.active_env_stack is not None:
             try:
-                self.active_env_stack.close()
+                # Pass any kwargs to the inner stack's close if it supports them
+                self.active_env_stack.close(**kwargs)
             except Exception as e:
-                 print(f"[RobosuiteSampleWrapper] Warning: Error closing previous environment stack: {e}")
-            self.active_env_stack = None # Clear reference
+                 print(f"Warning: Error closing previous environment stack for worker {self.worker_rank}: {e}")
+                 # Attempt to force deletion if close fails
+                 del self.active_env_stack
+                 self.active_env_stack = None
 
 
-        # Morphology Sampling Logic based on sampling.json
+        # --- Morphology Sampling ---
         if sample_index is not None:
-            # Use an index provided directly
-            if sample_index < len(self.all_morphology_configs):
-                 self.active_morphology_index = sample_index
-            else:
-                 print(f"[RobosuiteSampleWrapper] Warning: Provided sample_index ({sample_index}) out of bounds ({len(self.all_morphology_configs)} configs). Sampling randomly.")
-                 self.active_morphology_index = np.random.randint(len(self.all_morphology_configs)) # Fallback to random
-
-            # For explicit sampling, the episode index in sequence might not be managed externally.
-            # Just increment our internal counter if available in kwargs.
-            self._current_episode_in_sequence = kwargs.get('episode_idx_in_sequence', self._current_episode_in_sequence) + 1
-
+            # Use the provided index (e.g., for specific evaluation scenarios)
+            self.active_morphology_index = sample_index
+            # Validate the provided index
+            if self.active_morphology_index < 0 or self.active_morphology_index >= len(self.all_morphology_configs):
+                 print(f"Error: Provided sample_index {sample_index} is out of bounds (0-{len(self.all_morphology_configs)-1}). Defaulting to index 0 for worker {self.worker_rank}.")
+                 self.active_morphology_index = 0
+            # Do NOT increment sequence index when explicitly sampling.
         else:
-            # Sample based on the sequence in sampling.json (Balanced Replay Buffer)
-            try:
-                sampling_file_path = os.path.join(cfg.OUT_DIR, "sampling.json")
-                # Read the sampling sequence for ALL workers
-                sampling_sequence_flat = fu.load_json(sampling_file_path)
-
-                # The VecEnv must provide the worker's rank (env_idx) and its current episode index
-                # within the overall sequence of episodes this worker will run from sampling.json.
-                env_idx = kwargs.get('env_idx', 0)
-                episode_idx_in_sequence_for_this_worker = kwargs.get('episode_idx_in_sequence', self._current_episode_in_sequence)
-
-                # Assume sampling_sequence_flat is [s0_e0, s1_e0, ..., sN-1_e0, s0_e1, s1_e1, ...]
-                # where si_ej is morphology index for worker i, episode j.
-                # We need the index for this worker (env_idx) at this episode step (episode_idx_in_sequence_for_this_worker).
-                # The index in the flat sequence is (episode_idx * num_envs) + env_idx.
-                # However, the PPO trainer writes the sequence based on its own batching.
-                # Assuming sampling_sequence_flat is [worker0_seq, worker1_seq, ...] if chunked by worker.
-                # If it's a flat list for all workers, the VecEnv needs to give us the index.
-
-                if episode_idx_in_sequence_for_this_worker < len(sampling_sequence_flat):
-                    self.active_morphology_index = sampling_sequence_flat[episode_idx_in_sequence_for_this_worker]
-                    self._current_episode_in_sequence = episode_idx_in_sequence_for_this_worker + 1 # Update our counter
-                else:
-                    # shouldn't happen in training if sampling.json is long enough loop or fallback.
-                    # In evaluation, sequence might be shorter than num_episodes.
-                    print(f"[RobosuiteSampleWrapper] Warning: Sampling sequence exhausted in sampling.json for worker {env_idx} at episode {episode_idx_in_sequence_for_this_worker}. Looping configs.")
-                    self.active_morphology_index = episode_idx_in_sequence_for_this_worker % len(self.all_morphology_configs) # Loop through available configs
-                    self._current_episode_in_sequence = episode_idx_in_sequence_for_this_worker + 1 # Update counter
-
-
-            except FileNotFoundError:
-                print(f"[RobosuiteSampleWrapper] Warning: sampling.json not found at {sampling_file_path}. Sampling randomly.")
-                # Fallback to random sampling if the file doesn't exist (e.g., first batch)
-                self.active_morphology_index = np.random.randint(len(self.all_morphology_configs))
-                # Update our counter for the next episode
-                self._current_episode_in_sequence = kwargs.get('episode_idx_in_sequence', self._current_episode_in_sequence) + 1
-            except Exception as e:
-                 print(f"[RobosuiteSampleWrapper] Error sampling morphology from file: {e}. Sampling randomly.")
-                 # Fallback to random sampling on error
-                 self.active_morphology_index = np.random.randint(len(self.all_morphology_configs))
-                 self._current_episode_in_sequence = kwargs.get('episode_idx_in_sequence', self._current_episode_in_sequence) + 1
-
+            # Sample morphology index from the sequence file for training
+            self.active_morphology_index = self._sample_morphology_index()
 
         # Get the morphology config dictionary for the selected index
-        if self.active_morphology_index >= len(self.all_morphology_configs):
-             print(f"[RobosuiteSampleWrapper] Error: Sampled index {self.active_morphology_index} is out of bounds for morphology configs ({len(self.all_morphology_configs)}). Defaulting to index 0.")
-             self.active_morphology_index = 0 # Fallback to index 0
-
         selected_config = self.all_morphology_configs[self.active_morphology_index]
+        # print(f"Worker {self.worker_rank}: Building env for morph index {self.active_morphology_index}") # Debug
 
-        # Instantiate Inner Environment Stack
-        self.active_env_stack = self._inner_stack_builder_fn(selected_config)
+        # --- Instantiate Inner Environment Stack ---
+        # The inner_stack_builder_fn takes the config_dict and returns the top wrapper.
+        try:
+            self.active_env_stack = self.inner_stack_builder_fn(selected_config)
+        except Exception as e:
+            print(f"Error building inner env stack for morph index {self.active_morphology_index} (worker {self.worker_rank}): {e}")
+            raise RuntimeError(f"Failed to build inner env stack for morph index {self.active_morphology_index} (worker {self.worker_rank})") from e
 
-        # TODO: pass seed.
-        observation = self.active_env_stack.reset(**kwargs)
+
+        # Call reset on the newly created inner environment stack
+        # Pass kwargs (including seed+rank) down to the inner stack's reset
+        try:
+            observation = self.active_env_stack.reset(**kwargs)
+            # Ensure the inner stack's reset method propagates kwargs, especially the seed.
+        except Exception as e:
+            print(f"Error resetting inner env stack for morph index {self.active_morphology_index} (worker {self.worker_rank}): {e}")
+            # If reset fails, attempt to close the failed env and raise error.
+            try: self.active_env_stack.close()
+            except: pass # Ignore close error during cleanup
+            raise RuntimeError(f"Failed to reset inner env stack for morph index {self.active_morphology_index} (worker {self.worker_rank})") from e
+
 
         # Update observation and action spaces based on the new environment stack
-        # These might vary if the inner stack construction or select keys change based on morphology (won't happen for SingleArmEnv)
+        # These might vary slightly (e.g., Dict space keys kept by SelectKeysWrapper)
         self.observation_space = self.active_env_stack.observation_space
         self.action_space = self.active_env_stack.action_space
 
+        self.metadata['active_morph_config_index'] = self.active_morphology_index
+
+
+        # Return the observation from the inner environment
         return observation
 
     def step(self, action):
         """Steps the currently active environment stack."""
         if self.active_env_stack is None:
-            raise RuntimeError("[RobosuiteSampleWrapper] Step called before environment was initialized. Call reset first.")
-        return self.active_env_stack.step(action)
+            # This should not happen if reset is called first
+            raise RuntimeError("Step called before environment was initialized. Call reset first for worker {self.worker_rank}.")
+        # Pass action to the active inner environment stack
+        obs, rew, done, info = self.active_env_stack.step(action)
+
+        # Add the active morphology config index to the info dict if needed by TrainMeter
+        # RecordEpisodeStatistics might already propagate this from self.metadata
+        info['morph_config_index'] = self.active_morphology_index # Add index to info
+
+        return obs, rew, done, info
 
     def close(self):
         """Closes the currently active environment stack."""
+        if self.closed: # Check base gym.Wrapper closed flag
+            return
         if self.active_env_stack is not None:
             try:
                 self.active_env_stack.close()
             except Exception as e:
-                print(f"[RobosuiteSampleWrapper] Warning: Error closing active environment stack: {e}")
-            self.active_env_stack = None 
-            self.observation_space = None 
-            self.action_space = None
+                 print(f"Warning: Error closing active environment stack for worker {self.worker_rank}: {e}")
+            self.active_env_stack = None
+        # Set the base gym.Wrapper closed flag
+        self.closed = True
+        # print(f"Worker {self.worker_rank}: RobosuiteSampleWrapper closed.") # Debug
 
-    
+    # get_unimal_idx method
+    def get_unimal_idx(self):
+        """Returns the index of the currently active morphology."""
+        # This method is called by VecPyTorch/PPO to get the task ID.
+        # For multi-morph training, the active morphology index is the task ID.
+        # Return a list/array matching num_envs dimension (which is 1 for this wrapper instance)
+        # The PPO trainer will collect these across all workers.
+        return [self.active_morphology_index] # Return a list containing the single index
+
+
+    def seed(self, seed=None):
+        """Sets the seed for this wrapper and passes it down to the inner stack."""
+        # Seed the random state used by this wrapper (if any, e.g., for fallback random sampling)
+        # Add a np_random attribute to SampleWrapper for random fallback sampling
+        if not hasattr(self, 'np_random') or self.np_random is None:
+            self.np_random, _ = gym.utils.seeding.np_random(seed)
+        else:
+             self.np_random.seed(seed)
+
+        # Pass the worker-specific seed down to the active inner environment stack's seed method.
+        # The inner stack's seed method should then handle seeding its base env and spaces.
+        if self.active_env_stack is not None:
+             # The seed passed here should be the worker-specific seed (base seed + rank)
+             self.active_env_stack.seed(seed)
+        # Store the seed that was set
+        self._last_seed = seed
+        return [seed] # Return the list of seeds set (standard Gym convention)
+
+

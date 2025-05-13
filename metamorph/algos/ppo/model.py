@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 class MLPModel(nn.Module):
     def __init__(self, obs_space, out_dim):
         super(MLPModel, self).__init__()
+        print("MLPModel", obs_space)
         self.model_args = cfg.MODEL.MLP
         self.seq_len = cfg.MODEL.MAX_LIMBS
         self.limb_obs_size = limb_obs_size = obs_space["proprioceptive"].shape[0] // self.seq_len
@@ -445,6 +446,12 @@ class ActorCritic(nn.Module):
             else:
                 self.mu_net = MLPModel(obs_space, cfg.MODEL.MAX_LIMBS)
             self.num_actions = cfg.MODEL.MAX_LIMBS
+        elif cfg.ENV_NAME == "Robosuite-v0":
+            if cfg.MODEL.TYPE == 'transformer':
+                self.mu_net = TransformerModel(obs_space, 1)
+            else:
+                self.mu_net = MLPModel(obs_space, cfg.MODEL.MAX_LIMBS)
+            self.num_actions = cfg.MODEL.MAX_LIMBS
         else:
             raise ValueError("Unsupported ENV_NAME")
 
@@ -462,7 +469,7 @@ class ActorCritic(nn.Module):
             batch_size = cfg.PPO.BATCH_SIZE
         else:
             batch_size = cfg.PPO.NUM_ENVS
-
+        
         obs_env = {k: obs[k] for k in cfg.ENV.KEYS_TO_KEEP}
         if "obs_padding_cm_mask" in obs:
             obs_cm_mask = obs["obs_padding_cm_mask"]
