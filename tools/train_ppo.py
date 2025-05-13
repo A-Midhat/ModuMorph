@@ -53,15 +53,18 @@ def calculate_max_limbs_joints_robosuite():
     # for SingleArmEnv we have 9 and the real action dim is 8 so we substract 1
     # else we would use node cetnric and it already has act masking built with in (robosuite_wrappers.py)
     
-    if len(morphs) == 1 and isinstance(morphs[0], (list, tuple)):
-        # no need for padding for SR
-        # also we remove the base from the strucure 
-        # TODO: Add this back for mobile bases
-        cfg.MODEL.MAX_LIMBS = max_l - 2
-        cfg.MODEL.MAX_JOINTS = max_j  - 2
-    elif len(morphs) == 1 and not isinstance(morphs[0], (list, tuple)):
-        cfg.MODEL.MAX_LIMBS = max_l - 1
-        cfg.MODEL.MAX_JOINTS = max_j - 1
+    if cfg.MODEL.TYPE == "mlp":
+        if len(morphs) == 1 and isinstance(morphs[0], (list, tuple)):
+            # no need for padding for SR
+            # also we remove the base from the strucure 
+            # TODO: Add this back for mobile bases
+            cfg.MODEL.MAX_LIMBS = max_l - 2
+            cfg.MODEL.MAX_JOINTS = max_j  - 2
+        elif len(morphs) == 1 and not isinstance(morphs[0], (list, tuple)):
+            cfg.MODEL.MAX_LIMBS = max_l - 1
+            cfg.MODEL.MAX_JOINTS = max_j - 1
+        else: 
+            print("This is not supported yet")
     else: 
         cfg.MODEL.MAX_LIMBS = max_l + 1 
         cfg.MODEL.MAX_JOINTS = max_j + 1 

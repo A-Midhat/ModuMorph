@@ -12,7 +12,7 @@ import os
 
 # from metamorph.utils import robosuite_utils as ru # placeholder
 from metamorph.utils import swat 
-from metamorph.utils import mjpy 
+# from metamorph.utils import mjpy 
 from metamorph.utils import file as fu
 
 from metamorph.config import cfg 
@@ -109,6 +109,7 @@ class RobosuiteEnvWrapper(gym.Env):
         
         self._elapsed_steps = 0 
         self.sim = self.env.sim # We will use this for the next wrappers 
+        
 
     def _extract_robot_metadata(self):
         metadata_list = []
@@ -219,7 +220,7 @@ class RobosuiteEnvWrapper(gym.Env):
     def reset(self, **kwargs): 
         obs_dict = self.env.reset(**kwargs)
         self.metadata_per_robot = self._extract_robot_metadata() 
-        self.metadata["metadata_per_robot"] = self.metadata_per_robot 
+        self.metadata["robots_metadata_list"] = self.metadata_per_robot 
 
         self._elapsed_steps = 0 
         
@@ -258,7 +259,7 @@ class RobosuiteEnvWrapper(gym.Env):
                  return np.zeros((height, width, 3), dtype=np.uint8)
 
         elif mode == "human":
-             if self._robosuite_make_args.get('has_renderer', False):
+             if self._robosuite_args.get('has_renderer', False):
                  try: 
                     self.env.render()
                  except Exception as e: 
@@ -278,8 +279,8 @@ class RobosuiteEnvWrapper(gym.Env):
         return action
 
 # ------------------------------------------------
-# -----------------SR-ST baseline ----------------
-# ------------------------------------------------
+# -----------------SR-ST baseline-----------------
+# -------------------MLP Model--------------------
 class RobosuiteMLPFlattener(gym.ObservationWrapper):
     """
     Flatten the observation from robosuite (Normally proprioceptive and object states)
@@ -397,8 +398,8 @@ class RobosuiteMLPFlattener(gym.ObservationWrapper):
         return action
 
 # ----------------------------------------------------------
-# ---------------Node Centric Observation/actions ----------
-# ---------------- Transormer model ------------------------
+# ---------------Node Centric Observation-------------------
+# ---------------------Transormer model---------------------
 class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
     """
     Wrap a RobosuiteEnvWrapper to produce fixed‑size, node‑centric observations for a Transformer policy.
@@ -439,7 +440,7 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
         super().__init__(env) 
 
         if not isinstance(self.env, RobosuiteEnvWrapper):
-            raise ValueError("RobosuiteNodeCentricObservation requires a RobosuiteEnvWrapper")
+            raise ValueError("[RobosuiteNodeCentricObservation] requires a RobosuiteEnvWrapper")
         
         self.base_env_ref = self.env 
         self.sim = self.base_env_ref.sim # mj sim instance 
@@ -462,14 +463,17 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
         # print(f"[RobosuiteNodeCentricObservation] observation_space keys: {list(self.observation_space.spaces.keys())}")
 
         # Flag to track if the structure has been analayzed for the current episode
-        self._structure_initiliazed = False 
+        self._structure_initialized = False 
         
         try:
             self._define_structure_and_masks()
         except:
             print("[RobosuiteNodeCentricObservation] Failed to initialize structure and masks")
-            self._structure_initiliazed = False
-        
+            self._structure_initialized = False
+            import traceback, sys
+            traceback.print_exc(file=sys.stdout)
+            raise   # <- let it surface once – much easier to debug
+
     def _init_global_arrays(self):
         """Initialize all the fixed‑size, node‑centric buffers to their padding defaults."""
 
@@ -516,6 +520,8 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
                 ('joint_pos_cos', 1),
                 ('joint_pos_sin', 1),
                 ('joint_vel', 1),
+                ('eef_pos', 3),
+                ('eef_quat', 4),
             ],
             'gripper': [
                 ('gripper_qpos', cfg.ROBOSUITE.get('GRIPPER_DIM', 1)),
@@ -619,11 +625,11 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
         self._init_global_arrays() # Reset global padded arrays
 
         self.num_robots_instance = self.base_env_ref.num_robots
-        self.metadata_per_robot_instance = self.base_env_ref.metadata_per_robot # Corrected attribute name
+        self.metadata_per_robot_instance = self.base_env_ref.metadata_per_robot 
 
         # Calculate start indices for each robot's nodes in the global sequence
         # Assumes nodes from different robots are concatenated linearly
-        self.node_start_indices = [r * cfg.MODEL.MAX_LIMBS_PER_ROBOT for r in range(self.num_robots_instance)]
+        self.node_start_indices = [r * cfg.MODEL.MAX_LIMBS for r in range(self.num_robots_instance)]
 
         all_edges = [] # List to collect global edge indices
         # Storage for structure information derived for each robot instance
@@ -646,8 +652,8 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
 
             base_name = robot_instance.robot_model.root_body
             current_robot_nodes.append((base_name, 'base'))
-            base_mujoco_id = self.model.body_name2id(base_name)
-            current_robot_local_node_to_body_id[0] = base_mujoco_id
+            base_id = self.model.body_name2id(base_name)
+            current_robot_local_node_to_body_id[0] = base_id
             current_robot_body_name_to_local_node_idx[base_name] = 0 # Base is always local node 0
 
             last_link_name = base_name # Track the last link added (closest to end-effector)
@@ -655,8 +661,9 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
             for j_name in current_robot_arm_joint_names:
                  try:
                      # Get the body connected to this joint's child end (often the link itself)
-                     joint_mujoco_id = mjpy.mj_name2id(self.sim, 'joint', j_name) # Corrected call to mjpy.mj_name2id
-                     body_mujoco_id = self.model.jnt_bodyid[joint_mujoco_id] # Body ID of the joint's child
+                    #  joint_id = mjpy.mj_name2id(self.sim, 'joint', j_name) 
+                     joint_id = self.model.joint_name2id(j_name)
+                     body_mujoco_id = self.model.jnt_bodyid[joint_id] # Body ID of the joint's child
                      body_name = self.model.body_id2name(body_mujoco_id)
 
                      if body_name not in processed_arm_bodies:
@@ -666,7 +673,7 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
                          processed_arm_bodies.add(body_name)
                      last_link_name = body_name # Update last added link name
                      # Map the joint ID to the local node index of the body it actuates/is attached to
-                     local_node_idx_to_mujoco_joint_ids[current_robot_body_name_to_local_node_idx[body_name]].append(joint_mujoco_id)
+                     local_node_idx_to_mujoco_joint_ids[current_robot_body_name_to_local_node_idx[body_name]].append(joint_id)
                  except KeyError:
                     continue
 
@@ -685,7 +692,9 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
             current_robot_body_name_to_local_node_idx[gripper_conceptual_name] = gripper_local_idx
             # Map gripper joint IDs to this conceptual node
             for j_name in current_robot_gripper_joint_names:
-                try: local_node_idx_to_mujoco_joint_ids[gripper_local_idx].append(mjpy.mj_name2id(self.sim, 'joint', j_name)) # Corrected call to mjpy.mj_name2id
+                try: 
+                    # local_node_idx_to_mujoco_joint_ids[gripper_local_idx].append(mjpy.mj_name2id(self.sim, 'joint', j_name)) # Corrected call to mjpy.mj_name2id
+                    local_node_idx_to_mujoco_joint_ids[gripper_local_idx].append(self.model.joint_name2id(j_name))
                 except KeyError:
                      pass
 
@@ -777,7 +786,13 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
 
             # Build edges using the local node list and MuJoCo parent info
             for local_child_idx, (body_name_raw, node_type) in enumerate(current_robot_nodes):
-                 if node_type == 'base' and self.model.body_parentid[mjpy.mj_name2id(self.sim, 'body', body_name_raw)] == -1: continue # Base node might be parented by worldbody (-1)
+                #  if node_type == 'base' and self.model.body_parentid[mjpy.mj_name2id(self.sim, 'body', body_name_raw)] == -1: 
+                 if node_type == 'base':
+                    body_id = self.model.body_name2id(body_name_raw)
+                    if self.model.body_parentid[body_id] == -1:
+                        print(f"[RobosuiteNodeCentricObservation] Warning: Base node {body_name_raw} has no parent. Skipping.")
+                        continue
+                    continue # Base node might be parented by worldbody (-1)
                  # Conceptual gripper's parent is the hand node
                  elif node_type == 'gripper':
                       try:
@@ -1079,11 +1094,13 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
         for new episode.
         """
         obs_raw = self.env.reset(**kwargs)
-        self._structure_initiliazed = False
+        self._structure_initialized = False
 
         return self.observation(obs_raw)
 
-
+# ----------------------------------------------------------
+# ---------------Node Centric Observation-------------------
+# ---------------------Transormer model---------------------
 class RobosuiteNodeCentricAction(gym.ActionWrapper):
     """
     Maps the policy's globally padded, node-centric action output to the base
@@ -1120,7 +1137,7 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
         self.current_base_action_space = self.base_env_ref.action_space # Store initial
 
         # Initialize mapping info based on the env state
-        self._update_mapping_info() 
+        # self._update_mapping_info()
     # No Need for this method, this wrapper will be called after nodecentric wrapper each time
     def _find_wrapper_ref(self, wrapper_type):
         """Helper to find a specific wrapper type in the stack below this one."""
@@ -1141,10 +1158,11 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
         """
         # Get the actuated nodes from metadata
         self.current_act_mask = self.obs_wrapper_ref.metadata.get('act_padding_mask')
+        
         self.current_per_robot_action_indices = self.obs_wrapper_ref.metadata.get('per_robot_action_indices')
 
         # Fetch from Base wrapper's properties/metadata
-        self.current_action_dims_per_robot = self.base_env_ref.action_dim_per_robot
+        self.current_action_dims_per_robot = self.base_env_ref.action_dim_per_robot #action_dim_per_robot
         self.current_total_action_dim = self.base_env_ref.total_action_dim
         self.current_num_robots = self.base_env_ref.num_robots
         self.current_base_action_space = self.base_env_ref.action_space
@@ -1153,7 +1171,7 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
            self.current_per_robot_action_indices is None or \
            not isinstance(self.current_per_robot_action_indices, list) or \
            len(self.current_per_robot_action_indices) != self.current_num_robots:
-            raise ValueError("[RobosuiteNodeCentricAction] Action wrapper could not fetch valid mapping metadata from Observation wrapper.")
+            raise ValueError(f"[RobosuiteNodeCentricAction] Action wrapper could not fetch valid mapping metadata from Observation wrapper. {len(self.current_per_robot_action_indices)} != {self.current_num_robots}")
 
         if len(self.current_act_mask) != self.padded_action_dim_global:
              raise ValueError(f"[RobosuiteNodeCentricAction] Action mask length ({len(self.current_act_mask)}) doesn't match global padded dim ({self.padded_action_dim_global}).")
@@ -1272,6 +1290,9 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
 
 
 
+# ----------------------------------------------------------
+# ------------------------MR SAMPLER------------------------
+# ---------------------Transormer model---------------------
 class RobosuiteSampleWrapper(gym.Wrapper):
     """
     Wrapper that samples a morphology configuration on each reset and instantiates
@@ -1336,7 +1357,7 @@ class RobosuiteSampleWrapper(gym.Wrapper):
             full_sequence = fu.load_json(sampling_file_path)
 
             if not full_sequence:
-                 print(f"Warning: Sampling sequence file is empty: {sampling_file_path}. Sampling randomly.")
+                 print(f"[RobosuiteSampleWrapper] Warning: Sampling sequence file is empty: {sampling_file_path}. Sampling randomly.")
                  # Fallback to random sampling if file is empty
                  self._sampling_sequence = [np.random.randint(len(self.all_morphology_configs)) for _ in range(1000)] # Create a dummy random sequence
             else:
@@ -1349,7 +1370,7 @@ class RobosuiteSampleWrapper(gym.Wrapper):
                  end_idx = start_idx + chunk_size if self.worker_rank < self.num_workers - 1 else total_sequence_len # Ensure last worker gets remaining
 
                  if start_idx >= total_sequence_len:
-                     print(f"Warning: Worker {self.worker_rank}: Start index ({start_idx}) >= total sequence len ({total_sequence_len}). Sequence exhausted? Using empty chunk.")
+                     print(f"[RobosuiteSampleWrapper] Warning: Worker {self.worker_rank}: Start index ({start_idx}) >= total sequence len ({total_sequence_len}). Sequence exhausted? Using empty chunk.")
                      self._sampling_sequence = [] # Empty chunk
                  else:
                      self._sampling_sequence = full_sequence[start_idx:end_idx]
@@ -1359,12 +1380,12 @@ class RobosuiteSampleWrapper(gym.Wrapper):
             self._sequence_episode_idx = 0
 
         except FileNotFoundError:
-            print(f"Warning: Sampling sequence file not found at {sampling_file_path}. Sampling randomly.")
+            print(f"[RobosuiteSampleWrapper] Warning: Sampling sequence file not found at {sampling_file_path}. Sampling randomly.")
             # Fallback to random sampling if the file doesn't exist
             self._sampling_sequence = [np.random.randint(len(self.all_morphology_configs)) for _ in range(1000)] # Create a dummy random sequence
             self._sequence_episode_idx = 0
         except Exception as e:
-             print(f"Error loading or processing sampling sequence file: {e}. Sampling randomly.")
+             print(f"[RobosuiteSampleWrapper] Error loading or processing sampling sequence file: {e}. Sampling randomly.")
              self._sampling_sequence = [np.random.randint(len(self.all_morphology_configs)) for _ in range(1000)] # Create a dummy random sequence
              self._sequence_episode_idx = 0
 
@@ -1385,7 +1406,7 @@ class RobosuiteSampleWrapper(gym.Wrapper):
 
             # If sequence is *still* empty or too short after loading, fallback to random.
             if not self._sampling_sequence or self._sequence_episode_idx >= len(self._sampling_sequence):
-                 print(f"Warning: Sampling sequence exhausted or invalid after load attempt for worker {self.worker_rank}, episode index {self._sequence_episode_idx}. Defaulting to random sample.")
+                 print(f"[RobosuiteSampleWrapper] Warning: Sampling sequence exhausted or invalid after load attempt for worker {self.worker_rank}, episode index {self._sequence_episode_idx}. Defaulting to random sample.")
                  return np.random.randint(len(self.all_morphology_configs))
 
 
@@ -1395,7 +1416,7 @@ class RobosuiteSampleWrapper(gym.Wrapper):
 
         # Validate the sampled index
         if morph_index < 0 or morph_index >= len(self.all_morphology_configs):
-             print(f"Warning: Sampled morphology index {morph_index} is out of bounds (0-{len(self.all_morphology_configs)-1}) in all_morphology_configs. Defaulting to random sample for worker {self.worker_rank}, seq idx {self._sequence_episode_idx}.")
+             print(f"[RobosuiteSampleWrapper] Warning: Sampled morphology index {morph_index} is out of bounds (0-{len(self.all_morphology_configs)-1}) in all_morphology_configs. Defaulting to random sample for worker {self.worker_rank}, seq idx {self._sequence_episode_idx}.")
              morph_index = np.random.randint(len(self.all_morphology_configs))
 
         # Increment the sequence index for the next episode for THIS worker
@@ -1422,7 +1443,7 @@ class RobosuiteSampleWrapper(gym.Wrapper):
                 # Pass any kwargs to the inner stack's close if it supports them
                 self.active_env_stack.close(**kwargs)
             except Exception as e:
-                 print(f"Warning: Error closing previous environment stack for worker {self.worker_rank}: {e}")
+                 print(f"[RobosuiteSampleWrapper] Warning: Error closing previous environment stack for worker {self.worker_rank}: {e}")
                  # Attempt to force deletion if close fails
                  del self.active_env_stack
                  self.active_env_stack = None
@@ -1434,7 +1455,7 @@ class RobosuiteSampleWrapper(gym.Wrapper):
             self.active_morphology_index = sample_index
             # Validate the provided index
             if self.active_morphology_index < 0 or self.active_morphology_index >= len(self.all_morphology_configs):
-                 print(f"Error: Provided sample_index {sample_index} is out of bounds (0-{len(self.all_morphology_configs)-1}). Defaulting to index 0 for worker {self.worker_rank}.")
+                 print(f"[RobosuiteSampleWrapper] Error: Provided sample_index {sample_index} is out of bounds (0-{len(self.all_morphology_configs)-1}). Defaulting to index 0 for worker {self.worker_rank}.")
                  self.active_morphology_index = 0
             # Do NOT increment sequence index when explicitly sampling.
         else:
@@ -1450,8 +1471,8 @@ class RobosuiteSampleWrapper(gym.Wrapper):
         try:
             self.active_env_stack = self.inner_stack_builder_fn(selected_config)
         except Exception as e:
-            print(f"Error building inner env stack for morph index {self.active_morphology_index} (worker {self.worker_rank}): {e}")
-            raise RuntimeError(f"Failed to build inner env stack for morph index {self.active_morphology_index} (worker {self.worker_rank})") from e
+            print(f"[RobosuiteSampleWrapper] Error building inner env stack for morph index {self.active_morphology_index} (worker {self.worker_rank}): {e}")
+            raise RuntimeError(f"[RobosuiteSampleWrapper] Failed to build inner env stack for morph index {self.active_morphology_index} (worker {self.worker_rank})") from e
 
 
         # Call reset on the newly created inner environment stack
@@ -1460,11 +1481,11 @@ class RobosuiteSampleWrapper(gym.Wrapper):
             observation = self.active_env_stack.reset(**kwargs)
             # Ensure the inner stack's reset method propagates kwargs, especially the seed.
         except Exception as e:
-            print(f"Error resetting inner env stack for morph index {self.active_morphology_index} (worker {self.worker_rank}): {e}")
+            print(f"[RobosuiteSampleWrapper] Error resetting inner env stack for morph index {self.active_morphology_index} (worker {self.worker_rank}): {e}")
             # If reset fails, attempt to close the failed env and raise error.
             try: self.active_env_stack.close()
             except: pass # Ignore close error during cleanup
-            raise RuntimeError(f"Failed to reset inner env stack for morph index {self.active_morphology_index} (worker {self.worker_rank})") from e
+            raise RuntimeError(f"[RobosuiteSampleWrapper] Failed to reset inner env stack for morph index {self.active_morphology_index} (worker {self.worker_rank})") from e
 
 
         # Update observation and action spaces based on the new environment stack
@@ -1482,7 +1503,7 @@ class RobosuiteSampleWrapper(gym.Wrapper):
         """Steps the currently active environment stack."""
         if self.active_env_stack is None:
             # This should not happen if reset is called first
-            raise RuntimeError("Step called before environment was initialized. Call reset first for worker {self.worker_rank}.")
+            raise RuntimeError("[RobosuiteSampleWrapper] Step called before environment was initialized. Call reset first for worker {self.worker_rank}.")
         # Pass action to the active inner environment stack
         obs, rew, done, info = self.active_env_stack.step(action)
 
@@ -1500,7 +1521,7 @@ class RobosuiteSampleWrapper(gym.Wrapper):
             try:
                 self.active_env_stack.close()
             except Exception as e:
-                 print(f"Warning: Error closing active environment stack for worker {self.worker_rank}: {e}")
+                 print(f"[RobosuiteSampleWrapper] Warning: Error closing active environment stack for worker {self.worker_rank}: {e}")
             self.active_env_stack = None
         # Set the base gym.Wrapper closed flag
         self.closed = True
@@ -1533,5 +1554,3 @@ class RobosuiteSampleWrapper(gym.Wrapper):
         # Store the seed that was set
         self._last_seed = seed
         return [seed] # Return the list of seeds set (standard Gym convention)
-
-

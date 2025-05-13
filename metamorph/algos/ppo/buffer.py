@@ -25,10 +25,14 @@ class Buffer(object):
         self.logp = torch.zeros(T, P, 1)
         self.masks = torch.ones(T, P, 1)
         self.timeout = torch.ones(T, P, 1)
-        self.dropout_mask_v = torch.ones(T, P, 12, 128)
-        self.dropout_mask_mu = torch.ones(T, P, 12, 128)
+        # self.dropout_mask_v = torch.ones(T, P, 12, 128)
+        # self.dropout_mask_mu = torch.ones(T, P, 12, 128)
+        
+        # make it dynamic 
+        self.dropout_mask_v = torch.ones(T, P, cfg.MODEL.MAX_LIMBS, cfg.MODEL.LIMB_EMBED_SIZE)
+        self.dropout_mask_mu = torch.ones(T, P, cfg.MODEL.MAX_LIMBS, cfg.MODEL.LIMB_EMBED_SIZE)
         self.unimal_ids = torch.zeros(T, P).long()
-
+        
         self.step = 0
 
     def to(self, device):
@@ -60,8 +64,14 @@ class Buffer(object):
         self.logp[self.step] = logp
         self.masks[self.step] = masks
         self.timeout[self.step] = timeouts
-        self.dropout_mask_v[self.step] = dropout_mask_v
-        self.dropout_mask_mu[self.step] = dropout_mask_mu
+        # self.dropout_mask_v[self.step] = dropout_mask_v
+        # self.dropout_mask_mu[self.step] = dropout_mask_mu
+        # agent.act/actor_critic.forward return dropout_mask_v, dropout_mask_mu as shape (seq_len, batch_size, d_model) 
+        # or 0
+        # Buffer expects (T, P, seq_len, d_model)
+        self.dropout_mask_v[self.step] = dropout_mask_v if isinstance(dropout_mask_v, torch.Tensor) else self.dropout_mask_v[self.step].fill_(0)
+        self.dropout_mask_mu[self.step] = dropout_mask_mu if isinstance(dropout_mask_mu, torch.Tensor) else self.dropout_mask_mu[self.step].fill_(0)
+        
         self.unimal_ids[self.step] = torch.LongTensor(unimal_ids)
 
         self.step = (self.step + 1) % cfg.PPO.TIMESTEPS
@@ -113,8 +123,12 @@ class Buffer(object):
             batch["val"] = self.val.view(-1, 1)[idxs]
             batch["act"] = self.act.view(-1, self.act.size(-1))[idxs]
             batch["adv"] = adv.view(-1, 1)[idxs]
+            batch["act_padding_mask"] = self.obs["act_padding_mask"].view(-1, self.obs["act_padding_mask"].size(-1))[idxs] # Also get action padding mask from obs for policy loss
             batch["logp_old"] = self.logp.view(-1, 1)[idxs]
-            batch["dropout_mask_v"] = self.dropout_mask_v.view(-1, 12, 128)[idxs]
-            batch["dropout_mask_mu"] = self.dropout_mask_mu.view(-1, 12, 128)[idxs]
+            # batch["dropout_mask_v"] = self.dropout_mask_v.view(-1, 12, 128)[idxs]
+            # batch["dropout_mask_mu"] = self.dropout_mask_mu.view(-1, 12, 128)[idxs]
+            batch["dropout_mask_v"] = self.dropout_mask_v.view(-1, cfg.MODEL.MAX_LIMBS, cfg.MODEL.LIMB_EMBED_SIZE)[idxs]
+            batch["dropout_mask_mu"] = self.dropout_mask_mu.view(-1,cfg.MODEL.MAX_LIMBS, cfg.MODEL.LIMB_EMBED_SIZE)[idxs]
+            
             batch["unimal_ids"] = self.unimal_ids.view(-1)[idxs]
             yield batch
