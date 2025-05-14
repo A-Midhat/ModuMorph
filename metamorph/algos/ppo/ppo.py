@@ -158,9 +158,27 @@ class PPO:
             self.save_sampled_agent_seq(cur_iter)
 
             self.train_meter.update_mean()
+            # ----------Log each morphs stats --------------
+            env_step = self.env_steps_done(cur_iter)
+
+            for agent_name, agent_meter in self.train_meter.agent_meters.items():
+                if agent_meter.ep_count > 0 and agent_meter.mean_ep_rews.get('reward'):
+                    # mean reward per morph(agent)
+                    self.log_metric({f"Agent/{agent_name}/Reward":agent_meter.mean_ep_rews["reward"][-1]}, env_step)
+                    # mean success rate per morph(agent)
+                    if agent_meter.mean_success:
+                        self.log_metric({f"Agent/{agent_name}/Success":agent_meter.mean_success[-1]}, env_step)
+                    # min/max/median rewards per morph 
+                    # No need for this now (console log is enough)
+
+            # ----------Log each morphs stats --------------
+
             if len(self.train_meter.overall_mean_ep_rews["reward"]):
                 cur_rew = self.train_meter.overall_mean_ep_rews["reward"][-1]
                 self.log_metric({"Reward": cur_rew}, self.env_steps_done(cur_iter))
+            
+            if self.train_meter.overall_mean_success_rate:
+                    self.log_metric({"Overall/Success": self.train_meter.overall_mean_success_rate[-1]}, env_step)
 
             if cur_iter >= 0 and cur_iter % cfg.LOG_PERIOD == 0 and cfg.LOG_PERIOD > 0:
                 self._log_stats(cur_iter)

@@ -1074,17 +1074,20 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
         final_obs['act_padding_mask'] = self.metadata.get('act_padding_mask', np.ones(self.global_max_limbs, dtype=bool)) # Fetch from metadata
         
         # TODO: adds traversals and swat_re 
-        # final_obs['traversals'] = self.traversals 
-        # final_obs['swat_re'] = self.swat_re
+        final_obs['traversals'] = self.traversals_global 
+        final_obs['SWAT_RE'] = self.swat_re_global
 
         # Pass Through Global Features
         for key in self.observation_space.spaces:
              if key not in final_obs and key in obs:
-                 if obs[key].shape == self.observation_space[key].shape: final_obs[key] = obs[key]
+                 if obs[key].shape == self.observation_space[key].shape: 
+                    final_obs[key] = obs[key]
 
         # Ensure all keys present
         for key, space in self.observation_space.spaces.items():
-             if key not in final_obs: final_obs[key] = np.zeros(space.shape, dtype=space.dtype)
+             if key not in final_obs: 
+                print(f"[RobosuiteNodeCentricObservation] Warning: key {key} not in final_obs. Adding zero-filled array.")
+                final_obs[key] = np.zeros(space.shape, dtype=space.dtype)
 
         return final_obs
 
@@ -1099,7 +1102,7 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
         return self.observation(obs_raw)
 
 # ----------------------------------------------------------
-# ---------------Node Centric Observation-------------------
+# ---------------Node Centric Action------------------------
 # ---------------------Transormer model---------------------
 class RobosuiteNodeCentricAction(gym.ActionWrapper):
     """
@@ -1365,7 +1368,7 @@ class RobosuiteSampleWrapper(gym.Wrapper):
                  # PPO trainer should write a sequence long enough and divisible by num_workers.
                  # Need to handle potential index errors if not divisible or too short.
                  total_sequence_len = len(full_sequence)
-                 chunk_size = total_sequence_len // self.num_workers
+                #  chunk_size = total_sequence_len // self.num_workers
                  start_idx = self.worker_rank * chunk_size
                  end_idx = start_idx + chunk_size if self.worker_rank < self.num_workers - 1 else total_sequence_len # Ensure last worker gets remaining
 
@@ -1373,8 +1376,10 @@ class RobosuiteSampleWrapper(gym.Wrapper):
                      print(f"[RobosuiteSampleWrapper] Warning: Worker {self.worker_rank}: Start index ({start_idx}) >= total sequence len ({total_sequence_len}). Sequence exhausted? Using empty chunk.")
                      self._sampling_sequence = [] # Empty chunk
                  else:
-                     self._sampling_sequence = full_sequence[start_idx:end_idx]
-                     # print(f"Worker {self.worker_rank}: Loaded chunk {self.worker_rank} (indices {start_idx}-{end_idx-1}) of sampling sequence (total len {total_sequence_len}, chunk size {chunk_size}). Chunk len {len(self._sampling_sequence)}") # Debug
+                    #  self._sampling_sequence = full_sequence[start_idx:end_idx]
+                    self._sampling_sequence = full_sequence[self.worker_rank :: self.num_workers]
+
+                    # print(f"Worker {self.worker_rank}: Loaded chunk {self.worker_rank} (indices {start_idx}-{end_idx-1}) of sampling sequence (total len {total_sequence_len}, chunk size {chunk_size}). Chunk len {len(self._sampling_sequence)}") # Debug
 
             # Reset sequence index after loading (for this worker's chunk)
             self._sequence_episode_idx = 0
@@ -1495,6 +1500,9 @@ class RobosuiteSampleWrapper(gym.Wrapper):
 
         self.metadata['active_morph_config_index'] = self.active_morphology_index
 
+        # add inside RobosuiteSampleWrapper.reset()
+        print(f"[Worker {self.worker_rank}] uses morph {self.active_morphology_index} "
+        f"at episode {self._sequence_episode_idx}")
 
         # Return the observation from the inner environment
         return observation
