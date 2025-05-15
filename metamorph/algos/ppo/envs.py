@@ -12,6 +12,8 @@ from metamorph.envs.vec_env.dummy_vec_env import DummyVecEnv
 from metamorph.envs.vec_env.pytorch_vec_env import VecPyTorch
 from metamorph.envs.vec_env.subproc_vec_env import SubprocVecEnv
 from metamorph.envs.vec_env.vec_normalize import VecNormalize
+from metamorph.envs.vec_env.vec_video_recorder import VecVideoRecorder
+
 # from metamorph.envs.wrappers.multi_env_wrapper import MultiEnvWrapper
 
 # Robosuite wrappers
@@ -82,23 +84,18 @@ def make_env(env_id, seed, rank, **kwargs):
             all_morph_cfg = kwargs['morph_cfg']
             if all_morph_cfg is None:
                 raise ValueError("morph_cfg must be provided for Robosuite-v0")
-    
-            env = RobosuiteSampleWrapper(
-                env = None,
-                all_morphology_configs=all_morph_cfg,
-                inner_stack_builder_fn=_build_inner_robosuite_stack,
-                worker_rank=rank,
-                num_workers=cfg.PPO.NUM_ENVS,
-            )
+            
+            elif len(all_morph_cfg) == 1:
+                env = _build_inner_robosuite_stack(all_morph_cfg[0])
+            else:
+                env = RobosuiteSampleWrapper(
+                    env = None,
+                    all_morphology_configs=all_morph_cfg,
+                    inner_stack_builder_fn=_build_inner_robosuite_stack,
+                    worker_rank=rank,
+                    num_workers=cfg.PPO.NUM_ENVS,
+                )
 
-            # env = RobosuiteSampleWrapper(
-            #     env = None, 
-            #     all_morphology_configs=all_morph_cfg,
-            #     inner_stack_builder_fn=_build_inner_robosuite_stack,
-            # )
-            # env.seed(seed + rank)
-
-            # return env
 
         elif env_id in CUSTOM_ENVS[:-1]: # remove Robosuite-v0
             xml_file = kwargs['xml_file']
@@ -204,8 +201,8 @@ def make_vec_envs(
             make_env(
                 env_id,
                 seed,
-                rank,
-                morph_cfg=all_morph_cfg,
+                0, # rank = 0 
+                # morph_cfg=all_morph_cfg, #in kwargs?
                 **kwargs
                 )
             ]
@@ -287,7 +284,7 @@ def make_vec_envs(
         video_length = kwargs.get('video_length', cfg.PPO.VIDEO_LENGTH)
 
         if video_dir is None:
-             print("Warning: save_video is True but 'video_dir' not provided in kwargs. Skipping video recording.")
+             print("[Save Video] Warning: save_video is True but 'video_dir' not provided in kwargs. Skipping video recording.")
         else:
              print(f"[make_vec_envs] Applied VecVideoRecorder. Saving to {video_dir} with prefix {video_prefix}")
              envs = VecVideoRecorder(
@@ -364,8 +361,15 @@ def get_ob_rms(venv):
 
 
 def set_ob_rms(venv, ob_rms):
+    """
+    Assign running-state statistics to a VecNormalize wrapper – but only
+    if **both** the wrapper and the statistics actually exist.
+    (During evaluation we often turn VecNorm off, so `vec_norm`
+    can legitimately be `None`.)
+    """
     vec_norm = get_vec_normalize(venv)
-    vec_norm.ob_rms = ob_rms
+    if vec_norm is not None and ob_rms is not None:
+        vec_norm.ob_rms = ob_rms
 
 
 # Checks whether done was caused my timit limits or not

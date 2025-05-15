@@ -19,6 +19,9 @@ from metamorph.config import cfg
 from metamorph.config import get_list_cfg
 
 
+# ---------------------------------------------------------
+# -----------------Base Wrapper----------------------------
+# ---------------------------------------------------------
 class RobosuiteEnvWrapper(gym.Env):
     """Making robosuite Env compatible with gym.Env"""
     metadata = {"render.modes": ["human", "rgb_array"]}
@@ -110,6 +113,7 @@ class RobosuiteEnvWrapper(gym.Env):
         self._elapsed_steps = 0 
         self.sim = self.env.sim # We will use this for the next wrappers 
         
+        self.closed = False
 
     def _extract_robot_metadata(self):
         metadata_list = []
@@ -228,6 +232,8 @@ class RobosuiteEnvWrapper(gym.Env):
         return processed_obs
 
     def close(self):
+        if self.closed:
+            return 
         self.env.close() 
     
     def render(self, mode='human', width=512, height=512, camera_name=None):
@@ -278,9 +284,9 @@ class RobosuiteEnvWrapper(gym.Env):
     def action(self, action):
         return action
 
-# ------------------------------------------------
-# -----------------SR-ST baseline-----------------
-# -------------------MLP Model--------------------
+# ---------------------------------------------------------
+# -----------------SR-ST baseline--------------------------
+# -------------------MLP Model-----------------------------
 class RobosuiteMLPFlattener(gym.ObservationWrapper):
     """
     Flatten the observation from robosuite (Normally proprioceptive and object states)
@@ -396,6 +402,10 @@ class RobosuiteMLPFlattener(gym.ObservationWrapper):
     def action(self, action):
         """Pass action from policy to the wrapped env"""
         return action
+    
+    def close(self):
+        self.env.close()
+        self.env.closed = True 
 
 # ----------------------------------------------------------
 # ---------------Node Centric Observation-------------------
@@ -1101,6 +1111,10 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
 
         return self.observation(obs_raw)
 
+    def close(self):
+        self.env.close()
+        self.env.closed = True 
+
 # ----------------------------------------------------------
 # ---------------Node Centric Action------------------------
 # ---------------------Transormer model---------------------
@@ -1562,3 +1576,5 @@ class RobosuiteSampleWrapper(gym.Wrapper):
         # Store the seed that was set
         self._last_seed = seed
         return [seed] # Return the list of seeds set (standard Gym convention)
+
+

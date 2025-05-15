@@ -4,8 +4,9 @@ log*/
 .vscode/
 unimals_100
 test*
-
+eval/*
 venv
+videos/*
 
 output/*
 *.egg-info
