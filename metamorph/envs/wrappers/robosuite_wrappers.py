@@ -1408,41 +1408,79 @@ class RobosuiteSampleWrapper(gym.Wrapper):
              self._sampling_sequence = [np.random.randint(len(self.all_morphology_configs)) for _ in range(1000)] # Create a dummy random sequence
              self._sequence_episode_idx = 0
 
+    # def _sample_morphology_index(self) -> int:
+    #     """
+    #     Samples the next morphology configuration index based on the loaded sequence.
+    #     Reloads the sequence if necessary (end reached or file updated).
+    #     Returns the index into the all_morphology_configs list.
+    #     """
+    #     # Check if the sequence needs to be loaded or reloaded (end reached)
+    #     if self._sampling_sequence is None or self._sequence_episode_idx >= len(self._sampling_sequence):
+    #         # Sequence is exhausted or not loaded, try to load a new one
+    #         # This assumes PPO trainer periodically writes a new, longer sampling.json
+    #         # If the file isn't updated, we will keep loading the same exhausted sequence.
+    #         # A more robust check would involve checking file modification time.
+    #         # For simplicity, let's rely on PPO writing updates and just reload when exhausted.
+    #         self._load_sampling_sequence()
+
+    #         # If sequence is *still* empty or too short after loading, fallback to random.
+    #         if not self._sampling_sequence or self._sequence_episode_idx >= len(self._sampling_sequence):
+    #              print(f"[RobosuiteSampleWrapper] Warning: Sampling sequence exhausted or invalid after load attempt for worker {self.worker_rank}, episode index {self._sequence_episode_idx}. Defaulting to random sample.")
+    #              return np.random.randint(len(self.all_morphology_configs))
+
+
+    #     # Get the next morphology configuration index from the sequence for THIS worker
+    #     # The values in the sequence are the indices into the *all_morphology_configs* list.
+    #     morph_index = self._sampling_sequence[self._sequence_episode_idx]
+
+    #     # Validate the sampled index
+    #     if morph_index < 0 or morph_index >= len(self.all_morphology_configs):
+    #          print(f"[RobosuiteSampleWrapper] Warning: Sampled morphology index {morph_index} is out of bounds (0-{len(self.all_morphology_configs)-1}) in all_morphology_configs. Defaulting to random sample for worker {self.worker_rank}, seq idx {self._sequence_episode_idx}.")
+    #          morph_index = np.random.randint(len(self.all_morphology_configs))
+
+    #     # Increment the sequence index for the next episode for THIS worker
+    #     self._sequence_episode_idx += 1
+
+    #     # print(f"Worker {self.worker_rank}: Sampled morph index {morph_index} (seq idx {self._sequence_episode_idx - 1})") # Debug
+        # return morph_index
+
+    # ------------------------------------------------------------------+
+    #  Balanced fallback sampler                                         |
+    # ------------------------------------------------------------------
     def _sample_morphology_index(self) -> int:
         """
-        Samples the next morphology configuration index based on the loaded sequence.
-        Reloads the sequence if necessary (end reached or file updated).
-        Returns the index into the all_morphology_configs list.
+        Deterministic, balanced sampling when `sampling.json` is absent.
+        * If #morphs ≥ #workers  → each worker gets a distinct morph first.
+        * If #morphs <  #workers → morphs are repeated so every worker is
+          assigned something, but the list is shuffled each cycle.
+        After the list is exhausted it is regenerated and reshuffled.
         """
-        # Check if the sequence needs to be loaded or reloaded (end reached)
-        if self._sampling_sequence is None or self._sequence_episode_idx >= len(self._sampling_sequence):
-            # Sequence is exhausted or not loaded, try to load a new one
-            # This assumes PPO trainer periodically writes a new, longer sampling.json
-            # If the file isn't updated, we will keep loading the same exhausted sequence.
-            # A more robust check would involve checking file modification time.
-            # For simplicity, let's rely on PPO writing updates and just reload when exhausted.
-            self._load_sampling_sequence()
+        if (
+            self._sampling_sequence is None
+            or self._sequence_episode_idx >= len(self._sampling_sequence)
+        ):
+            if len(self.all_morphology_configs) >= self.num_workers:
+                # ↳ one unique morph per worker until list is exhausted
+                shuffled = np.random.permutation(len(self.all_morphology_configs))
+                self._sampling_sequence = shuffled.tolist()
+            else:
+                # ↳ need repeats so every worker gets something
+                repeats = int(
+                    np.ceil(self.num_workers / len(self.all_morphology_configs))
+                )
+                seq = np.tile(
+                    np.arange(len(self.all_morphology_configs)), repeats
+                )
+                np.random.shuffle(seq)
+                self._sampling_sequence = seq.tolist()
+            self._sequence_episode_idx = 0
 
-            # If sequence is *still* empty or too short after loading, fallback to random.
-            if not self._sampling_sequence or self._sequence_episode_idx >= len(self._sampling_sequence):
-                 print(f"[RobosuiteSampleWrapper] Warning: Sampling sequence exhausted or invalid after load attempt for worker {self.worker_rank}, episode index {self._sequence_episode_idx}. Defaulting to random sample.")
-                 return np.random.randint(len(self.all_morphology_configs))
-
-
-        # Get the next morphology configuration index from the sequence for THIS worker
-        # The values in the sequence are the indices into the *all_morphology_configs* list.
-        morph_index = self._sampling_sequence[self._sequence_episode_idx]
-
-        # Validate the sampled index
-        if morph_index < 0 or morph_index >= len(self.all_morphology_configs):
-             print(f"[RobosuiteSampleWrapper] Warning: Sampled morphology index {morph_index} is out of bounds (0-{len(self.all_morphology_configs)-1}) in all_morphology_configs. Defaulting to random sample for worker {self.worker_rank}, seq idx {self._sequence_episode_idx}.")
-             morph_index = np.random.randint(len(self.all_morphology_configs))
-
-        # Increment the sequence index for the next episode for THIS worker
+        # idx = self._sampling_sequence[self._sequence_episode_idx]
+        idx = self._sampling_sequence[
+            (self._sequence_episode_idx + self.worker_rank) % len(self._sampling_sequence)
+        ]
         self._sequence_episode_idx += 1
-
-        # print(f"Worker {self.worker_rank}: Sampled morph index {morph_index} (seq idx {self._sequence_episode_idx - 1})") # Debug
-        return morph_index
+        return idx
 
 
     def reset(self, sample_index=None, **kwargs):
@@ -1515,8 +1553,9 @@ class RobosuiteSampleWrapper(gym.Wrapper):
         self.metadata['active_morph_config_index'] = self.active_morphology_index
 
         # add inside RobosuiteSampleWrapper.reset()
-        print(f"[Worker {self.worker_rank}] uses morph {self.active_morphology_index} "
-        f"at episode {self._sequence_episode_idx}")
+        # DEBUG: to know how we assign each worker to each morph idx
+        # print(f"[Worker {self.worker_rank}] uses morph {self.active_morphology_index} "
+        # f"at episode {self._sequence_episode_idx}")
 
         # Return the observation from the inner environment
         return observation

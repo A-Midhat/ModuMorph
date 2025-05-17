@@ -1,0 +1,365 @@
+_wandb:
+    value:
+        cli_version: 0.19.11
+        m: []
+        python_version: 3.9.2
+        t:
+            "1":
+                - 1
+                - 55
+            "3":
+                - 13
+                - 16
+                - 23
+                - 55
+            "4": 3.9.2
+            "5": 0.19.11
+            "8":
+                - 5
+            "12": 0.19.11
+            "13": linux-x86_64
+CFG_DEST:
+    value: config.yaml
+CHECKPOINT_PERIOD:
+    value: 100
+CUDNN:
+    value:
+        BENCHMARK: false
+        DETERMINISTIC: true
+DESC:
+    value: Modumorph for Robosuite manipulation tasks
+DETERMINISTIC:
+    value: false
+DEVICE:
+    value: cuda:0
+ENV:
+    value:
+        ANGLE_RANGE:
+            - -0.2
+            - 0.2
+        AVOID_REWARD_WEIGHT: 100
+        CTRL_COST_WEIGHT: 0
+        FIX_ENV: false
+        FORWARD_REWARD_WEIGHT: 1
+        HEALTHY_REWARD: 0
+        KEYS_TO_KEEP:
+            - object-state
+            - proprioceptive
+            - obs_padding_mask
+            - act_padding_mask
+            - edges
+            - context
+            - SWAT_RE
+            - traversals
+        MODULES:
+            - Floor
+            - Agent
+        NEW_SIM_ON_RESET: true
+        RESET_NOISE_SCALE: 0.005
+        SKIP_SELF_POS: false
+        STAND_HEIGHT_RATIO: 0.5
+        STAND_REWARD_WEIGHT: 0
+        STATE_RANGE:
+            - -100
+            - 100
+        TASK: Robosuite-Manipulation
+        TASK_SAMPLING: balanced_replay_buffer
+        WALKER_DIR: ./unimals_100/train
+        WALKERS: []
+        WRAPPERS: []
+        Z_RANGE:
+            - -0.1
+            - .inf
+ENV_NAME:
+    value: Robosuite-v0
+EVAL_PERIOD:
+    value: -1
+EXIT_ON_MJ_STEP_EXCEPTION:
+    value: false
+HFIELD:
+    value:
+        ADAPTIVE_OBS: false
+        ADAPTIVE_OBS_SIZE:
+            - 0.1
+            - 0.5
+            - 1.5
+            - 5
+        DIM: 2
+        GAP_DEPTH: -10
+        NUM_DIVS: 10
+        OBS_SIZE:
+            - 1
+            - 4
+            - 4
+            - 4
+        PADDING: 10
+        VIZ: false
+LOG_DEST:
+    value: stdout
+LOG_PERIOD:
+    value: 10
+LOGGING:
+    value:
+        ENTITY: alimidhat62-org
+        PROJECT: MR-ST
+        USE_WANDB: true
+MIRROR_DATA_AUG:
+    value: false
+MODEL:
+    value:
+        ACTION_STD: 0.9
+        ACTION_STD_FIXED: true
+        ACTOR_CRITIC: ActorCritic
+        BASE_CONTEXT_NORM: running
+        CONTEXT_OBS_TYPES:
+            - body_pos
+            - body_ipos
+            - body_iquat
+            - geom_quat
+            - body_mass
+            - body_shape
+            - jnt_pos
+            - joint_range
+            - joint_axis
+            - gear
+        FINETUNE:
+            FULL_MODEL: false
+            LAYER_SUBSTRING: []
+        JOINT_EMBED_SIZE: 128
+        LIMB_EMBED_SIZE: 128
+        MAX_JOINTS: 9
+        MAX_JOINTS_PER_ROBOT: 9
+        MAX_LIMBS: 10
+        MAX_LIMBS_PER_ROBOT: 9
+        MLP:
+            HIDDEN_DIM: 256
+            LAYER_NUM: 3
+        OBS_TO_NORM: []
+        OBS_TYPES:
+            - proprioceptive
+            - obs_padding_mask
+            - act_padding_mask
+            - edges
+            - context
+            - SWAT_RE
+            - traversals
+        PROPRIOCEPTIVE_OBS_TYPES:
+            - body_xpos
+            - body_xvelp
+            - body_xvelr
+            - body_xquat
+            - body_pos
+            - body_ipos
+            - body_iquat
+            - geom_quat
+            - body_mass
+            - body_shape
+            - qpos
+            - qvel
+            - jnt_pos
+            - joint_range
+            - joint_axis
+            - gear
+        TRANSFORMER:
+            CONSISTENT_DROPOUT: false
+            CONTEXT_EMBED_SIZE: 128
+            CONTEXT_ENCODER: linear
+            CONTEXT_LAYER: 3
+            DECODER_DIMS: []
+            DECODER_INIT: 0.01
+            DIM_FEEDFORWARD: 1024
+            DROPOUT: 0
+            EMBED_INIT: 0.1
+            EMBEDDING_DROPOUT: true
+            EMBEDDING_SCALE: true
+            EXT_HIDDEN_DIMS: []
+            EXT_MIX: late
+            FIX_ATTENTION: true
+            HFIELD_IN_FIX_ATTENTION: false
+            HN_CONTEXT_ENCODER: linear
+            HN_CONTEXT_LAYER_NUM: 1
+            HN_DECODER: true
+            HN_EMBED: true
+            HN_EMBED_INIT: 0.1
+            HYPERNET: true
+            LINEAR_CONTEXT_LAYER: 2
+            NHEAD: 2
+            NLAYERS: 5
+            PER_NODE_DECODER: false
+            PER_NODE_EMBED: false
+            POS_EMBEDDING: none
+            TRAVERSALS:
+                - pre
+                - inlcrs
+                - postlcrs
+            USE_MORPHOLOGY_INFO_IN_ATTENTION: false
+            USE_SWAT_PE: true
+            USE_SWAT_RE: true
+        TYPE: transformer
+        WRAPPERS: []
+NODE_ID:
+    value: -1
+NUM_NODES:
+    value: 1
+OBJECT:
+    value:
+        BALL_RADIUS: 0.15
+        BOX_MASS: 1
+        BOX_POS: []
+        BOX_SIDE: 0.5
+        CLOSE_PLACEMENT_DIST: 10
+        FORWARD_PLACEMENT_DIST:
+            - 10
+            - 15
+        GOAL_POS: []
+        NUM_OBSTACLES: 50
+        OBSTACLE_LEN_RANGE:
+            - 0.5
+            - 1
+            - 0.1
+        OBSTACLE_WIDTH_RANGE:
+            - 0.5
+            - 1
+            - 0.1
+        PLACEMENT_BUFFER_LEN: 3
+        PLACEMENT_BUFFER_WIDTH: 0
+        SUCCESS_MARGIN: 0.5
+        TYPE: box
+OUT_DIR:
+    value: ./output/robosuite_transformer_lift/1409
+PPO:
+    value:
+        BASE_LR: 0.0003
+        BATCH_SIZE: 5120
+        CHECKPOINT_PATH: ""
+        CLIP_EPS: 0.2
+        EARLY_EXIT: false
+        EARLY_EXIT_MAX_ITERS: 1220
+        EARLY_EXIT_STATE_ACTION_PAIRS: 1e+08
+        ENTROPY_COEF: 0
+        EPOCHS: 8
+        EPS: 1e-05
+        GAE_LAMBDA: 0.95
+        GAMMA: 0.99
+        KL_TARGET_COEF: 20
+        LR_POLICY: cos
+        MAX_GRAD_NORM: 0.5
+        MAX_ITERS: 366
+        MAX_STATE_ACTION_PAIRS: 3e+07
+        MIN_LR: 0
+        NUM_ENVS: 32
+        TIMESTEPS: 2560
+        USE_CLIP_VALUE_FUNC: true
+        VALUE_COEF: 0.5
+        VIDEO_LENGTH: 1000
+        WARMUP_FACTOR: 0.1
+        WARMUP_ITERS: 5
+        WEIGHT_DECAY: 0
+RNG_SEED:
+    value: 1409
+ROBOSUITE:
+    value:
+        CONTROLLERS:
+            - JOINT_VELOCITY
+            - JOINT_VELOCITY
+            - JOINT_VELOCITY
+            - JOINT_VELOCITY
+            - JOINT_VELOCITY
+            - JOINT_VELOCITY
+        ENV_ARGS:
+            control_freq: 20
+            hard_reset: false
+            has_offscreen_renderer: false
+            has_renderer: false
+            horizon: 1000
+            ignore_done: false
+            reward_shaping: true
+            use_camera_obs: false
+        ENV_NAMES:
+            - Lift
+            - Lift
+            - Lift
+            - Lift
+            - Lift
+            - Lift
+        EXTERO_KEYS:
+            - object-state
+        GRIPPER_DIM: 1
+        TASK_TYPE: MR
+        TRAINING_MORPHOLOGIES:
+            - Panda
+            - Jaco
+            - IIWA
+            - Kinova3
+            - UR5e
+            - Sawyer
+SAVE_HIST_WEIGHTS:
+    value: false
+TASK_SAMPLING:
+    value:
+        AVG_TYPE: ema
+        EMA_ALPHA: 0.1
+        PROB_ALPHA: 1
+TERMINATE_ON_FALL:
+    value: true
+TERRAIN:
+    value:
+        BOUNDARY_WALLS: true
+        BOWL_MAX_Z: 1.3
+        CENTER_FLAT: 2
+        CURVE_HEIGHT_RANGE:
+            - 0.6
+            - 1.2
+            - 0.1
+        FLAT_LENGTH_RANGE:
+            - 9
+            - 15
+            - 2
+        FLOOR_OFFSET: 0.2
+        HFIELD_LENGTH_RANGE:
+            - 4
+            - 8
+            - 4
+        INCLINE_ANGLE: 0
+        NUM_STEPS: 8
+        RUGGED_SQUARE_CLIP_RANGE:
+            - 0.2
+            - 0.3
+            - 0.1
+        SIZE:
+            - 25
+            - 20
+            - 1
+        START_FLAT: 2
+        STEP_HEIGHT: 0.2
+        STEP_LENGTH_RANGE:
+            - 12
+            - 16
+            - 4
+        TYPES:
+            - gap
+            - jump
+        WALL_LENGTH: 0.1
+UNIMAL_TEMPLATE:
+    value: ./metamorph/envs/assets/unimal.xml
+VECENV:
+    value:
+        IN_SERIES: 2
+        TYPE: SubprocVecEnv
+VIDEO:
+    value:
+        FPS: 30
+        HEIGHT: 360
+        SAVE: false
+        WIDTH: 640
+XML:
+    value:
+        FILTER_PARENT: enable
+        GEOM_CONDIM: 3
+        GEOM_FRICTION:
+            - 0.7
+            - 0.1
+            - 0.1
+        NCONMAX: 200
+        NJMAX: 1000
+        SHADOWCLIP: 0.5

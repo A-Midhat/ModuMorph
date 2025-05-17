@@ -3,6 +3,7 @@ lxml
 gym==0.17.1
 networkx
 mujoco_py==2.0.2.8
+robosuite==1.4.1
 tensorboard
 matplotlib
 wandb

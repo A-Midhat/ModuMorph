@@ -1,0 +1,35 @@
+obs
+<class 'dict'> 8
+proprioceptive torch.Size([32, 100])
+context torch.Size([32, 180])
+edges torch.Size([32, 18])
+obs_padding_mask torch.Size([32, 10])
+act_padding_mask torch.Size([32, 10])
+traversals torch.Size([32, 10, 3])
+SWAT_RE torch.Size([32, 10, 10, 3])
+object-state torch.Size([32, 10])
+lr=2.9999999999999997e-05 for iter 0
+Traceback (most recent call last):
+  File "/home/alimidhat_aims_ac_za/projects/ModuMorph/tools/train_ppo.py", line 314, in <module>
+    main()
+  File "/home/alimidhat_aims_ac_za/projects/ModuMorph/tools/train_ppo.py", line 310, in main
+    ppo_train()
+  File "/home/alimidhat_aims_ac_za/projects/ModuMorph/tools/train_ppo.py", line 278, in ppo_train
+    PPOTrainer.train()
+  File "/home/alimidhat_aims_ac_za/projects/ModuMorph/metamorph/algos/ppo/ppo.py", line 132, in train
+    next_obs, reward, done, infos = self.envs.step(act)
+  File "/home/alimidhat_aims_ac_za/projects/ModuMorph/metamorph/envs/vec_env/vec_env.py", line 109, in step
+    return self.step_wait()
+  File "/home/alimidhat_aims_ac_za/projects/ModuMorph/metamorph/envs/vec_env/pytorch_vec_env.py", line 26, in step_wait
+    obs, reward, done, info = self.venv.step_wait()
+  File "/home/alimidhat_aims_ac_za/projects/ModuMorph/metamorph/envs/vec_env/subproc_vec_env.py", line 111, in step_wait
+    results = [remote.recv() for remote in self.remotes]
+  File "/home/alimidhat_aims_ac_za/projects/ModuMorph/metamorph/envs/vec_env/subproc_vec_env.py", line 111, in <listcomp>
+    results = [remote.recv() for remote in self.remotes]
+  File "/usr/lib/python3.9/multiprocessing/connection.py", line 250, in recv
+    buf = self._recv_bytes()
+  File "/usr/lib/python3.9/multiprocessing/connection.py", line 414, in _recv_bytes
+    buf = self._recv(4)
+  File "/usr/lib/python3.9/multiprocessing/connection.py", line 379, in _recv
+    chunk = read(handle, remaining)
+KeyboardInterrupt

@@ -1,0 +1,46 @@
+{
+  "os": "Linux-5.10.0-34-cloud-amd64-x86_64-with-glibc2.31",
+  "python": "CPython 3.9.2",
+  "startedAt": "2025-05-16T23:17:18.758479Z",
+  "args": [
+    "--cfg",
+    "configs/robosuite_transformer.yaml"
+  ],
+  "program": "/home/alimidhat_aims_ac_za/projects/ModuMorph/tools/train_ppo.py",
+  "codePath": "tools/train_ppo.py",
+  "git": {
+    "remote": "https://github.com/A-Midhat/ModuMorph.git",
+    "commit": "cb64460a71db632930a16e4a97daac6520bf64a0"
+  },
+  "email": "alimidhat62@gmail.com",
+  "root": "/home/alimidhat_aims_ac_za/projects/ModuMorph",
+  "host": "modumorph-vm",
+  "executable": "/home/alimidhat_aims_ac_za/projects/ModuMorph/venv/bin/python",
+  "codePathLocal": "tools/train_ppo.py",
+  "cpu_count": 4,
+  "cpu_count_logical": 8,
+  "gpu": "NVIDIA L4",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "84292763648",
+      "used": "36414922752"
+    }
+  },
+  "memory": {
+    "total": "33671041024"
+  },
+  "cpu": {
+    "count": 4,
+    "countLogical": 8
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA L4",
+      "memoryTotal": "24152899584",
+      "cudaCores": 7424,
+      "architecture": "Ada"
+    }
+  ],
+  "cudaVersion": "12.4"
+}

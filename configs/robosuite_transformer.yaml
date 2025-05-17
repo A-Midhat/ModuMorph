@@ -1,0 +1,56 @@
+ENV_NAME: "Robosuite-v0"
+
+ROBOSUITE:
+  TASK_TYPE: "MR" 
+  
+  TRAINING_MORPHOLOGIES: ["Panda", "Jaco", "IIWA", "Kinova3", "UR5e", "Sawyer"]
+  ENV_NAMES: ["Lift","Lift","Lift","Lift","Lift","Lift"] 
+  CONTROLLERS: ["JOINT_VELOCITY","JOINT_VELOCITY","JOINT_VELOCITY","JOINT_VELOCITY","JOINT_VELOCITY","JOINT_VELOCITY"]
+
+ 
+ENV:
+  KEYS_TO_KEEP: ["object-state", "proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context", "SWAT_RE", "traversals"] 
+
+MODEL:
+  TYPE: "transformer" 
+  
+  OBS_TYPES: ["proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context", "SWAT_RE", "traversals"]
+  OBS_TO_NORM: []
+
+ 
+  # for consistency when swap model type later.
+  TRANSFORMER:
+    NLAYERS: 5
+    NHEAD: 2
+    DIM_FEEDFORWARD: 1024
+    DROPOUT: 0.0
+    EXT_MIX: "late" 
+    POS_EMBEDDING: "none" # swat_re/traversals are better
+    HYPERNET: True 
+    FIX_ATTENTION: True 
+    USE_SWAT_PE: True 
+    USE_SWAT_RE: True
+    HN_EMBED: True
+    HN_DECODER: True 
+
+# PPO training parameters
+PPO:
+  # Example values - adjust as needed
+  MAX_STATE_ACTION_PAIRS: 3e7 # Adjust based on training duration desired
+  NUM_ENVS: 32 
+
+
+# Other general training settings
+RNG_SEED: 1409
+DEVICE: "cuda:0" # or "cpu"
+LOG_PERIOD: 10
+CHECKPOINT_PERIOD: 100
+
+# Logging
+LOGGING:
+  USE_WANDB: True 
+  PROJECT: "MR-ST"
+  ENTITY: "alimidhat62-org"
+
+
+OUT_DIR: "./output/robosuite_transformer_lift/1409"

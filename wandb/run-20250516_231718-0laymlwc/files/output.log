@@ -1,0 +1,86 @@
+obs
+<class 'dict'> 8
+proprioceptive torch.Size([32, 100])
+context torch.Size([32, 180])
+edges torch.Size([32, 18])
+obs_padding_mask torch.Size([32, 10])
+act_padding_mask torch.Size([32, 10])
+traversals torch.Size([32, 10, 3])
+SWAT_RE torch.Size([32, 10, 10, 3])
+object-state torch.Size([32, 10])
+lr=2.9999999999999997e-05 for iter 0
+Updates 0, num timesteps 81920, FPS 191
+Agent Kinova3_Lift: mean/median reward     4.52/3.94    , min/max reward     0.73/12.73   , #Ep:      10, avg/ema Ep len: 1000.0/1000.0
+Agent    UR5e_Lift: mean/median reward     0.31/0.28    , min/max reward     0.03/0.74    , #Ep:      12, avg/ema Ep len: 1000.0/1000.0
+Agent    Jaco_Lift: mean/median reward     2.67/0.86    , min/max reward     0.30/15.22   , #Ep:      11, avg/ema Ep len: 1000.0/1000.0
+Agent    IIWA_Lift: mean/median reward    11.08/10.72   , min/max reward     1.15/34.78   , #Ep:      11, avg/ema Ep len: 1000.0/1000.0
+Agent   Panda_Lift: mean/median reward     2.69/0.49    , min/max reward     0.22/20.79   , #Ep:      11, avg/ema Ep len: 1000.0/1000.0
+Agent  Sawyer_Lift: mean/median reward     0.33/0.09    , min/max reward     0.05/1.75    , #Ep:       9, avg/ema Ep len: 1000.0/ -1.0
+Agent      __env__: mean/median reward     3.60/2.73    , min/max reward     0.41/14.34
+./output/robosuite_transformer_lift/1409
+lr=8.399845277240383e-05 for iter 1
+lr=0.00013798983269164687 for iter 2
+lr=0.00019196817288137405 for iter 3
+lr=0.00024592750801219715 for iter 4
+lr=0.0002998618750342673 for iter 5
+lr=0.00029980111348272456 for iter 6
+lr=0.00029972931495895707 for iter 7
+lr=0.00029964648475290094 for iter 8
+lr=0.00029955262896727894 for iter 9
+early stop iter 9 at epoch 1/8, batch 2 with approx_kl 1.666211724281311
+lr=0.0002994477545171513 for iter 10
+Updates 10, num timesteps 901120, FPS 193
+Agent Kinova3_Lift: mean/median reward    38.16/33.99   , min/max reward    14.86/92.40   , #Ep:     152, avg/ema Ep len: 1000.0/1000.0
+Agent    UR5e_Lift: mean/median reward     0.63/0.39    , min/max reward     0.18/2.49    , #Ep:     148, avg/ema Ep len: 1000.0/1000.0
+Agent    Jaco_Lift: mean/median reward    74.60/73.38   , min/max reward    35.69/105.63  , #Ep:     145, avg/ema Ep len: 1000.0/1000.0
+Agent    IIWA_Lift: mean/median reward    70.19/78.69   , min/max reward     3.88/115.00  , #Ep:     148, avg/ema Ep len: 1000.0/1000.0
+Agent   Panda_Lift: mean/median reward    50.08/39.97   , min/max reward    23.92/127.47  , #Ep:     152, avg/ema Ep len: 1000.0/1000.0
+Agent  Sawyer_Lift: mean/median reward     0.37/0.40    , min/max reward     0.07/0.74    , #Ep:     151, avg/ema Ep len: 1000.0/1000.0
+Agent      __env__: mean/median reward    39.00/37.80   , min/max reward    13.10/73.96
+./output/robosuite_transformer_lift/1409
+lr=0.0002993318691294057 for iter 11
+lr=0.00029920498134218835 for iter 12
+lr=0.00029906710050427474 for iter 13
+lr=0.000298918236774381 for iter 14
+lr=0.0002987584011204152 for iter 15
+lr=0.00029858760531866954 for iter 16
+lr=0.0002984058619529524 for iter 17
+lr=0.0002982131844136615 for iter 18
+lr=0.0002980095868967972 for iter 19
+early stop iter 19 at epoch 7/8, batch 5 with approx_kl 0.23039510846138
+lr=0.0002977950844029163 for iter 20
+early stop iter 20 at epoch 2/8, batch 7 with approx_kl 0.22347524762153625
+Updates 20, num timesteps 1720320, FPS 193
+Agent Kinova3_Lift: mean/median reward    76.88/72.78   , min/max reward    37.06/136.70  , #Ep:     278, avg/ema Ep len: 1000.0/1000.0
+Agent    UR5e_Lift: mean/median reward     0.49/0.46    , min/max reward     0.18/0.97    , #Ep:     272, avg/ema Ep len: 1000.0/1000.0
+Agent    Jaco_Lift: mean/median reward   107.65/113.01  , min/max reward    69.39/133.41  , #Ep:     280, avg/ema Ep len: 1000.0/1000.0
+Agent    IIWA_Lift: mean/median reward   108.39/104.74  , min/max reward    71.50/154.86  , #Ep:     293, avg/ema Ep len: 1000.0/1000.0
+Agent   Panda_Lift: mean/median reward   106.80/104.94  , min/max reward    56.04/149.77  , #Ep:     286, avg/ema Ep len: 1000.0/1000.0
+Agent  Sawyer_Lift: mean/median reward    35.60/34.11   , min/max reward     6.96/97.66   , #Ep:     287, avg/ema Ep len: 1000.0/1000.0
+Agent      __env__: mean/median reward    72.64/71.67   , min/max reward    40.19/112.23
+./output/robosuite_transformer_lift/1409
+lr=0.0002975696927360274 for iter 21
+lr=0.0002973334285024261 for iter 22
+lr=0.0002970863091094714 for iter 23
+lr=0.0002968283527643036 for iter 24
+lr=0.0002965595784725026 for iter 25
+lr=0.0002962800060366873 for iter 26
+early stop iter 26 at epoch 2/8, batch 2 with approx_kl 0.25050339102745056
+lr=0.00029598965605505737 for iter 27
+lr=0.00029568854991987467 for iter 28
+lr=0.000295376709815888 for iter 29
+lr=0.000295054158718698 for iter 30
+Updates 30, num timesteps 2539520, FPS 193
+Agent Kinova3_Lift: mean/median reward    86.58/84.36   , min/max reward    44.92/138.26  , #Ep:     423, avg/ema Ep len: 1000.0/1000.0
+Agent    UR5e_Lift: mean/median reward     0.56/0.46    , min/max reward     0.15/1.17    , #Ep:     415, avg/ema Ep len: 1000.0/1000.0
+Agent    Jaco_Lift: mean/median reward   115.05/115.43  , min/max reward    84.22/135.46  , #Ep:     421, avg/ema Ep len: 1000.0/1000.0
+Agent    IIWA_Lift: mean/median reward   106.95/113.90  , min/max reward    39.79/170.77  , #Ep:     415, avg/ema Ep len: 1000.0/1000.0
+Agent   Panda_Lift: mean/median reward   121.47/123.23  , min/max reward    66.50/180.35  , #Ep:     418, avg/ema Ep len: 1000.0/1000.0
+Agent  Sawyer_Lift: mean/median reward   106.11/103.69  , min/max reward    72.50/157.44  , #Ep:     436, avg/ema Ep len: 1000.0/1000.0
+Agent      __env__: mean/median reward    89.45/90.18   , min/max reward    51.35/130.58
+./output/robosuite_transformer_lift/1409
+lr=0.00029472092039306466 for iter 31
+early stop iter 31 at epoch 2/8, batch 8 with approx_kl 1.19382643699646
+lr=0.0002943770193911562 for iter 32
+lr=0.0002940224810507402 for iter 33
+lr=0.000293657331493317 for iter 34
