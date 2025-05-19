@@ -275,6 +275,47 @@ class PPO:
     def _log_stats(self, cur_iter):
         self._log_fps(cur_iter)
         self.train_meter.log_stats()
+        # Success histograms (per-morphology and overall)
+        overall = []
+        for name, m in self.train_meter.agent_meters.items():
+            if m.ep_success:
+                data = np.array(list(m.ep_success), dtype=int)
+                overall.extend(data.tolist())
+                if self.logger_backend == "wandb":
+                    wandb.log(
+                        {f"{name}/Success_Histogram": wandb.Histogram(data)},
+                        step=self.env_steps_done(cur_iter),
+                        )
+                else:
+                    try:
+                        # TensorBoard
+                        self.logger.add_histogram(
+                            f"Agent/{name}/Success_Histogram",
+                            data,
+                            global_step=self.env_steps_done(cur_iter),
+                            )
+                    except TypeError:
+                        # it passes a dtype= kwarg into np.greater, which newer NumPy versions no longer accept
+                        print("[PPO] Failed to log histogram to TensorBoard due to TypeError.")
+                        pass
+            if overall:
+                overall = np.array(overall, dtype=int)
+                if self.logger_backend == "wandb":
+                    wandb.log(
+                        {"Overall/Success_Histogram": wandb.Histogram(overall)},
+                        step=self.env_steps_done(cur_iter),
+                        )
+                else:
+                    try:
+                        self.logger.add_histogram(
+                            "Overall/Success_Histogram",
+                            overall,
+                            global_step=self.env_steps_done(cur_iter),
+                        )
+                    except TypeError:
+                        # it passes a dtype= kwarg into np.greater, which newer NumPy versions no longer accept
+                        print("[PPO] Failed to log histogram to TensorBoard due to TypeError.")
+                        pass
 
     def _log_fps(self, cur_iter, log=True):
         env_steps = self.env_steps_done(cur_iter)

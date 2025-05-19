@@ -1,0 +1,41 @@
+ENV_NAME: "Robosuite-v0"
+
+ROBOSUITE:
+  TASK_TYPE: "SR" 
+  TRAINING_MORPHOLOGIES: ["Panda"] # , "Jaco", "IIWA", "Kinova3", "UR5e", "Sawyer"
+  ENV_NAMES: ["Lift"] 
+  CONTROLLERS: ["JOINT_VELOCITY"]
+
+ 
+ENV:
+  KEYS_TO_KEEP: ["proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context"] 
+
+MODEL:
+  TYPE: "mlp" 
+  
+  OBS_TYPES: ["proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context"]
+  # stablize the learning process but not readable for rewards
+  # log both normalized and unnormalized rew
+  OBS_TO_NORM: []
+
+# PPO training parameters
+PPO:
+  MAX_STATE_ACTION_PAIRS: 1e7 
+  NUM_ENVS: 4 # or 4 for fast training  
+  TIMESTEPS: 500
+  BATCH_SIZE: 1024 # dset(ts*num_env) >= batch_Stize
+
+
+RNG_SEED: 1409
+DEVICE: "cpu"
+LOG_PERIOD: 10
+CHECKPOINT_PERIOD: 100
+
+# Logging
+LOGGING:
+  USE_WANDB: False 
+  PROJECT: "SR-ST"
+  ENTITY: "alimidhat62-org"
+
+
+OUT_DIR: "./output/robosuite_mlp_lift/1409"

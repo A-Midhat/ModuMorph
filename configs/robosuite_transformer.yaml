@@ -15,6 +15,8 @@ MODEL:
   TYPE: "transformer" 
   
   OBS_TYPES: ["proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context", "SWAT_RE", "traversals"]
+  # stablize the learning process but not readable for rewards
+  # log both normalized and unnormalized rew
   OBS_TO_NORM: []
 
  
@@ -35,20 +37,20 @@ MODEL:
 
 # PPO training parameters
 PPO:
-  # Example values - adjust as needed
-  MAX_STATE_ACTION_PAIRS: 3e7 # Adjust based on training duration desired
+  MAX_STATE_ACTION_PAIRS: 3e7 
   NUM_ENVS: 32 
+  TIMESTEPS: 500 
 
 
-# Other general training settings
+
 RNG_SEED: 1409
-DEVICE: "cuda:0" # or "cpu"
+DEVICE: "cpu"
 LOG_PERIOD: 10
 CHECKPOINT_PERIOD: 100
 
 # Logging
 LOGGING:
-  USE_WANDB: True 
+  USE_WANDB: False 
   PROJECT: "MR-ST"
   ENTITY: "alimidhat62-org"
 

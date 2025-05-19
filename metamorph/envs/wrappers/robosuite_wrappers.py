@@ -216,7 +216,11 @@ class RobosuiteEnvWrapper(gym.Env):
         info["raw_reward"] = reward 
         info["action"] = action
         info["success"] = self.env._check_success() # returns np.false_ or np.true_ 
-
+        info["name"] = "_".join(info["robot_names"]) + f"_{self.env_name}" # e.g. Panda_Lift
+        if done:
+            #For RecordEpisodeStatistics wrapper
+            info.setdefault("episode", {})
+            info["episode"]["success"] = bool(info["success"])
         info["name"] = "_".join(info["robot_names"]) + f"_{self.env_name}" # e.g. Panda_Lift
 
         return processed_obs, reward, done, info
@@ -1408,50 +1412,14 @@ class RobosuiteSampleWrapper(gym.Wrapper):
              self._sampling_sequence = [np.random.randint(len(self.all_morphology_configs)) for _ in range(1000)] # Create a dummy random sequence
              self._sequence_episode_idx = 0
 
-    # def _sample_morphology_index(self) -> int:
-    #     """
-    #     Samples the next morphology configuration index based on the loaded sequence.
-    #     Reloads the sequence if necessary (end reached or file updated).
-    #     Returns the index into the all_morphology_configs list.
-    #     """
-    #     # Check if the sequence needs to be loaded or reloaded (end reached)
-    #     if self._sampling_sequence is None or self._sequence_episode_idx >= len(self._sampling_sequence):
-    #         # Sequence is exhausted or not loaded, try to load a new one
-    #         # This assumes PPO trainer periodically writes a new, longer sampling.json
-    #         # If the file isn't updated, we will keep loading the same exhausted sequence.
-    #         # A more robust check would involve checking file modification time.
-    #         # For simplicity, let's rely on PPO writing updates and just reload when exhausted.
-    #         self._load_sampling_sequence()
-
-    #         # If sequence is *still* empty or too short after loading, fallback to random.
-    #         if not self._sampling_sequence or self._sequence_episode_idx >= len(self._sampling_sequence):
-    #              print(f"[RobosuiteSampleWrapper] Warning: Sampling sequence exhausted or invalid after load attempt for worker {self.worker_rank}, episode index {self._sequence_episode_idx}. Defaulting to random sample.")
-    #              return np.random.randint(len(self.all_morphology_configs))
-
-
-    #     # Get the next morphology configuration index from the sequence for THIS worker
-    #     # The values in the sequence are the indices into the *all_morphology_configs* list.
-    #     morph_index = self._sampling_sequence[self._sequence_episode_idx]
-
-    #     # Validate the sampled index
-    #     if morph_index < 0 or morph_index >= len(self.all_morphology_configs):
-    #          print(f"[RobosuiteSampleWrapper] Warning: Sampled morphology index {morph_index} is out of bounds (0-{len(self.all_morphology_configs)-1}) in all_morphology_configs. Defaulting to random sample for worker {self.worker_rank}, seq idx {self._sequence_episode_idx}.")
-    #          morph_index = np.random.randint(len(self.all_morphology_configs))
-
-    #     # Increment the sequence index for the next episode for THIS worker
-    #     self._sequence_episode_idx += 1
-
-    #     # print(f"Worker {self.worker_rank}: Sampled morph index {morph_index} (seq idx {self._sequence_episode_idx - 1})") # Debug
-        # return morph_index
-
     # ------------------------------------------------------------------+
     #  Balanced fallback sampler                                         |
     # ------------------------------------------------------------------
     def _sample_morphology_index(self) -> int:
         """
         Deterministic, balanced sampling when `sampling.json` is absent.
-        * If #morphs ≥ #workers  → each worker gets a distinct morph first.
-        * If #morphs <  #workers → morphs are repeated so every worker is
+        - If #morphs ≥ #workers, each worker gets a distinct morph first.
+        - If #morphs <  #workers, morphs are repeated so every worker is
           assigned something, but the list is shuffled each cycle.
         After the list is exhausted it is regenerated and reshuffled.
         """

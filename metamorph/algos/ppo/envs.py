@@ -416,11 +416,12 @@ class RecordEpisodeStatistics(gym.Wrapper):
                 self.episode_return_components[key] += value
 
         if done:
-            info["episode"] = {
-                "r": self.episode_return,
-                "l": self.episode_length,
-                "t": round(time.time() - self.t0, 6),
-            }
+            # overwrites the success in in infp["episode"] defined in the wrapper.
+            ep = info.get("episode", {}) # get success from RobosuiteEnvWrapper
+            ep["r"] = self.episode_return
+            ep["l"] = self.episode_length
+            ep["t"] = round(time.time() - self.t0, 6)
+            info["episode"] = ep
             for key, value in self.episode_return_components.items():
                 info["episode"][key] = value
                 self.episode_return_components[key] = 0
