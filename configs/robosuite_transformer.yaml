@@ -24,7 +24,7 @@ MODEL:
   TRANSFORMER:
     NLAYERS: 5
     NHEAD: 2
-    DIM_FEEDFORWARD: 1024
+    DIM_FEEDFORWARD: 256
     DROPOUT: 0.0
     EXT_MIX: "late" 
     POS_EMBEDDING: "none" # swat_re/traversals are better

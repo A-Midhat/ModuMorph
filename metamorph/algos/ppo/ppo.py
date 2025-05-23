@@ -271,6 +271,13 @@ class PPO:
         torch.save([self.actor_critic, get_ob_rms(self.envs)], path)
         checkpoint_path = os.path.join(cfg.OUT_DIR, f"checkpoint_{cur_iter}.pt")
         torch.save([self.actor_critic, get_ob_rms(self.envs)], checkpoint_path)
+        if self.logger_backend == "wandb":
+            artifact = wandb.Artifact(
+                f"{cfg.ENV_NAME}-{cfg.ROBOSUITE.TASK_TYPE}-ST-{os.path.basename(cfg.OUT_DIR)}-run",
+                type="model"
+            )
+            artifact.add_dir(cfg.OUT_DIR)
+            wandb.log_artifact(artifact)
 
     def _log_stats(self, cur_iter):
         self._log_fps(cur_iter)
@@ -298,24 +305,24 @@ class PPO:
                         # it passes a dtype= kwarg into np.greater, which newer NumPy versions no longer accept
                         print("[PPO] Failed to log histogram to TensorBoard due to TypeError.")
                         pass
-            if overall:
-                overall = np.array(overall, dtype=int)
-                if self.logger_backend == "wandb":
-                    wandb.log(
-                        {"Overall/Success_Histogram": wandb.Histogram(overall)},
-                        step=self.env_steps_done(cur_iter),
-                        )
-                else:
-                    try:
-                        self.logger.add_histogram(
-                            "Overall/Success_Histogram",
-                            overall,
-                            global_step=self.env_steps_done(cur_iter),
-                        )
-                    except TypeError:
-                        # it passes a dtype= kwarg into np.greater, which newer NumPy versions no longer accept
-                        print("[PPO] Failed to log histogram to TensorBoard due to TypeError.")
-                        pass
+        if overall:
+            overall = np.array(overall, dtype=int)
+            if self.logger_backend == "wandb":
+                wandb.log(
+                    {"Overall/Success_Histogram": wandb.Histogram(overall)},
+                    step=self.env_steps_done(cur_iter),
+                    )
+            else:
+                try:
+                    self.logger.add_histogram(
+                        "Overall/Success_Histogram",
+                        overall,
+                        global_step=self.env_steps_done(cur_iter),
+                    )
+                except TypeError:
+                    # it passes a dtype= kwarg into np.greater, which newer NumPy versions no longer accept
+                    print("[PPO] Failed to log histogram to TensorBoard due to TypeError.")
+                    pass
 
     def _log_fps(self, cur_iter, log=True):
         env_steps = self.env_steps_done(cur_iter)

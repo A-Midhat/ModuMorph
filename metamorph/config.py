@@ -454,7 +454,9 @@ _C.MODEL.MLP.LAYER_NUM = 3
 
 # hyperparameters for transformers
 _C.MODEL.TRANSFORMER = CN()
-
+# For robosuite-specific
+# OSC controller 6 / JNT controller 1 per node
+_C.MODEL.TRANSFORMER.DECODER_OUT_DIM = 1
 # Number of attention heads in TransformerEncoderLayer (nhead)
 _C.MODEL.TRANSFORMER.NHEAD = 2
 

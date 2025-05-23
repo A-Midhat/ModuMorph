@@ -469,12 +469,18 @@ class ActorCritic(nn.Module):
             self.num_actions = cfg.MODEL.MAX_LIMBS
         elif cfg.ENV_NAME == "Robosuite-v0":
             if cfg.MODEL.TYPE == 'transformer':
-                self.mu_net = TransformerModel(obs_space, 1)
+                # 6D => OSC_POSE, 1D => jnt space
+                self.mu_net = TransformerModel(obs_space, cfg.MODEL.TRANSFORMER.DECODER_OUT_DIM)
+                self.num_actions = cfg.MODEL.MAX_LIMBS * cfg.MODEL.TRANSFORMER.DECODER_OUT_DIM
             else:
-                self.mu_net = MLPModel(obs_space, cfg.MODEL.MAX_LIMBS)
-            self.num_actions = cfg.MODEL.MAX_LIMBS
+                # hard coded it 
+                self.mu_net = MLPModel(obs_space, action_space.shape[0])
+                # OSC each node produces 6 action and only hand and gripper are left 
+                # jnt each node produces 1 action
+                self.num_actions = action_space.shape[0]
+            # self.num_actions = cfg.MODEL.MAX_LIMBS * cfg.MODEL.TRANSFORMER.DECODER_OUT_DIM
         else:
-            raise ValueError("Unsupported ENV_NAME")
+            raise ValueError("[ActorCritic] Unsupported ENV_NAME")
 
         if cfg.MODEL.ACTION_STD_FIXED:
             log_std = np.log(cfg.MODEL.ACTION_STD)
@@ -550,6 +556,11 @@ class ActorCritic(nn.Module):
 
         if act is not None:
             logp = pi.log_prob(act)
+            # logp[act_mask] = 0.0
+            # act_mask = obs["act_padding_mask"].bool()
+            if act_mask.shape[1] != act.shape[1]:          # mask is per-node, action is per-scalar
+                rep = act.shape[1] // act_mask.shape[1]    # 1 for joint, 6 for OSC_POSE, …
+                act_mask = act_mask.repeat_interleave(rep, dim=1)
             logp[act_mask] = 0.0
             self.limb_logp = logp
             logp = logp.sum(-1, keepdim=True)
@@ -578,6 +589,11 @@ class Agent:
             act = pi.loc
         logp = pi.log_prob(act)
         act_mask = obs["act_padding_mask"].bool()
+        # If each node outputs >1 scalars (e.g. OSC_POSE >> 6),
+        # repeat the node mask so it matches the flattened action length.
+        if act_mask.shape[1] != act.shape[1]:
+            rep = act.shape[1] // act_mask.shape[1]          # 1 >> joint, 6 >> OSC
+            act_mask = act_mask.repeat_interleave(rep, dim=1)
         logp[act_mask] = 0.0
         logp = logp.sum(-1, keepdim=True)
         return val, act, logp, dropout_mask_v, dropout_mask_mu
