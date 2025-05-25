@@ -137,6 +137,7 @@ def maybe_infer_morphs():
                 return # already set
         else: # MR 
             if not cfg.ROBOSUITE.get("TRAINING_MORPHOLOGIES"):
+                # dummy to test
                 cfg.ROBOSUITE.TRAINING_MORPHOLOGIES = ["Panda", "Jaco", "Kinova3"]  
             else:
                 return

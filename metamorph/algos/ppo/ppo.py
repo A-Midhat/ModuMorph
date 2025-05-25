@@ -131,7 +131,7 @@ class PPO:
 
                 next_obs, reward, done, infos = self.envs.step(act)
 
-                self.train_meter.add_ep_info(infos)
+                self.train_meter.add_ep_info(infos, cur_iter)
                 # Optionally log additional info per step if needed.
                 masks = torch.tensor(
                     [[0.0] if done_ else [1.0] for done_ in done],
@@ -285,8 +285,8 @@ class PPO:
         # Success histograms (per-morphology and overall)
         overall = []
         for name, m in self.train_meter.agent_meters.items():
-            if m.ep_success:
-                data = np.array(list(m.ep_success), dtype=int)
+            if m.success_history:
+                data = np.array(m.success_history, dtype=int)
                 overall.extend(data.tolist())
                 if self.logger_backend == "wandb":
                     wandb.log(

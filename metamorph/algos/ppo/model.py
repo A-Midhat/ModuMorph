@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 class MLPModel(nn.Module):
     def __init__(self, obs_space, out_dim):
         super(MLPModel, self).__init__()
-        print("MLPModel", obs_space)
+        print("[MLPModel]", obs_space)
         self.model_args = cfg.MODEL.MLP
         self.seq_len = cfg.MODEL.MAX_LIMBS
         self.limb_obs_size = limb_obs_size = obs_space["proprioceptive"].shape[0] // self.seq_len
@@ -453,6 +453,7 @@ class ActorCritic(nn.Module):
             self.v_net = TransformerModel(obs_space, 1)
         else:
             # MLP network
+            # would this work for osc_pose? TODO: check
             self.v_net = MLPModel(obs_space, cfg.MODEL.MAX_LIMBS)
 
         if cfg.ENV_NAME == "Unimal-v0":
@@ -554,20 +555,44 @@ class ActorCritic(nn.Module):
         std = torch.exp(self.log_std)
         pi = Normal(mu, std)
 
+        # if act is not None:
+        #     logp = pi.log_prob(act)
+        #     # logp[act_mask] = 0.0
+        #     # act_mask = obs["act_padding_mask"].bool()
+        #     # if act_mask.shape[1] != act.shape[1]:          # mask is per-node, action is per-scalar
+        #     #     rep = act.shape[1] // act_mask.shape[1]    # 1 for joint, 6 for OSC_POSE, …
+        #     #     act_mask = act_mask.repeat_interleave(rep, dim=1)
+            
+        #     logp[act_mask] = 0.0
+        #     self.limb_logp = logp
+        #     logp = logp.sum(-1, keepdim=True)
+        #     entropy = pi.entropy()
+        #     entropy[act_mask] = 0.0
+        #     entropy = entropy.mean()
+        #     return val, pi, logp, entropy, dropout_mask_v, dropout_mask_mu
         if act is not None:
-            logp = pi.log_prob(act)
-            # logp[act_mask] = 0.0
-            # act_mask = obs["act_padding_mask"].bool()
-            if act_mask.shape[1] != act.shape[1]:          # mask is per-node, action is per-scalar
-                rep = act.shape[1] // act_mask.shape[1]    # 1 for joint, 6 for OSC_POSE, …
-                act_mask = act_mask.repeat_interleave(rep, dim=1)
-            logp[act_mask] = 0.0
+            # ------------------------------------------------------------------
+            # Expand the *per-node* mask to *per-scalar* when each node outputs
+            # more than one scalar (e.g. 6-D OSC hand, 1-D joint link).
+            # ------------------------------------------------------------------
+            logp = pi.log_prob(act)                      # shape (B, action_dim)
+            if act_mask.shape[1] != act.shape[1]:
+                rep = act.shape[1] // act_mask.shape[1]
+                act_mask_full = act_mask.repeat_interleave(rep, dim=1)
+            else:
+                act_mask_full = act_mask
+
+            # Mask out dummy scalars
+            logp[act_mask_full] = 0.0
             self.limb_logp = logp
             logp = logp.sum(-1, keepdim=True)
-            entropy = pi.entropy()
-            entropy[act_mask] = 0.0
+
+            entropy = pi.entropy()           # same shape as logp before sum
+            entropy[act_mask_full] = 0.0
             entropy = entropy.mean()
+
             return val, pi, logp, entropy, dropout_mask_v, dropout_mask_mu
+
         else:
             if return_attention:
                 return val, pi, v_attention_maps, mu_attention_maps, dropout_mask_v, dropout_mask_mu

@@ -1,10 +1,13 @@
+# "/output/<SEED>/MLP_JNT_1409"
+OUT_DIR: "/output/1409/MLP_JNT_1409"
+RNG_SEED: 1409
 ENV_NAME: "Robosuite-v0"
 
 ROBOSUITE:
   TASK_TYPE: "SR" 
   TRAINING_MORPHOLOGIES: ["Panda"] # , "Jaco", "IIWA", "Kinova3", "UR5e", "Sawyer"
-  ENV_NAMES: ["Lift"] 
-  CONTROLLERS: ["JOINT_VELOCITY"]
+  ENV_NAMES: ["Lift"] # Door, PickPlace
+  CONTROLLERS: ["JOINT_VELOCITY"] # OSC_POSE but we have to chanfe DECODER_OUT_DIM to 6
 
  
 ENV:
@@ -12,30 +15,32 @@ ENV:
 
 MODEL:
   TYPE: "mlp" 
-  
+  DECODER_OUT_DIM: 1 # change to 6 for OSC_POSE
   OBS_TYPES: ["proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context"]
   # stablize the learning process but not readable for rewards
-  # log both normalized and unnormalized rew
+  # could do it with rew=False 
   OBS_TO_NORM: []
+  # ACTION_STD: 0.1 # for osc pose
+  ACTION_STD_FIXED: False
+  MLP:
+     LAYER_NUM: 2
 
-# PPO training parameters
 PPO:
   MAX_STATE_ACTION_PAIRS: 1e7 
-  NUM_ENVS: 4 # or 4 for fast training  
-  TIMESTEPS: 500
-  BATCH_SIZE: 1024 # dset(ts*num_env) >= batch_Stize
+  NUM_ENVS: 8  
+  TIMESTEPS: 2560
+  # dset(ts*num_env) >= batch_Stize
+  BATCH_SIZE: 1024 # try with 5120
+  KL_TARGET_COEF: 6 # 0.06
+  ENTROPY_COEF: 0.001 
+  BASE_LR: 0.001
 
 
-RNG_SEED: 1409
-DEVICE: "cpu"
-LOG_PERIOD: 10
-CHECKPOINT_PERIOD: 100
+DEVICE: "cuda:0" 
 
-# Logging
 LOGGING:
-  USE_WANDB: False 
-  PROJECT: "SR-ST"
+  USE_WANDB: True 
+  PROJECT: "Baselines"
   ENTITY: "alimidhat62-org"
 
 
-OUT_DIR: "./output/robosuite_mlp_lift/1409"

@@ -30,11 +30,14 @@ class AgentMeter:
         self.ep_len_ema = -1
         # for robosuite envs
         self.ep_success = deque(maxlen=10)
+        self.success_history = []
+        self.total_success = 0
+        self.first_success_iter = None 
         # stores original config index (Populated by TrainMeter)
         self.morph_config_index = None
 
 
-    def add_ep_info(self, infos):
+    def add_ep_info(self, infos, cur_iter=None):
         # Process list of infos received from VecEnv.step().
         # We only process episode info that matches this agent's name.
         for info in infos:
@@ -60,8 +63,13 @@ class AgentMeter:
 
             # Add success flag if present in episode info
             if "success" in episode_info:
-                 self.ep_success.append(bool(episode_info["success"]))
-
+                   succ = bool(episode_info["success"])
+                   self.ep_success.append(succ) # moving avg 
+                   self.success_history.append(succ) # full 
+                   if succ:
+                      self.total_success += 1
+                      if self.first_success_iter is None:
+                          self.first_success_iter = cur_iter
             # Add other reward components
             for rew_type, rew_value in episode_info.items():
                 if rew_type.startswith("__reward__") and rew_type != "reward":
@@ -134,8 +142,13 @@ class AgentMeter:
         )
 
         if latest_mean_success != "N/A":
-            print_str += ", success: {}".format(latest_mean_success)
-
+            extra = f"{latest_mean_success}"
+            if self.total_success:
+                extra += f" (total {self.total_success}"
+                if self.first_success_iter is not None:
+                    extra += f", first at {self.first_success_iter} iter"
+                extra += ")"
+            print_str += ", success: " + extra
         # Print a newline character to finish the line
         print(print_str)
 
@@ -196,7 +209,7 @@ class TrainMeter:
     def add_train_stat(self, stat_type, stat_value):
         self.train_stats[stat_type].append(stat_value)
 
-    def add_ep_info(self, infos: list):
+    def add_ep_info(self, infos: list, cur_iter = None):
         # Process infos to discover new agents and update name-to-index map
         # Also pass info to each agent meter.
         for info in infos:
@@ -212,7 +225,7 @@ class TrainMeter:
 
         # Pass the list of infos to each agent meter's add_ep_info method
         for _, agent_meter in self.agent_meters.items():
-            agent_meter.add_ep_info(infos)
+            agent_meter.add_ep_info(infos, cur_iter)
 
 
     def update_mean(self):

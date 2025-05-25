@@ -14,6 +14,7 @@ def count_limbs_and_joints(env):
     """
     limbs = 0
     joints = 0
+    model = env.sim.model
     for r in env.robots:
         # build node list for this robot
         nodes = []
