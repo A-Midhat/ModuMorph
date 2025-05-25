@@ -200,7 +200,7 @@ class RobosuiteEnvWrapper(gym.Env):
 
 
     def step(self, action): 
-        # action = np.clip(action, self.action_space.low, self.action_space.high) 
+        action = np.clip(action, self.action_space.low, self.action_space.high) 
         obs, reward, done, info = self.env.step(action)
         self._elapsed_steps += 1 
 
@@ -1264,12 +1264,12 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
             final_action_global = np.concatenate(per_robot_final_actions)
 
         except Exception as e: # Catch any other errors during action reconstruction
-             print(f"[RobosuiteNodeCentricAction] Critical Error during action reconstruction: {e}. Returning zero action.")             
-             return np.zeros_like(self.current_base_action_space.low)
+            print(f"[RobosuiteNodeCentricAction] Critical Error during action reconstruction: {e}. Returning zero action.")             
+            return np.zeros_like(self.current_base_action_space.low)
 
         clipped_action = np.clip(final_action_global,
-                                 self.current_base_action_space.low,
-                                 self.current_base_action_space.high)
+                                self.current_base_action_space.low,
+                                self.current_base_action_space.high)
 
         return clipped_action.astype(self.current_base_action_space.dtype)
 

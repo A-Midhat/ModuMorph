@@ -1,0 +1,96 @@
+# ======================================================
+# =================JNT_CONTROL==========================
+# ======================================================
+# e.g. script 
+# python tools/train_ppo.py --cfg configs/robosuite_baseline/IIWA.yaml OUT_DIR=/output/1409/IIWA_lift_JNT_1409 RNG_SEED=1409
+# "/output/<SEED>/MLP_JNT_1409"
+ENV_NAME: "Robosuite-v0"
+RNG_SEED: 1409
+DEVICE: "cuda:0"
+OUT_DIR: "./output/1409/IIWA_lift_JNT_1409"
+
+LOGGING:
+  USE_WANDB: True # Set to True to use Wandb
+  ENTITY: "alimidhat62-org"
+  PROJECT: "Baselines"
+
+
+
+
+ROBOSUITE:
+  TASK_TYPE: "SR"
+  TRAINING_MORPHOLOGIES: ["IIWA"]
+  ENV_NAMES:            ["Lift"]
+  CONTROLLERS:          ["JOINT_VELOCITY"] # Corresponding controller
+
+ENV:
+  KEYS_TO_KEEP: ["proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context"] # "SWAT_RE", "traversals" Keys to use for MLP
+
+MODEL:
+  TYPE: "mlp" # Use MLP model
+  # OBS_TYPES are the keys expected by ActorCritic.forward
+  # RobosuiteMLPFlattener provides these keys.
+  OBS_TYPES: ["proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context"]
+  OBS_TO_NORM: []
+  DECODER_OUT_DIM : 1
+  # ACTION_STD: 0.1 # for osc pose
+  ACTION_STD_FIXED: False
+  MLP:
+    LAYER_NUM: 4
+PPO:
+  MAX_STATE_ACTION_PAIRS: 1e7 
+  TIMESTEPS: 2560 
+  NUM_ENVS: 8 
+  KL_TARGET_COEF: 6.0
+  ENTROPY_COEF: 0.001
+  BATCH_SIZE: 5120 # dset(ts*num_env) >= batch_Stize
+  BASE_LR: 0.001 
+
+
+
+# ==========================================================
+# ==================OSC_POSE================================
+# ==========================================================
+# python tools/train_ppo.py --cfg configs/robosuite_baseline/IIWA.yaml OUT_DIR=/output/1409/IIWA_lift_OSC_1409 RNG_SEED=1409
+
+# ENV_NAME: "Robosuite-v0"
+# RNG_SEED: 1409
+# DEVICE: "cuda:0"
+# OUT_DIR: "./output/1409/IIWA_lift_OSC_1409"
+
+# LOGGING:
+#   USE_WANDB: True # Set to True to use Wandb
+#   ENTITY: "alimidhat62-org"
+#   PROJECT: "Baselines"
+
+
+
+
+# ROBOSUITE:
+#   TASK_TYPE: "SR"
+#   TRAINING_MORPHOLOGIES: ["IIWA"]
+#   ENV_NAMES:            ["Lift"]
+#   CONTROLLERS:          ["OSC_POSE"] # Corresponding controller
+
+# ENV:
+#   KEYS_TO_KEEP: ["proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context"] # "SWAT_RE", "traversals" Keys to use for MLP
+
+# MODEL:
+#   TYPE: "mlp" # Use MLP model
+#   # OBS_TYPES are the keys expected by ActorCritic.forward
+#   # RobosuiteMLPFlattener provides these keys.
+#   OBS_TYPES: ["proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context"]
+#   OBS_TO_NORM: []
+#   DECODER_OUT_DIM : 6
+#   # ACTION_STD: 0.1 # for osc pose
+#   ACTION_STD_FIXED: False
+#   MLP:
+#     LAYER_NUM: 4
+# PPO:
+#   MAX_STATE_ACTION_PAIRS: 1e7 
+#   TIMESTEPS: 2560 
+#   NUM_ENVS: 8 
+#   KL_TARGET_COEF: 6.0
+#   ENTROPY_COEF: 0.001
+#   BATCH_SIZE: 5120 # dset(ts*num_env) >= batch_Stize
+#   BASE_LR: 0.001 

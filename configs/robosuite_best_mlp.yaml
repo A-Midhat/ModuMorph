@@ -1,0 +1,46 @@
+# TESTING 
+# BEST PARAMS sucess rate of 6.1%
+ENV_NAME: "Robosuite-v0"
+
+ROBOSUITE:
+  TASK_TYPE: "SR"
+  TRAINING_MORPHOLOGIES: ["Panda"]
+  ENV_NAMES:            ["Door"]
+  CONTROLLERS:          ["JOINT_VELOCITY"] # Corresponding controller
+ 
+ENV:
+  KEYS_TO_KEEP: ["proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context"] # "SWAT_RE", "traversals" Keys to use for MLP
+
+MODEL:
+  TYPE: "mlp" # Use MLP model
+  # OBS_TYPES are the keys expected by ActorCritic.forward
+  # RobosuiteMLPFlattener provides these keys.
+  OBS_TYPES: ["proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context"]
+  OBS_TO_NORM: []
+  DECODER_OUT_DIM : 1
+  # ACTION_STD: 0.1 # for osc pose
+  ACTION_STD_FIXED: False
+  MLP:
+    LAYER_NUM: 4
+PPO:
+  MAX_STATE_ACTION_PAIRS: 1e7 
+  TIMESTEPS: 2560 
+  NUM_ENVS: 8 
+  KL_TARGET_COEF: 6.0
+  ENTROPY_COEF: 0.001
+  BATCH_SIZE: 5120 # dset(ts*num_env) >= batch_Stize
+  BASE_LR: 0.001 
+
+RNG_SEED: 1409
+DEVICE: "cuda:0"
+LOG_PERIOD: 10
+CHECKPOINT_PERIOD: 100
+
+
+LOGGING:
+  USE_WANDB: True # Set to True to use Wandb
+  ENTITY: "alimidhat62-org"
+  PROJECT: "Baselines"
+
+OUT_DIR: "./output/robosuite_sr_MLP_osc_test/1409"
+

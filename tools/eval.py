@@ -122,8 +122,8 @@ def evaluate_robosuite(
     elif video_dir is not None:
         cfg.PPO.NUM_ENVS = 1    
         cfg.ROBOSUITE.ENV_ARGS.update(
-             {"has_renderer": False, "has_offscreen_renderer": True}
-         )
+            {"has_renderer": False, "has_offscreen_renderer": True}
+        )
 
     set_cfg_options()
 
@@ -308,13 +308,14 @@ Render one Panda-Lift episode:
 
 Record a 5-episode off-screen roll-out to videos/Panda_Lift_video.mp4:
 
-    python tools/test_eval.py \
-        --run_dir   output/robosuite_sr_transformer_lift_panda/1 \
+    python tools/eval.py \
+        --run_dir output/test_mlp_Door_entropy_NORMAL_LR_BENCHMARKING/1409 \
         --checkpoint checkpoint_-1.pt \
         --morph Panda \
+        --task Door \
         --episodes 5 \
-        --save_video videos
+        --save_video videos \
         --video_ep 4 \
-        --seed 1 \
+        --seed 1409 \
 
 """
