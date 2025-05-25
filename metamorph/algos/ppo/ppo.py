@@ -65,9 +65,9 @@ class PPO:
         if hasattr(cfg, "LOGGING") and cfg.LOGGING.get("USE_WANDB", False):
             self.logger_backend = "wandb"
             self.logger = wandb.init(
-                entity=cfg.LOGGING.get("ENTITY", "default_entity"),
-                project=cfg.LOGGING.get("PROJECT", "default_project"),
-                name=cfg.OUT_DIR.split("/")[-1],
+                entity=cfg.LOGGING.ENTITY,
+                project=cfg.LOGGING.PROJECT,
+                name=os.path.basename(cfg.OUT_DIR),
                 config=dict(cfg)
             )
             wandb.config.update({"seed": cfg.RNG_SEED})
