@@ -1251,22 +1251,40 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
                     
                     if global_node_idx >= self.global_max_limbs:
                         continue # Skip if outside global bounds
-                    if self.current_act_mask[global_node_idx]:
-                        continue # Skip if this node is masked (non-actuated)
+                    # Removed: if self.current_act_mask[global_node_idx]: continue
 
                     node_output = action_unpacked[global_node_idx, :] # Get the full output for this node (node_output_dim,)
                     
-                    # Select dimensions based on controller type and node type
+                    # --- Start of new/modified section ---
+                    # Determine the starting index for this node's scalars in the flat act_mask
+                    scalar_mask_start_idx = global_node_idx * self.node_output_dim
+
                     if controller_name == 'JOINT_VELOCITY':
                         if node_type == 'arm':
-                            robot_action_components.append(node_output[0:1]) # Joint velocity is 1D
+                            # Check if the first scalar for this arm joint is masked
+                            if self.current_act_mask[scalar_mask_start_idx + 0]:
+                                continue 
+                            robot_action_components.append(node_output[0:1])
                         elif node_type == 'gripper':
-                            robot_action_components.append(node_output[0:cfg.ROBOSUITE.GRIPPER_DIM]) # 1
+                            # Check if the first scalar for this gripper joint is masked
+                            if self.current_act_mask[scalar_mask_start_idx + 0]:
+                                continue
+                            # Also ensure cfg.ROBOSUITE.GRIPPER_DIM does not exceed self.node_output_dim
+                            num_gripper_actions_to_take = min(cfg.ROBOSUITE.GRIPPER_DIM, self.node_output_dim)
+                            robot_action_components.append(node_output[0:num_gripper_actions_to_take])
+
                     elif controller_name == 'OSC_POSE':
                         if node_type == 'hand':
-                            robot_action_components.append(node_output[0:6]) # OSC_POSE for hand is 6D (pos + quat)
+                            # Check if the first scalar for the hand is masked
+                            if self.current_act_mask[scalar_mask_start_idx + 0]:
+                                continue
+                            robot_action_components.append(node_output[0:6]) # OSC_POSE for hand is 6D
                         elif node_type == 'gripper':
-                            robot_action_components.append(node_output[0:1]) # Gripper action dim
+                            # Check if the first scalar for the gripper is masked
+                            if self.current_act_mask[scalar_mask_start_idx + 0]:
+                                continue
+                            robot_action_components.append(node_output[0:1]) # Gripper action is 1D for OSC_POSE
+                    # --- End of new/modified section ---
                 
                 # Concatenate all components for this robot
                 final_action_for_robot = np.concatenate(robot_action_components).astype(np.float32) if robot_action_components else np.array([], dtype=np.float32)
