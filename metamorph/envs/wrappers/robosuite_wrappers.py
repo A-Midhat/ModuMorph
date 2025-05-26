@@ -1218,7 +1218,7 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
            len(self.current_per_robot_action_indices) != self.current_num_robots:
             raise ValueError(f"[RobosuiteNodeCentricAction] Action wrapper could not fetch valid mapping metadata from Observation wrapper. {len(self.current_per_robot_action_indices)} != {self.current_num_robots}")
  
-        if len(self.current_act_mask) * self.node_output_dim != self.padded_action_dim_global: # Mismatch in total action dimensions
+        if len(self.current_act_mask) != self.padded_action_dim_global: # Mismatch in total action dimensions
              raise ValueError(f"[RobosuiteNodeCentricAction] Action mask length ({len(self.current_act_mask)}) or node_output_dim ({self.node_output_dim}) doesn't match padded_action_dim_global ({self.padded_action_dim_global}).")
  
         if sum(self.current_action_dims_per_robot) != self.current_total_action_dim:
