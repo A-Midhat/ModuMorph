@@ -572,15 +572,15 @@ class ActorCritic(nn.Module):
         #     return val, pi, logp, entropy, dropout_mask_v, dropout_mask_mu
         if act is not None:
             # ------------------------------------------------------------------
-            # Expand the *per-node* mask to *per-scalar* when each node outputs
-            # more than one scalar (e.g. 6-D OSC hand, 1-D joint link).
+            # act_mask is now the per-action-scalar mask.
             # ------------------------------------------------------------------
             logp = pi.log_prob(act)                      # shape (B, action_dim)
-            if act_mask.shape[1] != act.shape[1]:
-                rep = act.shape[1] // act_mask.shape[1]
-                act_mask_full = act_mask.repeat_interleave(rep, dim=1)
-            else:
-                act_mask_full = act_mask
+            # if act_mask.shape[1] != act.shape[1]:
+            #     rep = act.shape[1] // act_mask.shape[1]
+            #     act_mask_full = act_mask.repeat_interleave(rep, dim=1)
+            # else:
+            #     act_mask_full = act_mask
+            act_mask_full = act_mask # act_mask is now the per-action-scalar mask
 
             # Mask out dummy scalars
             logp[act_mask_full] = 0.0
@@ -613,13 +613,13 @@ class Agent:
         else:
             act = pi.loc
         logp = pi.log_prob(act)
-        act_mask = obs["act_padding_mask"].bool()
+        act_mask_scalar = obs["act_padding_mask"].bool() # This is now the per-scalar mask
         # If each node outputs >1 scalars (e.g. OSC_POSE >> 6),
         # repeat the node mask so it matches the flattened action length.
-        if act_mask.shape[1] != act.shape[1]:
-            rep = act.shape[1] // act_mask.shape[1]          # 1 >> joint, 6 >> OSC
-            act_mask = act_mask.repeat_interleave(rep, dim=1)
-        logp[act_mask] = 0.0
+        # if act_mask.shape[1] != act.shape[1]:
+        #     rep = act.shape[1] // act_mask.shape[1]          # 1 >> joint, 6 >> OSC
+        #     act_mask = act_mask.repeat_interleave(rep, dim=1)
+        logp[act_mask_scalar] = 0.0
         logp = logp.sum(-1, keepdim=True)
         return val, act, logp, dropout_mask_v, dropout_mask_mu
 

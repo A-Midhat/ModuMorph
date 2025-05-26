@@ -501,7 +501,8 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
         self.node_context_global = np.zeros((self.global_max_limbs, self.context_obs_size), dtype=np.float32)
         self.edges_padded_global = np.full(2 * self.global_max_joints, self.global_max_limbs - 1, dtype=np.float32)
         self.obs_padding_mask_global = np.ones(self.global_max_limbs, dtype=bool)
-        self.act_padding_mask_global = np.ones(self.global_max_limbs, dtype=bool)
+        policy_node_output_dim = cfg.MODEL.TRANSFORMER.DECODER_OUT_DIM
+        self.act_padding_mask_global = np.ones(self.global_max_limbs * policy_node_output_dim, dtype=bool)
         # we hard code the num_trav as 3 from cfg 
         self.traversals_global = np.full((self.global_max_limbs, 3), self.global_max_limbs - 1, dtype=np.int64)
         self.swat_re_global = np.zeros((self.global_max_limbs, self.global_max_limbs, 3), dtype=np.float32)
@@ -587,7 +588,8 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
         obs_spaces['context'] = Box(-inf, inf, (L * self.context_obs_size,), np.float32)
         obs_spaces['edges'] = Box(-inf, inf, (2 * self.global_max_joints,), np.float32)
         obs_spaces['obs_padding_mask'] = Box(False, True, (L,), dtype=bool)
-        obs_spaces['act_padding_mask'] = Box(False, True, (L,), dtype=bool)
+        policy_node_output_dim = cfg.MODEL.TRANSFORMER.DECODER_OUT_DIM
+        obs_spaces['act_padding_mask'] = Box(False, True, (L * policy_node_output_dim,), dtype=bool)
         
         # traversals for SWAT-RE/PE 
         num_traversals = len(cfg.MODEL.TRANSFORMER.TRAVERSALS)
@@ -798,6 +800,7 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
             robot_action_indices = {'arm': [], 'gripper': []}
             num_arm_joints_in_metadata = self.metadata_per_robot_instance[robot_idx]['num_arm_joints'] 
             num_gripper_joints_in_metadata = self.metadata_per_robot_instance[robot_idx]['num_gripper_joints']
+            policy_node_output_dim = cfg.MODEL.TRANSFORMER.DECODER_OUT_DIM
 
             for local_node_idx, (body_name, node_type) in enumerate(current_robot_nodes):
                  global_node_idx = global_node_start + local_node_idx
@@ -805,33 +808,52 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
                     # Skip if outside global bounds
                     continue
 
-                 # All arm links are potentially actuated for JOINT_VELOCITY
-                 if node_type == 'arm':
-                    if self.base_env_ref.controller_names[0] == 'JOINT_VELOCITY':
+                 start_idx_mask = global_node_idx * policy_node_output_dim
 
-                    # This heuristic attempts to map node index to the joint index.
-                    # It relies on the assumption that arm links (excluding base) correspond to arm joints in order.
+                 # JOINT_VELOCITY Controller
+                 if self.base_env_ref.controller_names[robot_idx] == 'JOINT_VELOCITY':
+                    if node_type == 'arm':
+                        # This heuristic attempts to map node index to the joint index.
+                        # It relies on the assumption that arm links (excluding base) correspond to arm joints in order.
                         if local_node_idx -1 < num_arm_joints_in_metadata: # local_node_idx 0 is base, so first arm link is 1
-                            self.act_padding_mask_global[global_node_idx] = False 
+                            if (start_idx_mask + 0) < self.act_padding_mask_global.shape[0]:
+                                self.act_padding_mask_global[start_idx_mask + 0] = False # Unmask 1st scalar
                             robot_action_indices['arm'].append(global_node_idx) # Store global index for joint actions
-                    else:
-                        if local_node_idx -1 < num_arm_joints_in_metadata: # local_node_idx 0 is base, so first arm link is 1
-                            self.act_padding_mask_global[global_node_idx] = True
-                            robot_action_indices['arm'].append(global_node_idx) 
-
-                 # Hand is actuated for OSC_POSE
-                 elif node_type == 'hand':
-                    if self.base_env_ref.controller_names[0] == 'JOINT_VELOCITY':
-                        self.act_padding_mask_global[global_node_idx] = True
+                    # elif node_type == 'hand': # Remains masked
+                        # pass
+                    elif node_type == 'gripper' and num_gripper_joints_in_metadata > 0:
+                        for i in range(cfg.ROBOSUITE.GRIPPER_DIM):
+                            if (start_idx_mask + i) < self.act_padding_mask_global.shape[0]:
+                                self.act_padding_mask_global[start_idx_mask + i] = False # Unmask GRIPPER_DIM scalars
+                        robot_action_indices['gripper'].append(global_node_idx)
+                 
+                 # OSC_POSE Controller
+                 elif self.base_env_ref.controller_names[robot_idx] == 'OSC_POSE':
+                    # if node_type == 'arm': # Remains masked
+                        # pass
+                    if node_type == 'hand':
+                        for i in range(6): # OSC hand uses 6 dimensions
+                            if (start_idx_mask + i) < self.act_padding_mask_global.shape[0]:
+                                self.act_padding_mask_global[start_idx_mask + i] = False
                         robot_action_indices['arm'].append(global_node_idx) # (reusing 'arm' for simplicity)
-                    else:
-                        self.act_padding_mask_global[global_node_idx] = False
+                    elif node_type == 'gripper' and num_gripper_joints_in_metadata > 0:
+                        if (start_idx_mask + 0) < self.act_padding_mask_global.shape[0]:
+                             self.act_padding_mask_global[start_idx_mask + 0] = False # Unmask 1st scalar
+                        robot_action_indices['gripper'].append(global_node_idx)
+                 
+                 # Fallback: if controller not matched, or node type not handled for masking,
+                 # ensure relevant robot_action_indices are still populated if needed,
+                 # though their scalars in act_padding_mask_global would remain True (masked).
+                 # This part might need refinement based on how RobosuiteNodeCentricAction uses these.
+                 # For now, populating robot_action_indices as before for unhandled cases.
+                 else:
+                    if node_type == 'arm' and local_node_idx -1 < num_arm_joints_in_metadata:
                         robot_action_indices['arm'].append(global_node_idx)
-                 # Gripper node is actuated for both controller types
-                 elif node_type == 'gripper':
-                      if num_gripper_joints_in_metadata > 0: # Only if gripper joints exist for this robot
-                          self.act_padding_mask_global[global_node_idx] = False
-                          robot_action_indices['gripper'].append(global_node_idx)
+                    elif node_type == 'hand': # OSC_POSE might be default, or other controllers
+                        robot_action_indices['arm'].append(global_node_idx)
+                    elif node_type == 'gripper' and num_gripper_joints_in_metadata > 0:
+                        robot_action_indices['gripper'].append(global_node_idx)
+
 
             self.metadata['per_robot_action_indices'].append(robot_action_indices)
             
@@ -1093,7 +1115,8 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
          final_obs['context'] = node_context.flatten()
          final_obs['edges'] = self.edges_padded_global
          final_obs['obs_padding_mask'] = self.obs_padding_mask_global
-         final_obs['act_padding_mask'] = self.metadata.get('act_padding_mask', np.ones(self.global_max_limbs, dtype=bool)) # Fetch from metadata
+         policy_node_output_dim = cfg.MODEL.TRANSFORMER.DECODER_OUT_DIM
+         final_obs['act_padding_mask'] = self.metadata.get('act_padding_mask', np.ones(self.global_max_limbs * policy_node_output_dim, dtype=bool)) # Fetch from metadata
          
          final_obs['traversals'] = self.traversals_global 
          final_obs['SWAT_RE'] = self.swat_re_global
@@ -1243,7 +1266,7 @@ class RobosuiteNodeCentricAction(gym.ActionWrapper):
                         if node_type == 'hand':
                             robot_action_components.append(node_output[0:6]) # OSC_POSE for hand is 6D (pos + quat)
                         elif node_type == 'gripper':
-                            robot_action_components.append(node_output[0:cfg.ROBOSUITE.GRIPPER_DIM]) # Gripper action dim
+                            robot_action_components.append(node_output[0:1]) # Gripper action dim
                 
                 # Concatenate all components for this robot
                 final_action_for_robot = np.concatenate(robot_action_components).astype(np.float32) if robot_action_components else np.array([], dtype=np.float32)
