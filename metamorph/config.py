@@ -73,7 +73,7 @@ _C.ROBOSUITE.ENV_ARGS.has_offscreen_renderer = False
 _C.ROBOSUITE.ENV_ARGS.use_camera_obs = False
 _C.ROBOSUITE.ENV_ARGS.control_freq = 20
 _C.ROBOSUITE.ENV_ARGS.hard_reset = False
-_C.ROBOSUITE.ENV_ARGS.horizon = 500
+_C.ROBOSUITE.ENV_ARGS.horizon = 1000
 _C.ROBOSUITE.ENV_ARGS.reward_shaping = True
 _C.ROBOSUITE.ENV_ARGS.reward_scale = 1.0
 # used for late fusion in transformer (exteroceptive observation)

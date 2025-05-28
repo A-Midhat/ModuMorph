@@ -470,16 +470,14 @@ class ActorCritic(nn.Module):
             self.num_actions = cfg.MODEL.MAX_LIMBS
         elif cfg.ENV_NAME == "Robosuite-v0":
             if cfg.MODEL.TYPE == 'transformer':
-                # 6D => OSC_POSE, 1D => jnt space
-                self.mu_net = TransformerModel(obs_space, cfg.MODEL.TRANSFORMER.DECODER_OUT_DIM)
+                # OSC each node produces 6 action and only hand and gripper are left 
+                # jnt each node produces 1 action                self.mu_net = TransformerModel(obs_space, cfg.MODEL.TRANSFORMER.DECODER_OUT_DIM)
                 self.num_actions = cfg.MODEL.MAX_LIMBS * cfg.MODEL.TRANSFORMER.DECODER_OUT_DIM
             else:
                 # hard coded it 
                 self.mu_net = MLPModel(obs_space, action_space.shape[0])
-                # OSC each node produces 6 action and only hand and gripper are left 
-                # jnt each node produces 1 action
+                
                 self.num_actions = action_space.shape[0]
-            # self.num_actions = cfg.MODEL.MAX_LIMBS * cfg.MODEL.TRANSFORMER.DECODER_OUT_DIM
         else:
             raise ValueError("[ActorCritic] Unsupported ENV_NAME")
 
@@ -554,33 +552,9 @@ class ActorCritic(nn.Module):
         )
         std = torch.exp(self.log_std)
         pi = Normal(mu, std)
-
-        # if act is not None:
-        #     logp = pi.log_prob(act)
-        #     # logp[act_mask] = 0.0
-        #     # act_mask = obs["act_padding_mask"].bool()
-        #     # if act_mask.shape[1] != act.shape[1]:          # mask is per-node, action is per-scalar
-        #     #     rep = act.shape[1] // act_mask.shape[1]    # 1 for joint, 6 for OSC_POSE, …
-        #     #     act_mask = act_mask.repeat_interleave(rep, dim=1)
-            
-        #     logp[act_mask] = 0.0
-        #     self.limb_logp = logp
-        #     logp = logp.sum(-1, keepdim=True)
-        #     entropy = pi.entropy()
-        #     entropy[act_mask] = 0.0
-        #     entropy = entropy.mean()
-        #     return val, pi, logp, entropy, dropout_mask_v, dropout_mask_mu
         if act is not None:
-            # ------------------------------------------------------------------
-            # Expand the *per-node* mask to *per-scalar* when each node outputs
-            # more than one scalar (e.g. 6-D OSC hand, 1-D joint link).
-            # ------------------------------------------------------------------
             logp = pi.log_prob(act)                      # shape (B, action_dim)
-            if act_mask.shape[1] != act.shape[1]:
-                rep = act.shape[1] // act_mask.shape[1]
-                act_mask_full = act_mask.repeat_interleave(rep, dim=1)
-            else:
-                act_mask_full = act_mask
+            act_mask_full = act_mask # act_mask is now the per-action-scalar mask
 
             # Mask out dummy scalars
             logp[act_mask_full] = 0.0
@@ -613,13 +587,8 @@ class Agent:
         else:
             act = pi.loc
         logp = pi.log_prob(act)
-        act_mask = obs["act_padding_mask"].bool()
-        # If each node outputs >1 scalars (e.g. OSC_POSE >> 6),
-        # repeat the node mask so it matches the flattened action length.
-        if act_mask.shape[1] != act.shape[1]:
-            rep = act.shape[1] // act_mask.shape[1]          # 1 >> joint, 6 >> OSC
-            act_mask = act_mask.repeat_interleave(rep, dim=1)
-        logp[act_mask] = 0.0
+        act_mask_scalar = obs["act_padding_mask"].bool() # This is now the per-scalar mask
+        logp[act_mask_scalar] = 0.0
         logp = logp.sum(-1, keepdim=True)
         return val, act, logp, dropout_mask_v, dropout_mask_mu
 

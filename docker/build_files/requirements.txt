@@ -4,6 +4,7 @@ gym==0.17.1
 networkx
 mujoco_py==2.0.2.8
 robosuite==1.4.1
+numpy==1.26.4
 tensorboard
 matplotlib
 wandb
