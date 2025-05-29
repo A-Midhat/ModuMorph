@@ -168,7 +168,9 @@ class AgentMeter:
             "min_reward": list(self.mean_min_rew),
             "max_reward": list(self.mean_max_rew),
             "median_reward": list(self.mean_median_rew),
-            "total_episodes": self.ep_count # Total episodes collected over training for this morph
+            "total_episodes": self.ep_count, # Total episodes collected over training for this morph
+            "total_success": self.total_success,
+            "first_success_iter": self.first_success_iter,
         }
         # Return the stats dictionary
         return stats
