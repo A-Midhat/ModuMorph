@@ -1,0 +1,60 @@
+ENV_NAME: "Robosuite-v0"
+
+ROBOSUITE:
+  TASK_TYPE: "MR" 
+  TRAINING_MORPHOLOGIES: ["Panda","Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e"]  
+  ENV_NAMES: ["Lift","Lift" ,"Lift","Lift","Lift", "Lift"] # ["Door","Door" ,"Door","Door","Door", "Door"]
+  CONTROLLERS: ["OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE", "OSC_POSE"]
+
+
+ENV:
+  KEYS_TO_KEEP: ["object-state", "proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context", "SWAT_RE", "traversals"] 
+
+MODEL:
+  TYPE: "transformer" 
+  OBS_TYPES: ["proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context", "SWAT_RE", "traversals"]
+  # stablize the learning process but not readable for rewards
+  # log both normalized and unnormalized rew
+  OBS_TO_NORM: []
+  # ACTION_STD: 0.1 # for osc pose
+  ACTION_STD_FIXED: False
+  TRANSFORMER:
+    NLAYERS: 5
+    NHEAD: 2
+    DIM_FEEDFORWARD: 1024
+    # change this
+    DECODER_OUT_DIM : 6
+    DROPOUT: 0.0
+    EXT_MIX: "late" 
+    POS_EMBEDDING: "none"
+    # Use FA/HN
+    HYPERNET: True 
+    FIX_ATTENTION: True 
+    USE_SWAT_PE: True 
+    USE_SWAT_RE: True
+    HN_EMBED: True
+    HN_DECODER: True 
+
+# PPO training parameters
+PPO:
+  MAX_STATE_ACTION_PAIRS: 6e7 
+  NUM_ENVS: 32
+  TIMESTEPS: 2560 
+  BATCH_SIZE: 5120 # dset(ts*num_env) >= batch_Stize
+  KL_TARGET_COEF: 8.0 
+  ENTROPY_COEF: 0.001
+  # BASE_LR: 0.001
+
+RNG_SEED: 1409
+DEVICE: "cuda:0"
+LOG_PERIOD: 10
+CHECKPOINT_PERIOD: 100
+
+# Logging
+LOGGING:
+  USE_WANDB: True 
+  PROJECT: "MR-ST"
+  ENTITY: "alimidhat62-org"
+
+
+OUT_DIR: "./output/1409/modumorph_OSC_POSE_32e_1409"
