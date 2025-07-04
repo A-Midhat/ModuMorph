@@ -1,36 +1,76 @@
-# ModuMorph
-Code of the paper [Universal Morphology Control via Contextual Modulation](https://arxiv.org/abs/2302.11070) at ICML 2023. 
+# Investigating Morphology-Aware Policies for Robotic Manipulation
 
-Our work builds upon [MetaMorph](https://arxiv.org/abs/2203.11931), a SOTA transformer-based method for universal morphology control, i.e., learning a universal policy that can generalize across different morphologies. We further propose to use hypernetworks (HN) and fixed attention (FA) to better model the complex dependence between robot morphology and control policy. See our paper for more details. 
+This repository contains the code for the Master's thesis, "Investigating Morphology-Aware Policies for Robotic Manipulation." This work adapts and extends the state-of-the-art universal control framework, originally developed for locomotion tasks in papers like [MetaMorph](https://arxiv.org/abs/2203.11931) and [ModuMorph](https://arxiv.org/abs/2302.11070), to the more precise and challenging domain of robotic manipulation.
+
+Our core contribution is the integration and evaluation of these powerful, Transformer-based, morphology-aware policies within the **Robosuite** simulation environment. We demonstrate their effectiveness in learning complex manipulation tasks, such as lifting objects and opening doors, across a diverse set of commercially available robot arms.
+
+## Key Features of This Fork
+
+*   **Robosuite Integration:** The entire codebase has been adapted to work seamlessly with the Robosuite environment, including custom wrappers for observation and action spaces.
+*   **Semantic Graph Representation for Manipulators:** We introduce a node-centric graph representation specifically for manipulator arms, consisting of `Base`, `Arm Link`, `Hand`, and `Gripper` nodes.
+*   **JNT and OSC Control Support:** The framework supports training policies with both low-level `JOINT_VELOCITY` control and high-level `OSC_POSE` (Operational Space Control).
+*   **Multi-Robot Training for Manipulation:** The training pipeline is configured for multi-robot, single-task (MR-ST) learning in a manipulation context, enabling a single policy to learn to control multiple different robot arms simultaneously.
+
 
 ## Installation
-We use docker to facilitate reproducibility. To install the docker image, run
+
+Run the following script:
+
 ```bash
-./scripts/build_docker.sh
+./docker/build_files/requirements.txt
 ```
-Please follow the instruction [here](https://github.com/agrimgupta92/metamorph/blob/main/README.md) as in MetaMorph to install the Unimal-100 benchmark which includes both the training robots and test robots to test zero-shot generalization. 
 
-## Running the code
-For multi-robot training, run the following commands to train with different methods. 
+This will set up the environment with all necessary dependencies, including Robosuite and the required Python packages.
 
-MetaMorph: 
-```python
-python tools/train_ppo.py --cfg ./configs/ft.yaml OUT_DIR ./output/folder_name/1409 ENV.WALKER_DIR ./unimals_100/train RNG_SEED 1409
+## Running the Experiments
+
+All experiment configurations are located in the `configs/` directory. The main training script is `tools/train_ppo.py`.
+
+### 1. Training a Universal Policy (Multi-Robot, Single-Task)
+
+To train a universal policy on a set of robot arms for a specific manipulation task, you can use the provided configuration files. The following examples demonstrate how to train the **ModuMorph** and **MetaMorph** architectures.
+
+**Example: Train ModuMorph with OSC on the 'Lift' Task**
+
+This command trains the primary model from the thesis: ModuMorph with `OSC_POSE` control on six different robot arms for the Lift task.
+
+```bash
+python tools/train_ppo.py \
+    --cfg configs/robosuite_modumorph.yaml \
+    OUT_DIR ./output/modumorph_osc_lift/ \
+    ROBOSUITE.ENV_NAMES '["Lift","Lift","Lift","Lift","Lift","Lift"]' \
+    ROBOSUITE.CONTROLLERS '["OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE"]' \
+    MODEL.DECODER_OUT_DIM 6
 ```
-MetaMorph* (a variant of MetaMorph without dropout and positional embedding. See our paper for more details): 
-```python
-python tools/train_ppo.py --cfg ./configs/ft.yaml OUT_DIR ./output/folder_name/1409 ENV.WALKER_DIR ./unimals_100/train RNG_SEED 1409 MODEL.TRANSFORMER.EMBEDDING_DROPOUT False MODEL.TRANSFORMER.POS_EMBEDDING None PPO.KL_TARGET_COEF 5.
-```
-Ours (ModuMorph):
-```python
-python tools/train_ppo.py --cfg ./configs/ft.yaml OUT_DIR ./output/folder_name/1409 ENV.WALKER_DIR ./unimals_100/train RNG_SEED 1409 PPO.KL_TARGET_COEF 5. MODEL.TRANSFORMER.POS_EMBEDDING None MODEL.TRANSFORMER.EMBEDDING_DROPOUT False MODEL.TRANSFORMER.FIX_ATTENTION True MODEL.TRANSFORMER.HYPERNET True MODEL.TRANSFORMER.CONTEXT_ENCODER linear
-```
-We also provide `train_single_robot.py` to train on a single robot, and `evaluate.py` to evaluate a learned policy on different robots. 
 
-## Support for classical Mujoco robots
-Previous to MetaMorph, papers on learning a universal controller for different robots usually benchmark on classical Mujoco robots like Humanoid, Walker, Hopper and etc. Multiple robots are created by removing limbs from a full-body robot. The training code in these previous works usually take many days to run, which hinders benchmarking on these tasks. 
+**Example: Train MetaMorph with JNT on the 'Door' Task**
 
-In our code base, we further provide support for PPO training on these classical Mujoco robots, which are at least 10 times faster than in previous papers. Future work could use our code base as a unified evaluation pipeline to benchmark on both UNIMAL and classical Mujoco robots. 
+This command trains the MetaMorph baseline with `JOINT_VELOCITY` control on the Door task.
+
+```bash
+python tools/train_ppo.py \
+    --cfg configs/robosuite_metamorph.yaml \
+    OUT_DIR ./output/metamorph_jnt_door/ \
+    ROBOSUITE.ENV_NAMES '["Door","Door","Door","Door","Door","Door"]' \
+    ROBOSUITE.CONTROLLERS '["JOINT_VELOCITY","JOINT_VELOCITY","JOINT_VELOCITY","JOINT_VELOCITY","JOINT_VELOCITY","JOINT_VELOCITY"]' \
+    MODEL.DECODER_OUT_DIM 1
+```
+
+### 2. Training a Single-Robot Baseline
+
+To train a specialized policy on a single robot (e.g., for the SR-10M or SR-fair baselines), you can use the single-robot configuration files.
+
+**Example: Train a Panda on the 'Lift' task with OSC**
+
+```bash
+python tools/train_ppo.py \
+    --cfg configs/robosuite_baseline/panda.yaml \
+    OUT_DIR ./output/baselines/panda_lift_osc/ \
+    ROBOSUITE.CONTROLLERS '["OSC_POSE"]' \
+    MODEL.DECODER_OUT_DIM 6
+```
+*Note: The `panda.yaml` is pre-configured for JNT control. We override the controller and `DECODER_OUT_DIM` for OSC.*
 
 ## Acknowledgements
-This repo is built upon the [MetaMorph](https://github.com/agrimgupta92/metamorph/tree/main) code base. 
+
+This codebase is a fork and significant adaptation of the original [MetaMorph](https://github.com/agrimgupta92/metamorph) and [ModuMorph](https://github.com/MasterXiong/ModuMorph) repositories. We are deeply grateful to the original authors for making their excellent work public.
