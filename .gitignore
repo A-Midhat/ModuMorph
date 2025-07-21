@@ -9,6 +9,7 @@ venv
 videos/*
 wandb/*
 MUJOCO_*
+script_.sh
 
 output/*
 *.egg-info

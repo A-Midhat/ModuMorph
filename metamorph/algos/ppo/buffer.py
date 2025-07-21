@@ -32,7 +32,8 @@ class Buffer(object):
         self.dropout_mask_v = torch.ones(T, P, cfg.MODEL.MAX_LIMBS, cfg.MODEL.LIMB_EMBED_SIZE)
         self.dropout_mask_mu = torch.ones(T, P, cfg.MODEL.MAX_LIMBS, cfg.MODEL.LIMB_EMBED_SIZE)
         self.unimal_ids = torch.zeros(T, P).long()
-        
+        self.original_indices = torch.zeros(T, P).long() # NEW: Store original flattened indices
+
         self.step = 0
 
     def to(self, device):
@@ -51,6 +52,7 @@ class Buffer(object):
         self.dropout_mask_v = self.dropout_mask_v.to(device)
         self.dropout_mask_mu = self.dropout_mask_mu.to(device)
         self.unimal_ids = self.unimal_ids.to(device)
+        self.original_indices = self.original_indices.to(device) # NEW
 
     def insert(self, obs, act, logp, val, rew, masks, timeouts, dropout_mask_v, dropout_mask_mu, unimal_ids):
         if isinstance(obs, dict):
@@ -69,9 +71,11 @@ class Buffer(object):
         # agent.act/actor_critic.forward return dropout_mask_v, dropout_mask_mu as shape (seq_len, batch_size, d_model) 
         # or 0
         # Buffer expects (T, P, seq_len, d_model)
-        self.dropout_mask_v[self.step] = dropout_mask_v if isinstance(dropout_mask_v, torch.Tensor) else self.dropout_mask_v[self.step].fill_(0)
-        self.dropout_mask_mu[self.step] = dropout_mask_mu if isinstance(dropout_mask_mu, torch.Tensor) else self.dropout_mask_mu[self.step].fill_(0)
-        
+        # self.dropout_mask_v[self.step] = dropout_mask_v if isinstance(dropout_mask_v, torch.Tensor) else self.dropout_mask_v[self.step].fill_(0)
+        # self.dropout_mask_mu[self.step] = dropout_mask_mu if isinstance(dropout_mask_mu, torch.Tensor) else self.dropout_mask_mu[self.step].fill_(0)
+        self.dropout_mask_v[self.step] = dropout_mask_v if isinstance(dropout_mask_v, torch.Tensor) else self.dropout_mask_v[self.step].fill_(0) # Fixed: ensure fill_(0) is called on a tensor.
+        self.dropout_mask_mu[self.step] = dropout_mask_mu if isinstance(dropout_mask_mu, torch.Tensor) else self.dropout_mask_mu[self.step].fill_(0) # Fixed: ensure fill_(0) is called on a tensor.
+         
         self.unimal_ids[self.step] = torch.LongTensor(unimal_ids)
 
         self.step = (self.step + 1) % cfg.PPO.TIMESTEPS
@@ -131,4 +135,5 @@ class Buffer(object):
             batch["dropout_mask_mu"] = self.dropout_mask_mu.view(-1,cfg.MODEL.MAX_LIMBS, cfg.MODEL.LIMB_EMBED_SIZE)[idxs]
             
             batch["unimal_ids"] = self.unimal_ids.view(-1)[idxs]
+            batch["original_indices"] = idxs # NEW: Pass the original flat indices for this batch
             yield batch

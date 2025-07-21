@@ -10,6 +10,7 @@ import robosuite
 from robosuite.controllers import load_controller_config
 
 from metamorph.algos.ppo.ppo import PPO
+from metamorph.algos.spo.spo import SPO
 from metamorph.config import cfg
 from metamorph.config import dump_cfg
 from metamorph.config import get_list_cfg
@@ -68,9 +69,9 @@ def calculate_max_limbs_joints_robosuite():
     else: 
         cfg.MODEL.MAX_LIMBS = max_l + 1 
         cfg.MODEL.MAX_JOINTS = max_j + 1 
-    print(f"Training on {cfg.ROBOSUITE.TASK_TYPE}-ST\nMorphs: {morphs}\nControllers: {controllers}\n")
+    task_lst = f"\nTasks: {cfg.ROBOSUITE.ENV_NAMES}" if cfg.ROBOSUITE.TASK_TYPE == "SR_MT" else ""
+    print(f"Training on {cfg.ROBOSUITE.TASK_TYPE}{task_lst}\nMorphs: {morphs}\nControllers: {controllers}\n")
     print(f"[Config] Set MAX_LIMBS={cfg.MODEL.MAX_LIMBS}, MAX_JOINTS={cfg.MODEL.MAX_JOINTS}")
-
 def calculate_max_limbs_joints():
     if cfg.ENV_NAME == "Unimal-v0":
 
@@ -275,7 +276,14 @@ def ppo_train():
         torch.backends.cudnn.deterministic = cfg.CUDNN.DETERMINISTIC
 
     torch.set_num_threads(1)
-    PPOTrainer = PPO()
+    # PPOTrainer = PPO()
+        
+    # Explanation: Conditional instantiation of PPO or SPO trainer based on config.
+    if cfg.PPO.USE_SPO:
+        PPOTrainer = SPO()
+    else:
+        PPOTrainer = PPO()
+
     PPOTrainer.train()
     hparams = get_hparams()
     PPOTrainer.save_rewards(hparams=hparams)

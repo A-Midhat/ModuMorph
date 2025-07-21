@@ -1,0 +1,41 @@
+ENV_NAME: "Robosuite-v0"
+RNG_SEED: 1409
+DEVICE: "cpu"
+OUT_DIR: "./output/panda_sr_mt_lift_door"
+
+LOGGING:
+  USE_WANDB: True
+  ENTITY: "alimidhat62-org"
+  PROJECT: "MT_SR_Baselines"
+
+ROBOSUITE:
+  TASK_TYPE: "SR_MT" 
+  TRAINING_MORPHOLOGIES: ["Panda"]
+  ENV_NAMES: ["Lift", "Door"]
+  CONTROLLERS: ["JOINT_VELOCITY", "JOINT_VELOCITY"] 
+
+ENV:
+  KEYS_TO_KEEP: ["object-state", "proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context", "SWAT_RE", "traversals"] 
+ .
+
+MODEL:
+  TYPE: "transformer" 
+  OBS_TYPES: ["proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context", "SWAT_RE", "traversals"]
+  OBS_TO_NORM: []
+  TRANSFORMER:
+    NLAYERS: 1
+    NHEAD: 2
+    DIM_FEEDFORWARD: 256
+    DECODER_OUT_DIM : 1
+    DROPOUT: 0.0
+    EXT_MIX: "late" 
+    POS_EMBEDDING: "none"
+    # Use FA/HN
+    HYPERNET: True 
+    FIX_ATTENTION: True 
+    USE_SWAT_PE: True 
+    USE_SWAT_RE: True
+    HN_EMBED: True
+    HN_DECODER: True 
+PPO:
+  NUM_ENVS: 8

@@ -599,6 +599,8 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
         base_obs_space = self.base_env_ref.observation_space.spaces
         global_keys_to_pass = ['object-state']
         global_keys_to_pass.extend(cfg.ROBOSUITE.get("EXTERO_KEYS", [])) 
+        self.max_object_state_dim = cfg.ROBOSUITE.MAX_OBJECT_STATE_DIM
+
         global_keys_to_pass = list(set(global_keys_to_pass))
         for key in global_keys_to_pass:
             if key in base_obs_space:
@@ -607,7 +609,10 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
                 dtype_ = np.float32 if spec.dtype == np.float64 else spec.dtype
                 if np.prod(shape_) > 0: 
                     obs_spaces[key] = Box(-inf, inf, shape_, dtype_)
-        
+                    # for different tasks (MT)
+                    if key == "object-state" and np.prod(shape_) < self.max_object_state_dim:
+                        obs_spaces[key] = Box(-inf, inf, (self.max_object_state_dim,), dtype_)
+                    
         return Dict(obs_spaces)
 
 
@@ -1123,8 +1128,17 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
  
          for key in self.observation_space.spaces:
               if key not in final_obs and key in obs:
-                  if obs[key].shape == self.observation_space[key].shape: 
-                     final_obs[key] = obs[key]
+                raw_value = obs[key]
+                expected_shape = self.observation_space[key].shape
+                
+                if key == 'object-state' and raw_value.shape != expected_shape:
+                    # Pad raw_value to expected_shape (max_object_state_dim)
+                    padded_value = np.zeros(expected_shape, dtype=raw_value.dtype)
+                    copy_len = min(raw_value.shape[0], expected_shape[0])
+                    padded_value[:copy_len] = raw_value[:copy_len]
+                    final_obs[key] = padded_value
+                elif raw_value.shape == expected_shape: 
+                    final_obs[key] = raw_value
  
          for key, space in self.observation_space.spaces.items():
               if key not in final_obs: 

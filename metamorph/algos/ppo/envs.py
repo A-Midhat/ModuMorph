@@ -1,10 +1,8 @@
 import time
 from collections import defaultdict
 from collections import deque
-
 import gym
 import torch
-
 import metamorph.envs  # Register envs
 from metamorph.config import cfg, get_list_cfg
 from metamorph.envs import CUSTOM_ENVS
@@ -13,9 +11,7 @@ from metamorph.envs.vec_env.pytorch_vec_env import VecPyTorch
 from metamorph.envs.vec_env.subproc_vec_env import SubprocVecEnv
 from metamorph.envs.vec_env.vec_normalize import VecNormalize
 from metamorph.envs.vec_env.vec_video_recorder import VecVideoRecorder
-
 # from metamorph.envs.wrappers.multi_env_wrapper import MultiEnvWrapper
-
 # Robosuite wrappers
 from metamorph.envs.wrappers.robosuite_wrappers import RobosuiteEnvWrapper
 from metamorph.envs.wrappers.robosuite_wrappers import RobosuiteMLPFlattener
@@ -24,17 +20,14 @@ from metamorph.envs.wrappers.robosuite_wrappers import RobosuiteNodeCentricActio
 from metamorph.envs.wrappers.robosuite_wrappers import RobosuiteSampleWrapper
 from metamorph.envs.wrappers.select_keys import SelectKeysWrapper
 # from modular.wrappers import ModularObservationPadding, ModularActionPadding
-
 # TODO: move it to task.py for better SoC approach
 def _build_inner_robosuite_stack(config_dict):
     """
     Builds the Robosuite environment stack for 
     a specific morphology configuration dictionary.
-
     Args:
         config_dict (dict): Dictionary defining the morphology configuration
                             (e.g., {'env_name': 'Lift', 'robot_names': ['Panda'], ...}).
-
     Returns:
         gym.Env: The top wrapper of the built stack (e.g., SelectKeysWrapper).
     """
@@ -54,26 +47,20 @@ def _build_inner_robosuite_stack(config_dict):
         wrapped_env = RobosuiteNodeCentricAction(wrapped_env)
     else:
         raise ValueError(f"Unsupported MODEL.TYPE: {cfg.MODEL.TYPE}")
-
     keys_to_keep = cfg.ENV.get('KEYS_TO_KEEP', list(cfg.MODEL.get("OBS_TYPES", []))) 
     #print("[keys_to_keep]", keys_to_keep)
     # This should be hanled in the ac foraward method.
     # if cfg.MODEL.TYPE == "transformer":
     #     # Only needed by transformer
     #     keys_to_keep.extend(['traversals', 'SWAT_RE'])
-
     external_keys_cfg = cfg.ROBOSUITE.get("EXTERO_KEYS", [])
     # keys_to_keep.extend(external_keys_cfg)
     keys_to_keep = list(set(keys_to_keep)) 
-
     avail_keys = wrapped_env.observation_space.spaces.keys()
     #print("[avail_keys]", avail_keys)
     final_keys_to_keep = [k for k in keys_to_keep if k ]
     wrapped_env = SelectKeysWrapper(wrapped_env, keys_to_keep=final_keys_to_keep)
-
-
     return wrapped_env
-
 
 def make_env(env_id, seed, rank, **kwargs):
     """
@@ -81,9 +68,9 @@ def make_env(env_id, seed, rank, **kwargs):
     """
     def _thunk():
         if env_id == "Robosuite-v0":
-            all_morph_cfg = kwargs['morph_cfg']
+            all_morph_cfg = kwargs['all_morph_cfg'] # Corrected: Use all_morph_cfg
             if all_morph_cfg is None:
-                raise ValueError("morph_cfg must be provided for Robosuite-v0")
+                raise ValueError("all_morph_cfg must be provided for Robosuite-v0")
             
             elif len(all_morph_cfg) == 1:
                 env = _build_inner_robosuite_stack(all_morph_cfg[0])
@@ -95,47 +82,30 @@ def make_env(env_id, seed, rank, **kwargs):
                     worker_rank=rank,
                     num_workers=cfg.PPO.NUM_ENVS,
                 )
-
-
         elif env_id in CUSTOM_ENVS[:-1]: # remove Robosuite-v0
             xml_file = kwargs['xml_file']
             if env_id == 'Unimal-v0':
                 env = gym.make(env_id, agent_name=xml_file)
             elif env_id == 'Modular-v0':
                 env = gym.make(f"{xml_file}-v0")
-
         else: 
             env = gym.make(env_id)
         
         env.seed(seed + rank)
-
         if str(env.__class__.__name__).find("TimeLimit") >= 0 or hasattr(env, "_max_episode_steps"):# to account for robosuite
             env = TimeLimitMask(env)
         
         env = RecordEpisodeStatistics(env)
         
         return env
-
     return _thunk
     
-
-
 # Vecenvs take as input list of functions. Dummy wrapper function for multienvs
 def env_func_wrapper(env):
     def _thunk():
         return env
     return _thunk
 
-
-# def make_vec_envs(
-#     xml_file=None,
-#     training=True,
-#     norm_rew=True,
-#     num_env=None,
-#     save_video=False,
-#     render_policy=False,
-#     seed=None,
-# ):
 def make_vec_envs(
     env_id=None,
     seed=None,
@@ -151,74 +121,66 @@ def make_vec_envs(
     
     if env_id is None:
         env_id = cfg.ENV_NAME
-
     if num_env is None:
         num_env = cfg.PPO.NUM_ENVS
-
     if seed is None:
         seed = cfg.RNG_SEED
 
-    # envs = []
     if env_id == "Robosuite-v0":
-        all_morph_cfg = []
-        morphologies = cfg.ROBOSUITE.get('TRAINING_MORPHOLOGIES', [])
-        env_names = cfg.ROBOSUITE.get('ENV_NAMES', [])
-        controllers = cfg.ROBOSUITE.get('CONTROLLERS', [])
-        robosuite_args = dict(cfg.ROBOSUITE.ENV_ARGS) 
+        robosuite_args = dict(cfg.ROBOSUITE.ENV_ARGS)
 
-        num_cfgs = len(morphologies)
-        if not num_cfgs:
-            # won't happen becasue we 'infer' during train_ppo if the list is empty
-            raise ValueError("[VecEnv] No morphologies specified in config")
-        # Already rasise error in base env wrapper
-        # if len(env_names) != num_cfgs or len(controllers) != num_cfgs:
-        #     raise ValueError("[VecEnv] Number of morphologies, env_names, and controllers must be the same")
-
-        for i in range(num_cfgs):
-            cfg_dict = {
-                "env_name": env_names[i],
-                "robot_names": get_list_cfg(morphologies[i]),
-                "controller_names": get_list_cfg(controllers[i]),
-                "robosuite_args": robosuite_args,
-            }
-
-            all_morph_cfg.append(cfg_dict) 
-        if save_video or render_policy:
-            # we pass 'morph_idx_render` as kwargs during eval 
-            morph_idx = kwargs.get('morph_idx_render', 0) # default first idx 
+        # NEW: Handle Single-Robot Multi-Task (SR_MT) case
+        if cfg.ROBOSUITE.TASK_TYPE == "SR_MT":
+            if len(cfg.ROBOSUITE.TRAINING_MORPHOLOGIES) != 1:
+                raise ValueError("[VecEnv] For SR_MT, TRAINING_MORPHOLOGIES must contain exactly one robot.")
             
-            # envs = [
-            #     lambda rank: make_env(
-            #         env_id, 
-            #         seed, 
-            #         rank, 
-            #         all_morph_cfg=all_morph_cfg,
-            #         sample_idx_in_seq=0,
-            #         **kwargs
-            #     )
-            # ]
+            robot_name_for_mt = cfg.ROBOSUITE.TRAINING_MORPHOLOGIES[0]
+            controllers = cfg.ROBOSUITE.get('CONTROLLERS', [])
+            all_task_configs = []
+            for i, task_name in enumerate(cfg.ROBOSUITE.ENV_NAMES):
+                task_cfg_dict = {
+                    "env_name": task_name,
+                    "robot_names": get_list_cfg(robot_name_for_mt),
+                    "controller_names": get_list_cfg(controllers[i]),
+                    "robosuite_args": robosuite_args,
+                }
+                all_task_configs.append(task_cfg_dict)
+
             envs = [
-            make_env(
-                env_id,
-                seed,
-                0, # rank = 0 
-                # morph_cfg=all_morph_cfg, #in kwargs?
-                **kwargs
-                )
-            ]
-            # Force only one env for video/render
-            num_envs_run = 1 
-        else: 
-            envs = [
-            make_env(
-                env_id,
-                seed,
-                rank,
-                morph_cfg=all_morph_cfg,
-                **kwargs
-                )
+                make_env(
+                    env_id, seed, rank, 
+                    all_morph_cfg=all_task_configs
+                ) 
                 for rank in range(num_env)
             ]
+        
+        # Original logic for standard SR-ST and MR-ST cases
+        else:
+            all_morph_cfg = []
+            morphologies = cfg.ROBOSUITE.get('TRAINING_MORPHOLOGIES', [])
+            env_names = cfg.ROBOSUITE.get('ENV_NAMES', [])
+            controllers = cfg.ROBOSUITE.get('CONTROLLERS', [])
+            
+            for i in range(len(morphologies)):
+                cfg_dict = {
+                    "env_name": env_names[i],
+                    "robot_names": get_list_cfg(morphologies[i]),
+                    "controller_names": get_list_cfg(controllers[i]),
+                    "robosuite_args": robosuite_args,
+                }
+                all_morph_cfg.append(cfg_dict)
+
+            if save_video or render_policy:
+                # For video, create a single env with the specific morphology to render
+                render_idx = kwargs.get('morph_idx_render', 0)
+                envs = [make_env(env_id, seed, 0, all_morph_cfg=[all_morph_cfg[render_idx]])]
+                num_envs_run = 1
+            else:
+                # For training, create parallel envs that will sample from all morphologies
+                envs = [
+                    make_env(env_id, seed, rank, all_morph_cfg=all_morph_cfg)
+                    for rank in range(num_env)
+                ]
 
     elif env_id in CUSTOM_ENVS[:-1]: # remove Robosuite-v0
          
@@ -253,6 +215,7 @@ def make_vec_envs(
                     _env = make_env(cfg.ENV_NAME, seed, 1, xml_file=xml)()
                     envs.append(env_func_wrapper(_env))
                 cfg.PPO.NUM_ENVS = len(envs)
+    
     num_envs_run = num_env 
     use_dummy_vec_env = save_video or render_policy or num_envs_run == 1 or cfg.VECENV.get("TYPE", "SubprocVecEnv") == "DummyVecEnv"
     if use_dummy_vec_env:
@@ -262,7 +225,6 @@ def make_vec_envs(
         print(f"[VecEnv] Using SubprocVecEnv (N={num_envs_run}, InSeries={cfg.VECENV.get('IN_SERIES', 1)})")
         envs = SubprocVecEnv(envs, in_series=cfg.VECENV.get("IN_SERIES", 1), context="fork")
     
-
     if cfg.MODEL.OBS_TO_NORM == []:
         print ('not use VecNorm')
     else:
@@ -272,7 +234,6 @@ def make_vec_envs(
             obs_to_norm=cfg.MODEL.OBS_TO_NORM
         )
         print(f"[VecEnv] Applied VecNormalize for keys: {cfg.MODEL.OBS_TO_NORM}, training={training}, norm_rew={norm_rew}")
-
     # Convert NumPy observations/actions from VecEnv to PyTorch tensors
     envs = VecPyTorch(envs, device)
     
@@ -282,7 +243,6 @@ def make_vec_envs(
         video_dir = kwargs.get('video_dir')
         video_prefix = kwargs.get('video_prefix', 'video')
         video_length = kwargs.get('video_length', cfg.PPO.VIDEO_LENGTH)
-
         if video_dir is None:
              print("[Save Video] Warning: save_video is True but 'video_dir' not provided in kwargs. Skipping video recording.")
         else:
@@ -294,17 +254,13 @@ def make_vec_envs(
                  video_length=video_length,
                  file_prefix=video_prefix,
              )
-
-
     return envs # Return the final wrapped VecEnv
-
 
 def make_vec_envs_zs():
     device = torch.device(cfg.DEVICE)
     seed = cfg.RNG_SEED
     norm_rew = False
     training = False
-
     envs = [
         make_env(cfg.ENV_NAME, seed, idx, xml_file=cfg.ENV.WALKERS[0])
         for idx in range(cfg.PPO.NUM_ENVS)
@@ -315,14 +271,12 @@ def make_vec_envs_zs():
         envs = SubprocVecEnv(envs, in_series=cfg.VECENV.IN_SERIES, context="fork")
     else:
         raise ValueError("VECENV: {} is not supported.".format(cfg.VECENV.TYPE))
-
     envs = VecNormalize(
         envs, gamma=cfg.PPO.GAMMA, training=training, ret=norm_rew,
         obs_to_norm=cfg.MODEL.OBS_TO_NORM
     )
     envs = VecPyTorch(envs, device)
     return envs
-
 
 # Get a render function
 def get_render_func(venv):
@@ -332,9 +286,7 @@ def get_render_func(venv):
         return get_render_func(venv.venv)
     elif hasattr(venv, "env"):
         return get_render_func(venv.env)
-
     return None
-
 
 def get_env_attr_from_venv(venv, attr_name):
     if hasattr(venv, "envs"):
@@ -343,22 +295,17 @@ def get_env_attr_from_venv(venv, attr_name):
         return get_render_func(venv.venv)
     elif hasattr(venv, "env"):
         return get_render_func(venv.env)
-
     return None
-
 
 def get_vec_normalize(venv):
     if isinstance(venv, VecNormalize):
         return venv
     elif hasattr(venv, "venv"):
         return get_vec_normalize(venv.venv)
-
     return None
-
 
 def get_ob_rms(venv):
     return getattr(get_vec_normalize(venv), "ob_rms", None)
-
 
 def set_ob_rms(venv, ob_rms):
     """
@@ -371,19 +318,15 @@ def set_ob_rms(venv, ob_rms):
     if vec_norm is not None and ob_rms is not None:
         vec_norm.ob_rms = ob_rms
 
-
 # Checks whether done was caused my timit limits or not
 class TimeLimitMask(gym.Wrapper):
     def step(self, action):
         obs, rew, done, info = self.env.step(action)
         if done and self.env._max_episode_steps == self.env._elapsed_steps:
             info["timeout"] = True
-
         return obs, rew, done, info
-
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
-
 
 class RecordEpisodeStatistics(gym.Wrapper):
     def __init__(self, env, deque_size=100):
@@ -398,13 +341,11 @@ class RecordEpisodeStatistics(gym.Wrapper):
         self.episode_length = 0
         self.return_queue = deque(maxlen=deque_size)
         self.length_queue = deque(maxlen=deque_size)
-
     def reset(self, **kwargs):
         observation = super(RecordEpisodeStatistics, self).reset(**kwargs)
         self.episode_return = 0.0
         self.episode_length = 0
         return observation
-
     def step(self, action):
         observation, reward, done, info = super(
             RecordEpisodeStatistics, self
@@ -414,7 +355,6 @@ class RecordEpisodeStatistics(gym.Wrapper):
         for key, value in info.items():
             if "__reward__" in key:
                 self.episode_return_components[key] += value
-
         if done:
             # overwrites the success in in infp["episode"] defined in the wrapper.
             ep = info.get("episode", {}) # get success from RobosuiteEnvWrapper
@@ -425,7 +365,6 @@ class RecordEpisodeStatistics(gym.Wrapper):
             for key, value in self.episode_return_components.items():
                 info["episode"][key] = value
                 self.episode_return_components[key] = 0
-
             self.return_queue.append(self.episode_return)
             self.length_queue.append(self.episode_length)
             self.episode_return = 0.0

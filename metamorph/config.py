@@ -49,7 +49,7 @@ _C.LOGGING.PROJECT = "Modumorph-Robosuite"
 
 _C.ROBOSUITE = CN() 
 # Either "SR" or "MR" for now its MR/SR-ST, TODO: add SR-MT
-_C.ROBOSUITE.TASK_TYPE = "SR" # the three below should be length 1
+_C.ROBOSUITE.TASK_TYPE = "SR" 
 
 # pass robosuite robot name, if using TwoArmEnv, pass a sublist, e.g. ["Sawyer", "Panda"]
 _C.ROBOSUITE.TRAINING_MORPHOLOGIES = ["Panda"]
@@ -63,6 +63,8 @@ _C.ROBOSUITE.CONTROLLERS = ["JOINT_VELOCITY"]
 
 # most cases 1
 _C.ROBOSUITE.GRIPPER_DIM = 1
+# to handle Multi Tasking (SR-MT or MR-MT)
+_C.ROBOSUITE.MAX_OBJECT_STATE_DIM = 20
 
 # Robosuite env options (make)
 _C.ROBOSUITE.ENV_ARGS = CN()
@@ -606,6 +608,14 @@ _C.SAVE_HIST_WEIGHTS = False
 
 # Optional description for exp
 _C.DESC = "Modumorph for Robosuite manipulation tasks"
+
+# --- SPO ---
+_C.PPO.USE_SPO = False 
+_C.PPO.SPO_EPSILON = 0.2 
+_C.PPO.SPO_EMA_ALPHA = 0.995 
+
+
+
 
 # How to handle mjstep exception
 _C.EXIT_ON_MJ_STEP_EXCEPTION = False
