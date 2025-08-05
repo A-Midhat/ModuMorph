@@ -8,6 +8,7 @@ eval/*
 venv
 videos/*
 wandb/*
+artifacts/
 MUJOCO_*
 script_.sh
 

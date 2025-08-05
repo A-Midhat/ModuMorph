@@ -25,7 +25,7 @@ class RobosuiteEnvWrapper(gym.Env):
     """Making robosuite Env compatible with gym.Env"""
     metadata = {"render.modes": ["human", "rgb_array"]}
 
-    def __init__(self, env_name , robot_names, controller_names, horizon, robosuite_args=None): 
+    def __init__(self, env_name , robot_names, controller_names, horizon, gripper_types=None, robosuite_args=None): 
         """
         Args:
             env_name: (str), name of the robosuite env (e.g. Lift, TwoArmLift)
@@ -37,9 +37,10 @@ class RobosuiteEnvWrapper(gym.Env):
         super().__init__() 
 
         self.env_name = env_name
-        self.robot_names = get_list_cfg(robot_names)  # for instance
+        self.robot_names = get_list_cfg(robot_names)
         self.controller_names = get_list_cfg(controller_names) 
-        self._robosuite_args = robosuite_args 
+        self.gripper_types = gripper_types
+        self._robosuite_args = robosuite_args if robosuite_args is not None else {}
         self._passed_horizon = horizon 
 
         self.controller_configs = [] # loaded controller configs
@@ -69,6 +70,10 @@ class RobosuiteEnvWrapper(gym.Env):
             "horizon": self._passed_horizon,
             **self._robosuite_args # passed from cfg 
         }
+
+        if gripper_types is not None: 
+            print(f"[DEBUG] Using different gripper {gripper_types} from deault")
+            robosuite_init_args["gripper_types"] = gripper_types
         # print(f"[RobosuiteEnvWrapper] Initializing robosuite env with args: {robosuite_init_args}")
         try:
             self.env = robosuite.make(**robosuite_init_args) 
@@ -429,7 +434,7 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
     Wrap a RobosuiteEnvWrapper to produce fixed‑size, node‑centric observations for a Transformer policy.
 
     This wrapper takes the per‑robot, per‑body observations emitted by RobosuiteEnvWrapper,
-    identifies each “node” (base, each link, end‑effector (hand), conceptual gripper) in a shared global
+    identifies each “node” (base, each link, end‑effector (hand), gripper) in a shared global
     index space of size MAX_LIMBS, and then:
 
       1. Pads out or masks unused slots so every morphology instance yields the same-length vectors.
@@ -467,8 +472,8 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
             raise ValueError("[RobosuiteNodeCentricObservation] requires a RobosuiteEnvWrapper")
         
         self.base_env_ref = self.env 
-        self.sim = self.base_env_ref.sim # mj sim instance 
-        self.model = self.sim.model # mj data (Table, body, joint, geom, site, actuator)
+        self.sim = self.base_env_ref.sim 
+        self.model = self.sim.model 
 
         self.global_max_limbs = cfg.MODEL.MAX_LIMBS 
         self.global_max_joints = cfg.MODEL.MAX_JOINTS 
@@ -560,10 +565,10 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
                 ('body_mass', 1),
                 ('body_inertia_diag', 3),
             ],
-            'gripper': [
+            'gripper': [ # need to be changed to take into account the Jaco three fingers or TwoArmEnv
                 ('node_type_encoding', 4),
                 ('joint_type', 1),
-                ('joint_limits', 2 * cfg.ROBOSUITE.get('GRIPPER_DIM', 1)),
+                ('joint_limits', 2 * cfg.ROBOSUITE.get('GRIPPER_DIM', 1)), 
                 ('joint_damping', 1 * cfg.ROBOSUITE.get('GRIPPER_DIM', 1)),
                 ('joint_frictionloss', 1 * cfg.ROBOSUITE.get('GRIPPER_DIM', 1)),
                 ('joint_armature', 1 * cfg.ROBOSUITE.get('GRIPPER_DIM', 1)),
@@ -599,7 +604,7 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
         base_obs_space = self.base_env_ref.observation_space.spaces
         global_keys_to_pass = ['object-state']
         global_keys_to_pass.extend(cfg.ROBOSUITE.get("EXTERO_KEYS", [])) 
-        self.max_object_state_dim = cfg.ROBOSUITE.MAX_OBJECT_STATE_DIM
+        self.max_object_state_dim = cfg.ROBOSUITE.MAX_OBJECT_STATE_DIM # to work on MT settings
 
         global_keys_to_pass = list(set(global_keys_to_pass))
         for key in global_keys_to_pass:
@@ -1357,8 +1362,6 @@ class RobosuiteSampleWrapper(gym.Wrapper):
             worker_rank (int): The index (rank) of this worker process.
             num_workers (int): The total number of worker processes.
         """
-        # Do NOT call super().__init__(env) here. We will call it later with the active_env_stack.
-        # super().__init__(env)
 
         self.all_morphology_configs = all_morphology_configs
         self.inner_stack_builder_fn = inner_stack_builder_fn

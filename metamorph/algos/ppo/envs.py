@@ -37,6 +37,7 @@ def _build_inner_robosuite_stack(config_dict):
         robot_names=config_dict['robot_names'],
         controller_names=config_dict['controller_names'],
         horizon=config_dict.get('horizon', cfg.ROBOSUITE.ENV_ARGS.get('horizon', 500)), 
+        gripper_types=config_dict["gripper_types"], 
         robosuite_args=config_dict.get('robosuite_args', dict(cfg.ROBOSUITE.ENV_ARGS))
     )
     
@@ -68,7 +69,7 @@ def make_env(env_id, seed, rank, **kwargs):
     """
     def _thunk():
         if env_id == "Robosuite-v0":
-            all_morph_cfg = kwargs['all_morph_cfg'] # Corrected: Use all_morph_cfg
+            all_morph_cfg = kwargs['all_morph_cfg'] 
             if all_morph_cfg is None:
                 raise ValueError("all_morph_cfg must be provided for Robosuite-v0")
             
@@ -135,7 +136,7 @@ def make_vec_envs(
                 raise ValueError("[VecEnv] For SR_MT, TRAINING_MORPHOLOGIES must contain exactly one robot.")
             
             robot_name_for_mt = cfg.ROBOSUITE.TRAINING_MORPHOLOGIES[0]
-            controllers = cfg.ROBOSUITE.get('CONTROLLERS', [])
+            controllers = cfg.ROBOSUITE['CONTROLLERS']
             all_task_configs = []
             for i, task_name in enumerate(cfg.ROBOSUITE.ENV_NAMES):
                 task_cfg_dict = {
@@ -157,15 +158,18 @@ def make_vec_envs(
         # Original logic for standard SR-ST and MR-ST cases
         else:
             all_morph_cfg = []
-            morphologies = cfg.ROBOSUITE.get('TRAINING_MORPHOLOGIES', [])
-            env_names = cfg.ROBOSUITE.get('ENV_NAMES', [])
-            controllers = cfg.ROBOSUITE.get('CONTROLLERS', [])
+            morphologies = cfg.ROBOSUITE['TRAINING_MORPHOLOGIES']
+            env_names = cfg.ROBOSUITE['ENV_NAMES']
+            controllers = cfg.ROBOSUITE['CONTROLLERS']
+            grippers = cfg.ROBOSUITE["GRIPPER_TYPES"]
+
             
             for i in range(len(morphologies)):
                 cfg_dict = {
                     "env_name": env_names[i],
                     "robot_names": get_list_cfg(morphologies[i]),
                     "controller_names": get_list_cfg(controllers[i]),
+                    "gripper_types":get_list_cfg(grippers[i]),
                     "robosuite_args": robosuite_args,
                 }
                 all_morph_cfg.append(cfg_dict)

@@ -61,6 +61,7 @@ _C.ROBOSUITE.ENV_NAMES = ["Lift"]
 # For TwoArmEnv, pass sublist
 _C.ROBOSUITE.CONTROLLERS = ["JOINT_VELOCITY"]
 
+_C.ROBOSUITE.GRIPPER_TYPES = []
 # most cases 1
 _C.ROBOSUITE.GRIPPER_DIM = 1
 # to handle Multi Tasking (SR-MT or MR-MT)
@@ -78,6 +79,7 @@ _C.ROBOSUITE.ENV_ARGS.hard_reset = False
 _C.ROBOSUITE.ENV_ARGS.horizon = 500
 _C.ROBOSUITE.ENV_ARGS.reward_shaping = True
 _C.ROBOSUITE.ENV_ARGS.reward_scale = 1.0
+
 # used for late fusion in transformer (exteroceptive observation)
 _C.ROBOSUITE.EXTERO_KEYS = ["object-state"] 
 
