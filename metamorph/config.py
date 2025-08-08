@@ -60,8 +60,8 @@ _C.ROBOSUITE.ENV_NAMES = ["Lift"]
 
 # For TwoArmEnv, pass sublist
 _C.ROBOSUITE.CONTROLLERS = ["JOINT_VELOCITY"]
-
-_C.ROBOSUITE.GRIPPER_TYPES = []
+# or empty list
+_C.ROBOSUITE.GRIPPER_TYPES = None 
 # most cases 1
 _C.ROBOSUITE.GRIPPER_DIM = 1
 # to handle Multi Tasking (SR-MT or MR-MT)
@@ -405,6 +405,19 @@ _C.MODEL.MAX_LIMBS = 10
 # robosuite 
 _C.MODEL.MAX_LIMBS_PER_ROBOT = 9 
 _C.MODEL.MAX_JOINTS_PER_ROBOT = 9
+
+
+#########################
+# for robosuite objects
+#########################
+# to add extra node called object-node
+_C.MODEL.ADD_OBJECT_NODE = False 
+# to add semi-time-variant pos state of the object in the ctx & HN
+_C.MODEL.OBJECT_POSE_IN_CTX = False 
+# MT
+_C.MODEL.TASK_EMBED_DIM = 0
+##########################
+##########################
 # Fixed std value
 _C.MODEL.ACTION_STD = 0.9
 

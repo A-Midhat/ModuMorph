@@ -78,11 +78,14 @@ ENV:
 MODEL:
   TYPE: "transformer" 
   OBS_TYPES: ["proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context", "SWAT_RE", "traversals"]
-  # stablize the learning process but not readable for rewards
+  ADD_OBJECT_NODE: True
+  OBJECT_POSE_IN_CONTEXT: False # for ablation
+  TASK_EMBED_DIM: 0
   # log both normalized and unnormalized rew
   OBS_TO_NORM: []
   # ACTION_STD: 0.1 # for osc pose
   ACTION_STD_FIXED: False
+  MAX_LIMBS: 11  #for object
   TRANSFORMER:
     NLAYERS: 5
     NHEAD: 2
@@ -99,7 +102,7 @@ MODEL:
     USE_SWAT_RE: True
     HN_EMBED: True
     HN_DECODER: True 
-
+  
 # PPO training parameters
 PPO:
   # MAX_STATE_ACTION_PAIRS: 2e6 

@@ -31,7 +31,7 @@ lxml==5.3.2
 Markdown==3.8
 MarkupSafe==3.0.2
 matplotlib==3.10.3
--e git+https://github.com/A-Midhat/ModuMorph.git@32ce7abdb9ff9b98f77af19ed42ae8e76935e3ec#egg=metamorph
+
 mujoco==3.3.1
 mujoco-py==2.0.2.8
 numba==0.61.2
