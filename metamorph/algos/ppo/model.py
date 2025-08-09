@@ -16,6 +16,7 @@ from .transformer import TransformerEncoderLayerResidual
 import time
 import matplotlib.pyplot as plt
 
+from metamorph.envs.wrappers.robosuite_wrappers import *
 
 # MLP model as single-robot baseline
 class MLPModel(nn.Module):
@@ -205,8 +206,12 @@ class TransformerModel(nn.Module):
             
             self.hnet_embed_weight = nn.Linear(hn_input_dim, limb_obs_size * self.d_model)
             self.hnet_embed_bias = nn.Linear(hn_input_dim, self.d_model)
-            self.decoder_dims = [decoder_input_dim] + self.model_args.DECODER_DIMS + [decoder_out_dim]
-
+            
+            # The HN decoder ALWAYS operates on the output of the transformer encoder, which has dimension d_model.
+            # It should NOT use the decoder_input_dim that may have been inflated by late-fusion features.
+            # This is the fix for the 128 vs 168 mismatch.
+            self.decoder_dims = [self.d_model] + self.model_args.DECODER_DIMS + [decoder_out_dim]
+            
             self.hnet_decoder_weight = []
             self.hnet_decoder_bias = []
             for i in range(len(self.decoder_dims) - 1):
@@ -298,21 +303,18 @@ class TransformerModel(nn.Module):
         if self.model_args.HYPERNET:
             context_embedding_HN = self.context_embed_HN(obs_context)
             context_embedding_HN = self.context_encoder_HN(context_embedding_HN)
-        
-            # NEW: Inject task embedding into the context vector before feeding to HN
-        if cfg.MODEL.TASK_EMBED_DIM > 0 and hasattr(self, 'task_embed'):
-            # In the wrapper, we placed the task index as the first element of the
-            # `task_embedding` placeholder within the context feature vector.
-            # Here we find where that placeholder begins.
-            # This is a bit fragile; a more robust solution would be a separate obs key.
-            task_embed_start_idx = -cfg.MODEL.TASK_EMBED_DIM
-            if cfg.MODEL.OBJECT_POSE_IN_CONTEXT:
-                    task_embed_start_idx -= 3 # Account for pose if it's also in context
-            
-            task_indices = obs_context[0, :, task_embed_start_idx].long()
-            task_embedding = self.task_embed(task_indices) # Shape: [batch_size, task_embed_dim]
-            task_embedding_bcast = task_embedding.unsqueeze(0).repeat(self.seq_len, 1, 1)
-            context_embedding_HN = torch.cat([context_embedding_HN, task_embedding_bcast], dim=-1)
+            # Inject task embedding into the context vector ONLY if HN is active.
+            if cfg.MODEL.TASK_EMBED_DIM > 0 and hasattr(self, 'task_embed'):
+                # In the wrapper, we placed the task index as the first element of the
+                # `task_embedding` placeholder within the context feature vector.
+                task_embed_start_idx = -cfg.MODEL.TASK_EMBED_DIM
+                if cfg.MODEL.OBJECT_POSE_IN_CONTEXT:
+                        task_embed_start_idx -= 3 # Account for pose if it's also in context
+
+                task_indices = obs_context[0, :, task_embed_start_idx].long()
+                task_embedding = self.task_embed(task_indices) # Shape: [batch_size, task_embed_dim]
+                task_embedding_bcast = task_embedding.unsqueeze(0).repeat(self.seq_len, 1, 1)
+                context_embedding_HN = torch.cat([context_embedding_HN, task_embedding_bcast], dim=-1)
 
 
         if self.model_args.HYPERNET and self.model_args.HN_EMBED:
@@ -387,6 +389,7 @@ class TransformerModel(nn.Module):
         if "hfield" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion == "late":
             decoder_input = torch.cat([decoder_input, hfield_obs], axis=2)
         
+        # if "object-state" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion == "late" and not cfg.MODEL.ADD_OBJECT_NODE:
         if "object-state" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion == "late" and not cfg.MODEL.ADD_OBJECT_NODE:
             # Only add object-state to decoder if NOT using the object-node architecture
             decoder_input = torch.cat([decoder_input, object_obs], axis=2)
@@ -396,6 +399,8 @@ class TransformerModel(nn.Module):
             output = decoder_input
             layer_num = len(self.hnet_decoder_weight)
             for i in range(layer_num):
+                # layer_w = self.hnet_decoder_weight[i](context_embedding_HN).reshape(self.seq_len, batch_size, self.decoder_dims[i], self.decoder_dims[i + 1])
+                # layer_b = self.hnet_decoder_bias[i](context_embedding_HN)
                 layer_w = self.hnet_decoder_weight[i](context_embedding_HN).reshape(self.seq_len, batch_size, self.decoder_dims[i], self.decoder_dims[i + 1])
                 layer_b = self.hnet_decoder_bias[i](context_embedding_HN)
                 output = (output[:, :, :, None] * layer_w).sum(dim=-2, keepdim=False) + layer_b
@@ -654,3 +659,5 @@ class Agent:
     def get_value(self, obs, dropout_mask_v=None, dropout_mask_mu=None, unimal_ids=None):
         val, _, _, _, _, _ = self.ac(obs, dropout_mask_v=dropout_mask_v, dropout_mask_mu=dropout_mask_mu, unimal_ids=unimal_ids)
         return val
+
+

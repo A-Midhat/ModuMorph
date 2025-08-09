@@ -413,7 +413,7 @@ _C.MODEL.MAX_JOINTS_PER_ROBOT = 9
 # to add extra node called object-node
 _C.MODEL.ADD_OBJECT_NODE = False 
 # to add semi-time-variant pos state of the object in the ctx & HN
-_C.MODEL.OBJECT_POSE_IN_CTX = False 
+_C.MODEL.OBJECT_POSE_IN_CONTEXT = False 
 # MT
 _C.MODEL.TASK_EMBED_DIM = 0
 ##########################

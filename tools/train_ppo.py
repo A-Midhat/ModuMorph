@@ -66,9 +66,9 @@ def calculate_max_limbs_joints_robosuite():
             cfg.MODEL.MAX_JOINTS = max_j - 1
         else: 
             print("This is not supported yet")
-    else: 
-        cfg.MODEL.MAX_LIMBS = max_l + 1 
-        cfg.MODEL.MAX_JOINTS = max_j + 1 
+    # else: 
+    #     # cfg.MODEL.MAX_LIMBS = max_l + 1 
+    #     # cfg.MODEL.MAX_JOINTS = max_j + 1 
     task_lst = f"\nTasks: {cfg.ROBOSUITE.ENV_NAMES}" if cfg.ROBOSUITE.TASK_TYPE == "SR_MT" else ""
     print(f"Training on {cfg.ROBOSUITE.TASK_TYPE}{task_lst}\nMorphs: {morphs}\nControllers: {controllers}\n")
     print(f"[Config] Set MAX_LIMBS={cfg.MODEL.MAX_LIMBS}, MAX_JOINTS={cfg.MODEL.MAX_JOINTS}")

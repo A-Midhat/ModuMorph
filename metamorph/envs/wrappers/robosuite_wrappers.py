@@ -10,7 +10,7 @@ from collections import OrderedDict, defaultdict
 import time 
 import os
 
-# from metamorph.utils import robosuite_utils as ru # placeholder
+# from metamorph.utils import robosuite_utils as ru 
 from metamorph.utils import swat 
 # from metamorph.utils import mjpy 
 from metamorph.utils import file as fu
@@ -72,7 +72,7 @@ class RobosuiteEnvWrapper(gym.Env):
         }
 
         if gripper_types is not None: 
-            print(f"[DEBUG] Using different gripper {gripper_types} from deault")
+            # print(f"[DEBUG] Using different gripper {gripper_types} from deault")
             robosuite_init_args["gripper_types"] = gripper_types
         # print(f"[RobosuiteEnvWrapper] Initializing robosuite env with args: {robosuite_init_args}")
         try:
@@ -589,7 +589,7 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
                 ('node_type_encoding', 4),
                 ('target_pos', 3),              # Primary position (cube, handle, centroid)
                 ('object_size', 3),             # Primary object(table) size
-                ('task_embedding', cfg.MODEL.TASK_EMBED_DIM),
+                ('task_embedding', cfg.MODEL.TASK_EMBED_DIM)
             ]
         }
 
@@ -962,7 +962,7 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
                 # geom_id = self.sim.model.geom_name2id(target_geom_name)
                 # geom_id = self.sim.model.geom_name2id(target_geom_name)
                 geom_id = self.model.geom_name2id(target_geom_name)
-                print("GEOM ID:\t",geom_id)
+                # print("GEOM ID:\t",geom_id)
                 # Get half-extents and convert to full size
                 parsed['object_size'] = self.model.geom_size[geom_id] * 2.0
             except KeyError:
@@ -974,7 +974,7 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
             parsed['target_quat'] = obs_dict['cube_quat']
             parsed['eef_to_target_pos'] = obs_dict['gripper_to_cube_pos']
         elif task_name == 'Door':
-            print("[DEBUG] [_PARSE_*]Obsrvation",obs_dict.keys())
+            # print("[DEBUG] [_PARSE_*]Obsrvation",obs_dict.keys())
             parsed['target_pos'] = obs_dict['handle_pos'] # Primary target
             parsed['eef_to_target_pos'] = obs_dict['handle_to_eef_pos'] # Canonical name
             # parsed['hinge_qpos'] = np.array([obs_dict['hinge_qpos']])
@@ -1021,8 +1021,10 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
             eef_quat = obs_dict[f'{robot_prefix}eef_quat']
             # TODO: ADD A CONDITION HERE FOR TASKS
             # SINCE WIPE DON'T HAVE GRIPPERS
-            gripper_qpos = obs_dict[f'{robot_prefix}gripper_qpos']
-            gripper_qvel = obs_dict[f'{robot_prefix}gripper_qvel']
+            # gripper_qpos = obs_dict[f'{robot_prefix}gripper_qpos']
+            # gripper_qvel = obs_dict[f'{robot_prefix}gripper_qvel']
+            gripper_qpos = obs_dict.get(f'{robot_prefix}gripper_qpos')
+            gripper_qvel = obs_dict.get(f'{robot_prefix}gripper_qvel')
             
             # World-frame body observations (if included in config)
             # TODO: ADD THEM TO EEF ONLY
@@ -1217,6 +1219,9 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
                 elif key == 'task_embedding':
                     task_idx = cfg.ROBOSUITE.ENV_NAMES.index(self.base_env_ref.env_name)
                     task_embedding_placeholder[0] = task_idx
+                    # context_features_obj.append(task_embedding_placeholder)
+                    if cfg.MODEL.TASK_EMBED_DIM > 0:
+                        task_embedding_placeholder[0] = task_idx
                     context_features_obj.append(task_embedding_placeholder)
                 else:
                     context_features_obj.append(universal_object_state[key])
@@ -1262,9 +1267,7 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
              #  print(f"[RobosuiteNodeCentricObservation] Debug: node_proprio_global: {node_proprio}, node_context_global: {node_context}")
  
          except Exception as e:
-              print(f"[RobosuiteNodeCentricObservation] Error during feature extraction: {e}. Returning zero arrays.")
-              node_proprio = np.zeros_like(self.node_proprio_global)
-              node_context = np.zeros_like(self.node_context_global)
+                raise RuntimeError(f"[RobosuiteNodeCentricObservation] Error during feature extraction: {e}. Returning zero arrays.")   
  
          final_obs = OrderedDict()
          final_obs['proprioceptive'] = node_proprio.flatten()
@@ -1757,139 +1760,3 @@ class RobosuiteSampleWrapper(gym.Wrapper):
         return [seed] # Return the list of seeds set (standard Gym convention)
 
 
-# =====================================================================
-# ==================== FINAL COMPREHENSIVE TEST BLOCK =================
-# =====================================================================
-if __name__ == '__main__':
-    # --- Configuration and Mocking Setup ---
-    from metamorph.config import cfg
-    import sys
-    from types import ModuleType
-
-    swat = ModuleType('metamorph.utils.swat')
-    def mock_getTraversal(parents_list):
-        n = len(parents_list)
-        traversals = np.arange(n, dtype=np.int64)
-        return np.column_stack([traversals] * 3)
-
-    def mock_getGraphDict(parents_list):
-        n = len(parents_list)
-        return np.zeros((n, n, 3), dtype=np.float32)
-
-    swat.getTraversal = mock_getTraversal
-    swat.getGraphDict = mock_getGraphDict
-    sys.modules['metamorph.utils.swat'] = swat
-
-    # --- Global Test Configuration ---
-    cfg.MODEL.MAX_LIMBS = 15
-    cfg.MODEL.MAX_JOINTS = 14
-    cfg.MODEL.TRANSFORMER.DECODER_OUT_DIM = 6
-    cfg.MODEL.TRANSFORMER.TRAVERSALS = ['pre', 'in', 'post']
-    cfg.ROBOSUITE.MAX_OBJECT_STATE_DIM = 40
-    cfg.ROBOSUITE.GRIPPER_DIM = 1
-    cfg.ROBOSUITE.ENV_NAMES = ["Lift", "Door", "Wipe"]
-
-    # Flag to ensure the detailed print happens only once
-    full_print_done = False
-
-    def run_single_test(task_name, add_object_node, object_pose_in_context):
-        """
-        Runs a comprehensive test for a single task and configuration.
-        """
-        global full_print_done # Use the global flag
-
-        header = f"[TEST RUN] Task: {task_name} | ADD_OBJECT_NODE: {add_object_node}"
-        if add_object_node:
-             header += f" | POSE_IN_CONTEXT: {object_pose_in_context}"
-        print(f"\n{'='*25}\n{header}\n{'='*25}")
-
-        # --- Update global config for this specific test run ---
-        cfg.MODEL.ADD_OBJECT_NODE = add_object_node
-        cfg.MODEL.OBJECT_POSE_IN_CONTEXT = object_pose_in_context
-        # Use a higher task embedding dim to make it visible in prints
-        cfg.MODEL.TASK_EMBED_DIM = 16 if add_object_node else 0
-
-        # --- Environment setup ---
-        env_config = {
-            'env_name': task_name,
-            'robot_names': 'Panda',
-            'controller_names': 'OSC_POSE',
-            'horizon': 500,
-            'robosuite_args': {'has_renderer': False, 'has_offscreen_renderer': False, 'use_camera_obs': False, 'control_freq': 20}
-        }
-        all_needed_keys = ["robot0_proprio-state", "object-state", "cube_pos", "cube_quat", "gripper_to_cube_pos", "door_pos", "handle_pos", "door_to_eef_pos", "handle_to_eef_pos", "hinge_qpos", "handle_qpos", "proportion_wiped", "wipe_radius", "wipe_centroid", "gripper_to_wipe_centroid"]
-        env_config["keys"] = all_needed_keys
-
-        wrapped_env = None
-        try:
-            print("STEP 1: Building environment stack...")
-            base_env = RobosuiteEnvWrapper(**env_config)
-            wrapped_env = RobosuiteNodeCentricObservation(base_env)
-            print("...Success! Stack built.")
-
-            print("\nSTEP 2: Resetting environment...")
-            obs = wrapped_env.reset()
-            print("...Success! Reset complete.")
-
-            # --- Detailed analysis ---
-            print("\nSTEP 3: Analyzing generated observation...")
-            obs_mask = obs['obs_padding_mask']
-            num_unmasked_obs = np.sum(~obs_mask)
-            print(f"  Observation Mask: {num_unmasked_obs} / {len(obs_mask)} nodes are active.")
-
-            if add_object_node:
-                # --- Verification for Object Node ---
-                object_node_idx = cfg.MODEL.MAX_LIMBS - 1
-                assert not obs_mask[object_node_idx], "Object node's observation SHOULD NOT be masked!"
-                print(f"  Object node at index {object_node_idx} is correctly active.")
-
-                context_nodes = obs['context'].reshape(cfg.MODEL.MAX_LIMBS, -1)
-                task_embed_start_idx = 10 # 4 (type) + 3 (pos) + 3 (size)
-                task_idx_from_vec = int(context_nodes[object_node_idx, task_embed_start_idx])
-                expected_task_idx = cfg.ROBOSUITE.ENV_NAMES.index(task_name)
-                assert task_idx_from_vec == expected_task_idx, f"Task index mismatch! Got {task_idx_from_vec}, expected {expected_task_idx}"
-                print(f"  Task index {expected_task_idx} found correctly at index {task_embed_start_idx} of context vector.")
-
-                # --- DETAILED PRINT FOR TRANSFORMER INPUT (RUNS ONCE) ---
-                if not full_print_done:
-                    print("\n" + "*"*15 + " DETAILED OBJECT NODE PRINT " + "*"*15)
-                    print(f"This is the full, reshaped input for the object node in task '{task_name}'.\n")
-                    
-                    prop_nodes = obs['proprioceptive'].reshape(cfg.MODEL.MAX_LIMBS, -1)
-                    object_prop_vec = prop_nodes[object_node_idx]
-                    
-                    object_context_vec = context_nodes[object_node_idx]
-
-                    print(f"--> OBJECT PROPRIOCEPTIVE (time-variant) INPUT (shape: {object_prop_vec.shape}):\n{np.round(object_prop_vec, 3)}\n")
-                    print(f"--> OBJECT CONTEXT (time-invariant) INPUT (shape: {object_context_vec.shape}):\n{np.round(object_context_vec, 3)}\n")
-                    print("*"*54 + "\n")
-                    full_print_done = True
-            else:
-                # --- Verification for NO Object Node ---
-                # The last node should be a padded (masked) node
-                last_node_idx = cfg.MODEL.MAX_LIMBS - 1
-                assert obs_mask[last_node_idx], "When object node is disabled, the last node should be masked!"
-                print("  Object node is correctly disabled and masked.")
-
-
-            print(f"--- [PASS] Test configuration succeeded. ---")
-
-        except Exception as e:
-            print(f"\n--- [FAIL] Test for this configuration failed! ---")
-            raise e
-        finally:
-            if wrapped_env:
-                wrapped_env.close()
-
-    # --- Main Test Execution Loop ---
-    print("--- STARTING NEW WRAPPER TEST SUITE ---")
-    for task in cfg.ROBOSUITE.ENV_NAMES:
-        # Test Case 1: Object node is DISABLED
-        run_single_test(task_name=task, add_object_node=False, object_pose_in_context=False)
-        
-        # Test Case 2: Object node is ENABLED
-        # (The POSE_IN_CONTEXT flag is now redundant due to the improved parser, but we test it for completeness)
-        run_single_test(task_name=task, add_object_node=True, object_pose_in_context=False)
-        # run_single_test(task_name=task, add_object_node=True, object_pose_in_context=True) # Optional: run this too
-
-    print("\n--- ALL TESTS COMPLETED ---")

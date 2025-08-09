@@ -165,11 +165,15 @@ def make_vec_envs(
 
             
             for i in range(len(morphologies)):
+                if grippers and len(grippers) > i and grippers[i] is not None:
+                    gripper_list = get_list_cfg(grippers[i])
+                else:
+                    gripper_list = ["default"]
                 cfg_dict = {
                     "env_name": env_names[i],
                     "robot_names": get_list_cfg(morphologies[i]),
                     "controller_names": get_list_cfg(controllers[i]),
-                    "gripper_types":get_list_cfg(grippers[i]),
+                    "gripper_types":gripper_list,
                     "robosuite_args": robosuite_args,
                 }
                 all_morph_cfg.append(cfg_dict)

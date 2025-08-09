@@ -1,0 +1,76 @@
+ENV_NAME: "Robosuite-v0"
+
+ROBOSUITE:
+  TASK_TYPE: "MR" 
+  TRAINING_MORPHOLOGIES: ["Panda","Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e"]
+  ENV_NAMES: ["Lift", "Lift", "Lift", "Lift", "Lift", "Lift"]
+  CONTROLLERS: ["OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE"]
+  GRIPPER_TYPES: [null, null, null] # default grippers
+  
+  MAX_OBJECT_STATE_DIM: 40
+
+  ENV_ARGS:
+    has_renderer: False
+    ignore_done: False
+    has_offscreen_renderer: False
+    use_camera_obs: False
+    control_freq: 20
+    horizon: 500
+    reward_shaping: True
+    reward_scale: 1.0
+
+ENV:
+  KEYS_TO_KEEP: ["object-state", "proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context", "SWAT_RE", "traversals"] 
+
+MODEL:
+  TYPE: "transformer" 
+  OBS_TYPES: ["proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context", "SWAT_RE", "traversals"]
+  OBS_TO_NORM: []
+
+  # --- Object-Node Configuration ---
+  ADD_OBJECT_NODE: True
+  OBJECT_POSE_IN_CONTEXT: True  # dynamic pose in of static context
+  TASK_EMBED_DIM: 16             # Dimension for the task embedding vector
+  
+  MAX_LIMBS: 11 # Max robot limbs (Panda=10) + 1 for the object-node
+  MAX_JOINTS: 10 # Max robot joints (Panda=9) + 1 for padding/safety
+
+  ACTION_STD_FIXED: False 
+  
+  TRANSFORMER:
+    NLAYERS: 5
+    NHEAD: 2
+    DIM_FEEDFORWARD: 1024
+    DECODER_OUT_DIM: 6      # 6 for OSC_POSE controller
+    DROPOUT: 0.0            
+    EXT_MIX: "late"         # exteroceptive info is mixed (not used if object-node is on) TODO: will change later
+    POS_EMBEDDING: "none"   
+    
+    HYPERNET: True 
+    FIX_ATTENTION: True 
+    USE_SWAT_PE: True       
+    USE_SWAT_RE: True       
+    HN_EMBED: True
+    HN_DECODER: True 
+
+# PPO training parameters
+PPO:
+  MAX_STATE_ACTION_PAIRS: 6e7 
+  NUM_ENVS: 32                
+  TIMESTEPS: 2560 
+  BATCH_SIZE: 5120
+  KL_TARGET_COEF: 9.0 
+  ENTROPY_COEF: 0.001
+  BASE_LR: 0.0003
+
+RNG_SEED: 1409
+DEVICE: "cuda:0"
+LOG_PERIOD: 10
+CHECKPOINT_PERIOD: 100
+
+LOGGING:
+  USE_WANDB: True 
+  PROJECT: "MR-ST"
+  ENTITY: "alimidhat62-org" 
+
+OUT_DIR: "./output/LIFT_OBJ_NODE_1409" 
