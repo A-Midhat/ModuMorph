@@ -3,9 +3,9 @@ ENV_NAME: "Robosuite-v0"
 ROBOSUITE:
   TASK_TYPE: "MR" 
   TRAINING_MORPHOLOGIES: ["Panda","Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e"]
-  ENV_NAMES: ["Lift", "Lift", "Lift", "Lift", "Lift", "Lift"]
+  ENV_NAMES: ["Wipe", "Wipe", "Wipe", "Wipe", "Wipe", "Wipe"]
   CONTROLLERS: ["OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE"]
-  GRIPPER_TYPES: [null, null, null] # default grippers
+  GRIPPER_TYPES: ["WipingGripper", "WipingGripper", "WipingGripper", "WipingGripper", "WipingGripper", "WipingGripper"] # default grippers
   
   MAX_OBJECT_STATE_DIM: 40
 
@@ -56,7 +56,7 @@ MODEL:
 # PPO training parameters
 PPO:
   MAX_STATE_ACTION_PAIRS: 6e7 
-  NUM_ENVS: 32                
+  NUM_ENVS: 2                
   TIMESTEPS: 2560 
   BATCH_SIZE: 5120
   KL_TARGET_COEF: 9.0 
@@ -69,8 +69,8 @@ LOG_PERIOD: 10
 CHECKPOINT_PERIOD: 100
 
 LOGGING:
-  USE_WANDB: True 
+  USE_WANDB: False 
   PROJECT: "MR-ST"
   ENTITY: "alimidhat62-org" 
 
-OUT_DIR: "./output/LIFT_OBJ_NODE_1409" 
+OUT_DIR: "./output/Wipe_OBJ_NODE_1409" 

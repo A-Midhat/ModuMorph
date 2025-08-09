@@ -74,6 +74,7 @@ class RobosuiteEnvWrapper(gym.Env):
         if gripper_types is not None: 
             # print(f"[DEBUG] Using different gripper {gripper_types} from deault")
             robosuite_init_args["gripper_types"] = gripper_types
+
         # print(f"[RobosuiteEnvWrapper] Initializing robosuite env with args: {robosuite_init_args}")
         try:
             self.env = robosuite.make(**robosuite_init_args) 
