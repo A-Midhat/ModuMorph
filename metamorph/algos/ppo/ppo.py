@@ -122,12 +122,18 @@ class PPO:
             ou.set_lr(self.optimizer, lr, self.lr_scale)
 
             for step in range(cfg.PPO.TIMESTEPS):
-                if cfg.MODEL.TRANSFORMER.PER_NODE_EMBED:
+                # if cfg.MODEL.TRANSFORMER.PER_NODE_EMBED:
+                if cfg.MODEL.TRANSFORMER.PER_NODE_EMBED or cfg.MODEL.TRANSFORMER.USE_HN_TASK:
                     unimal_ids = self.envs.get_unimal_idx()
                 else:
                     unimal_ids = [0 for _ in range(cfg.PPO.NUM_ENVS)]
                 # Sample actions
-                val, act, logp, dropout_mask_v, dropout_mask_mu = self.agent.act(obs, unimal_ids=unimal_ids)
+                # unimal_ids = torch.tensor(unimal_ids, dtype=torch.long, device=self.device)
+                unimal_ids_cuda = torch.tensor(unimal_ids, dtype=torch.long, device=self.device)
+                unimal_ids_cpu = torch.tensor(unimal_ids, dtype=torch.long, device='cpu')
+ 
+                # val, act, logp, dropout_mask_v, dropout_mask_mu = self.agent.act(obs, unimal_ids=unimal_ids)
+                val, act, logp, dropout_mask_v, dropout_mask_mu = self.agent.act(obs, unimal_ids=unimal_ids_cuda)
 
                 next_obs, reward, done, infos = self.envs.step(act)
 
@@ -145,14 +151,21 @@ class PPO:
                 )
 
                 self.buffer.insert(obs, act, logp, val, reward, masks, timeouts,
-                                   dropout_mask_v, dropout_mask_mu, unimal_ids)
+                                #    dropout_mask_v, dropout_mask_mu, unimal_ids)
+                                dropout_mask_v, dropout_mask_mu, unimal_ids_cpu)
                 obs = next_obs
 
-            if cfg.MODEL.TRANSFORMER.PER_NODE_EMBED:
+            if cfg.MODEL.TRANSFORMER.PER_NODE_EMBED or cfg.MODEL.TRANSFORMER.USE_HN_TASK:
                 unimal_ids = self.envs.get_unimal_idx()
             else:
                 unimal_ids = [0 for _ in range(cfg.PPO.NUM_ENVS)]
-            next_val = self.agent.get_value(obs, unimal_ids=unimal_ids)
+            # unimal_ids = torch.tensor(unimal_ids, dtype=torch.long, device=self.device)
+            unimal_ids_cuda = torch.tensor(unimal_ids, dtype=torch.long, device=self.device)
+            unimal_ids_cpu = torch.tensor(unimal_ids, dtype=torch.long, device='cpu')
+ 
+
+            # next_val = self.agent.get_value(obs, unimal_ids=unimal_ids)
+            next_val = self.agent.get_value(obs, unimal_ids=unimal_ids_cuda)
             self.buffer.compute_returns(next_val)
             self.train_on_batch(cur_iter)
             self.save_sampled_agent_seq(cur_iter)

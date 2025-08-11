@@ -5,7 +5,7 @@ from gym.spaces import Box, Dict
 import robosuite
 from robosuite.controllers import load_controller_config, ALL_CONTROLLERS
 
-import numpy as np 
+import numpy as np  
 from collections import OrderedDict, defaultdict 
 import time 
 import os

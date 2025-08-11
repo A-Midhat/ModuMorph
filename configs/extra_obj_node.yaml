@@ -2,11 +2,14 @@ ENV_NAME: "Robosuite-v0"
 
 ROBOSUITE:
   TASK_TYPE: "MR" 
-  TRAINING_MORPHOLOGIES: ["Panda","Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e"]
-  ENV_NAMES: ["Wipe", "Wipe", "Wipe", "Wipe", "Wipe", "Wipe"]
-  CONTROLLERS: ["OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE"]
-  GRIPPER_TYPES: ["WipingGripper", "WipingGripper", "WipingGripper", "WipingGripper", "WipingGripper", "WipingGripper"] # default grippers
-  
+  # TRAINING_MORPHOLOGIES: ["Panda","IIWA", "Panda","IIWA"]
+  # ENV_NAMES: ["Door", "Lift", "Lift", "Door"]
+  # CONTROLLERS: ["OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE"]
+  # GRIPPER_TYPES: [null, null, null, null] # default grippers
+  TRAINING_MORPHOLOGIES: ["Panda","Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e", "Panda","Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e"]
+  ENV_NAMES: ["Door","Door","Door","Door","Door","Door","Lift","Lift","Lift","Lift","Lift","Lift"]
+  CONTROLLERS: ["OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE",]
+  GRIPPER_TYPES: [null]
   MAX_OBJECT_STATE_DIM: 40
 
   ENV_ARGS:
@@ -30,7 +33,7 @@ MODEL:
   # --- Object-Node Configuration ---
   ADD_OBJECT_NODE: True
   OBJECT_POSE_IN_CONTEXT: True  # dynamic pose in of static context
-  TASK_EMBED_DIM: 16             # Dimension for the task embedding vector
+  TASK_EMBED_DIM: 16            
   
   MAX_LIMBS: 11 # Max robot limbs (Panda=10) + 1 for the object-node
   MAX_JOINTS: 10 # Max robot joints (Panda=9) + 1 for padding/safety
@@ -52,11 +55,12 @@ MODEL:
     USE_SWAT_RE: True       
     HN_EMBED: True
     HN_DECODER: True 
+    USE_HN_TASK: True
 
 # PPO training parameters
 PPO:
   MAX_STATE_ACTION_PAIRS: 6e7 
-  NUM_ENVS: 2                
+  NUM_ENVS: 32                
   TIMESTEPS: 2560 
   BATCH_SIZE: 5120
   KL_TARGET_COEF: 9.0 
@@ -69,8 +73,8 @@ LOG_PERIOD: 10
 CHECKPOINT_PERIOD: 100
 
 LOGGING:
-  USE_WANDB: False 
+  USE_WANDB: True 
   PROJECT: "MR-ST"
   ENTITY: "alimidhat62-org" 
 
-OUT_DIR: "./output/Wipe_OBJ_NODE_1409" 
+OUT_DIR: "./output/MR-MT_1409" 

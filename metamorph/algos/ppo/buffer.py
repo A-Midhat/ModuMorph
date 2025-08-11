@@ -76,7 +76,9 @@ class Buffer(object):
         self.dropout_mask_v[self.step] = dropout_mask_v if isinstance(dropout_mask_v, torch.Tensor) else self.dropout_mask_v[self.step].fill_(0) # Fixed: ensure fill_(0) is called on a tensor.
         self.dropout_mask_mu[self.step] = dropout_mask_mu if isinstance(dropout_mask_mu, torch.Tensor) else self.dropout_mask_mu[self.step].fill_(0) # Fixed: ensure fill_(0) is called on a tensor.
          
-        self.unimal_ids[self.step] = torch.LongTensor(unimal_ids)
+        # self.unimal_ids[self.step] = torch.LongTensor(unimal_ids)
+        self.unimal_ids[self.step] = torch.as_tensor(unimal_ids, dtype=torch.long, device='cpu').squeeze()
+
 
         self.step = (self.step + 1) % cfg.PPO.TIMESTEPS
 

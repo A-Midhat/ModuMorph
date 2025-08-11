@@ -221,6 +221,17 @@ class TransformerModel(nn.Module):
                 self.hnet_decoder_bias.append(layer_b)
             self.hnet_decoder_weight = nn.ModuleList(self.hnet_decoder_weight)
             self.hnet_decoder_bias = nn.ModuleList(self.hnet_decoder_bias)
+        # dual HN (HN_TASK)
+        if self.model_args.USE_HN_TASK: 
+            print("[Model] Use HN_TASK")
+            hn_t_input_dim = self.model_args.CONTEXT_EMBED_SIZE + cfg.MODEL.TASK_EMBED_DIM
+            # we need to generate a scaling (gamma) and shifting (beta) vector of size d_model.
+            film_out_dim = self.d_model * 2
+            # Create the FiLM generator network
+            self.hnet_t = tu.make_mlp_default(
+                [hn_t_input_dim] + [64] + [film_out_dim]
+            )
+
 
         # whether to use SWAT PE and RE: default to False
         if self.model_args.USE_SWAT_PE:
@@ -263,26 +274,199 @@ class TransformerModel(nn.Module):
                 self.hnet_decoder_bias[i].weight.data.zero_()
                 self.hnet_decoder_bias[i].bias.data.zero_()
 
+    # def forward(self, obs, obs_mask, obs_env, obs_cm_mask, obs_context, morphology_info, return_attention=False, dropout_mask=None, unimal_ids=None):
+    #     # (num_limbs, batch_size, limb_obs_size) -> (num_limbs, batch_size, d_model)
+    #     _, batch_size, limb_obs_size = obs.shape
+
+    #     # if "hfield" in cfg.ENV.KEYS_TO_KEEP:
+    #     #     # (batch_size, embed_size)
+    #     #     hfield_obs = self.hfield_encoder(obs_env["hfield"])
+
+    #     # if self.ext_feat_fusion in ["late"]:
+    #     #     hfield_obs = hfield_obs.repeat(self.seq_len, 1)
+    #     #     hfield_obs = hfield_obs.reshape(self.seq_len, batch_size, -1)
+    #     if "hfield" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion in ["late"]:
+    #         hfield_obs = self.hfield_encoder(obs_env["hfield"])
+    #         hfield_obs = hfield_obs.repeat(self.seq_len, 1)
+    #         hfield_obs = hfield_obs.reshape(self.seq_len, batch_size, -1)
+        
+    #     if "object-state" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion in ["late"]:
+    #         object_obs = self.object_encoder(obs_env["object-state"])
+    #         object_obs = object_obs.repeat(self.seq_len, 1)
+    #         object_obs = object_obs.reshape(self.seq_len, batch_size, -1)
+    #     if self.model_args.FIX_ATTENTION:
+    #         context_embedding_attention = self.context_embed_attention(obs_context)
+
+    #         if self.model_args.CONTEXT_ENCODER == 'transformer':
+    #             context_embedding_attention = self.context_encoder_attention(
+    #                 context_embedding_attention, 
+    #                 src_key_padding_mask=obs_mask, 
+    #                 morphology_info=morphology_info)
+    #         else:
+    #             context_embedding_attention = self.context_encoder_attention(context_embedding_attention)
+    #         # TODO: ignore now for robosuite
+    #         if self.model_args.HFIELD_IN_FIX_ATTENTION:
+    #             hfield_embedding = self.context_hfield_encoder(obs_env["hfield"])
+    #             hfield_embedding = hfield_embedding.repeat(self.seq_len, 1).reshape(self.seq_len, batch_size, -1)
+    #             context_embedding_attention = torch.cat([context_embedding_attention, hfield_embedding], dim=-1)
+    #             context_embedding_attention = self.context_compress(context_embedding_attention)
+
+    #     if self.model_args.HYPERNET:
+    #         context_embedding_HN = self.context_embed_HN(obs_context)
+    #         context_embedding_HN = self.context_encoder_HN(context_embedding_HN)
+    #         # Inject task embedding into the context vector ONLY if HN is active.
+    #         if cfg.MODEL.TASK_EMBED_DIM > 0 and hasattr(self, 'task_embed'):
+    #             # In the wrapper, we placed the task index as the first element of the
+    #             # `task_embedding` placeholder within the context feature vector.
+    #             task_embed_start_idx = -cfg.MODEL.TASK_EMBED_DIM
+    #             if cfg.MODEL.OBJECT_POSE_IN_CONTEXT:
+    #                     task_embed_start_idx -= 3 # Account for pose if it's also in context
+
+    #             task_indices = obs_context[0, :, task_embed_start_idx].long()
+    #             task_embedding = self.task_embed(task_indices) # Shape: [batch_size, task_embed_dim]
+    #             task_embedding_bcast = task_embedding.unsqueeze(0).repeat(self.seq_len, 1, 1)
+    #             context_embedding_HN = torch.cat([context_embedding_HN, task_embedding_bcast], dim=-1)
+
+
+    #     if self.model_args.HYPERNET and self.model_args.HN_EMBED:
+    #         embed_weight = self.hnet_embed_weight(context_embedding_HN).reshape(self.seq_len, batch_size, limb_obs_size, self.d_model)
+    #         embed_bias = self.hnet_embed_bias(context_embedding_HN)
+    #         obs_embed = (obs[:, :, :, None] * embed_weight).sum(dim=-2, keepdim=False) + embed_bias
+    #     else:
+    #         if self.model_args.PER_NODE_EMBED:
+    #             obs_embed = (obs[:, :, :, None] * self.limb_embed_weights[:, unimal_ids, :, :]).sum(dim=-2, keepdim=False) + self.limb_embed_bias[:, unimal_ids, :]
+    #         else:
+    #             obs_embed = self.limb_embed(obs)
+        
+    #     if self.model_args.EMBEDDING_SCALE: # default to true
+    #         obs_embed *= math.sqrt(self.d_model)
+
+    #     attention_maps = None
+
+    #     # add PE
+    #     if self.model_args.POS_EMBEDDING in ["learnt", "abs"]:
+    #         obs_embed = self.pos_embedding(obs_embed)
+    #     if self.model_args.USE_SWAT_PE:
+    #         obs_embed = self.swat_PE_encoder(obs_embed, morphology_info['traversals'])
+
+    #     # dropout
+    #     if self.model_args.EMBEDDING_DROPOUT:
+    #         if self.model_args.CONSISTENT_DROPOUT:
+    #             # do dropout in a consistent way. Refer to Appendix in the paper
+    #             if dropout_mask is None:
+    #                 obs_embed_after_dropout = self.dropout(obs_embed)
+    #                 dropout_mask = torch.where(obs_embed_after_dropout == 0., 0., 1.).permute(1, 0, 2)
+    #                 obs_embed = obs_embed_after_dropout
+    #             else:
+    #                 obs_embed = obs_embed * dropout_mask.permute(1, 0, 2) / 0.9
+    #         else:
+    #             # do dropout in an inconsistent way, as in MetaMorph
+    #             obs_embed = self.dropout(obs_embed)
+    #             dropout_mask = 0.
+    #     else:
+    #         # do not do dropout
+    #         dropout_mask = 0.
+
+    #     if self.model_args.FIX_ATTENTION:
+    #         context_to_base = context_embedding_attention
+    #     else:
+    #         context_to_base = None
+        
+    #     if self.model_args.USE_SWAT_RE:
+    #         attn_mask = morphology_info['SWAT_RE']
+    #     else:
+    #         attn_mask = None
+    #     src_key_padding_mask = obs_mask
+
+    #     if return_attention:
+    #         obs_embed_t, attention_maps = self.transformer_encoder.get_attention_maps(
+    #             obs_embed, 
+    #             mask=attn_mask, 
+    #             src_key_padding_mask=src_key_padding_mask, 
+    #             context=context_to_base, 
+    #             morphology_info=morphology_info
+    #         )
+    #     else:
+    #         # (num_limbs, batch_size, d_model)
+    #         obs_embed_t = self.transformer_encoder(
+    #             obs_embed, 
+    #             mask=attn_mask, 
+    #             src_key_padding_mask=src_key_padding_mask, 
+    #             context=context_to_base, 
+    #             morphology_info=morphology_info
+    #         )
+        
+    #     decoder_input = obs_embed_t
+    #     if "hfield" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion == "late":
+    #         decoder_input = torch.cat([decoder_input, hfield_obs], axis=2)
+        
+    #     # if "object-state" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion == "late" and not cfg.MODEL.ADD_OBJECT_NODE:
+    #     if "object-state" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion == "late" and not cfg.MODEL.ADD_OBJECT_NODE:
+    #         # Only add object-state to decoder if NOT using the object-node architecture
+    #         decoder_input = torch.cat([decoder_input, object_obs], axis=2)
+
+    #      # --- NEW: Apply Task-Specific FiLM modulation if enabled ---
+    #     if self.model_args.USE_HN_TASK and cfg.MODEL.ADD_OBJECT_NODE:
+    #         # 1. Get the context embedding for the object node only.
+    #         # The object node is always the last one in the sequence.
+    #         object_node_context = context_embedding_HN[-1, :, :] # Shape: [batch_size, context_embed_size]
+
+    #         # 2. Get the task embedding (we only need one per batch item, not per node)
+    #         task_embedding = self.task_embed(unimal_ids) # unimal_ids are the task indices
+
+    #         # 3. Concatenate and generate FiLM parameters
+    #         hn_task_input = torch.cat([object_node_context, task_embedding], dim=-1)
+    #         film_params = self.hnet_t(hn_task_input)
+    #         gamma, beta = torch.chunk(film_params, 2, dim=-1)
+
+    #         # 4. Apply FiLM modulation to the encoder output (broadcasts across all nodes)
+    #         obs_embed_t = (gamma.unsqueeze(0) * obs_embed_t) + beta.unsqueeze(0)
+
+    #     # (num_limbs, batch_size, J)
+    #     if self.model_args.HYPERNET and self.model_args.HN_DECODER:
+    #         output = decoder_input
+    #         layer_num = len(self.hnet_decoder_weight)
+    #         for i in range(layer_num):
+    #             # layer_w = self.hnet_decoder_weight[i](context_embedding_HN).reshape(self.seq_len, batch_size, self.decoder_dims[i], self.decoder_dims[i + 1])
+    #             # layer_b = self.hnet_decoder_bias[i](context_embedding_HN)
+    #             layer_w = self.hnet_decoder_weight[i](context_embedding_HN).reshape(self.seq_len, batch_size, self.decoder_dims[i], self.decoder_dims[i + 1])
+    #             layer_b = self.hnet_decoder_bias[i](context_embedding_HN)
+    #             output = (output[:, :, :, None] * layer_w).sum(dim=-2, keepdim=False) + layer_b
+    #             if i != (layer_num - 1):
+    #                 output = F.relu(output)
+    #     else:
+    #         if self.model_args.PER_NODE_DECODER:
+    #             output = (decoder_input[:, :, :, None] * self.decoder_weights[:, unimal_ids, :, :]).sum(dim=-2, keepdim=False) + self.decoder_bias[:, unimal_ids, :]
+    #         else:
+    #             output = self.decoder(decoder_input)
+
+    #     # (batch_size, num_limbs, J)
+    #     output = output.permute(1, 0, 2)
+    #     # (batch_size, num_limbs * J)
+    #     output = output.reshape(batch_size, -1)
+
+    #     return output, attention_maps, dropout_mask
     def forward(self, obs, obs_mask, obs_env, obs_cm_mask, obs_context, morphology_info, return_attention=False, dropout_mask=None, unimal_ids=None):
         # (num_limbs, batch_size, limb_obs_size) -> (num_limbs, batch_size, d_model)
         _, batch_size, limb_obs_size = obs.shape
 
-        # if "hfield" in cfg.ENV.KEYS_TO_KEEP:
-        #     # (batch_size, embed_size)
-        #     hfield_obs = self.hfield_encoder(obs_env["hfield"])
-
-        # if self.ext_feat_fusion in ["late"]:
-        #     hfield_obs = hfield_obs.repeat(self.seq_len, 1)
-        #     hfield_obs = hfield_obs.reshape(self.seq_len, batch_size, -1)
         if "hfield" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion in ["late"]:
             hfield_obs = self.hfield_encoder(obs_env["hfield"])
             hfield_obs = hfield_obs.repeat(self.seq_len, 1)
             hfield_obs = hfield_obs.reshape(self.seq_len, batch_size, -1)
-        
+
         if "object-state" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion in ["late"]:
             object_obs = self.object_encoder(obs_env["object-state"])
             object_obs = object_obs.repeat(self.seq_len, 1)
             object_obs = object_obs.reshape(self.seq_len, batch_size, -1)
+
+        # --- Start of Fix ---
+        # The original code re-used the `context_embedding_HN` variable, causing the task embedding to be added twice.
+        # We now create separate context variables for the different hypernetworks to keep the data streams clean.
+        
+        morphology_context_HN = None
+        context_for_HN_decoder = None
+
         if self.model_args.FIX_ATTENTION:
             context_embedding_attention = self.context_embed_attention(obs_context)
 
@@ -293,7 +477,7 @@ class TransformerModel(nn.Module):
                     morphology_info=morphology_info)
             else:
                 context_embedding_attention = self.context_encoder_attention(context_embedding_attention)
-            # TODO: ignore now for robosuite
+            
             if self.model_args.HFIELD_IN_FIX_ATTENTION:
                 hfield_embedding = self.context_hfield_encoder(obs_env["hfield"])
                 hfield_embedding = hfield_embedding.repeat(self.seq_len, 1).reshape(self.seq_len, batch_size, -1)
@@ -301,25 +485,31 @@ class TransformerModel(nn.Module):
                 context_embedding_attention = self.context_compress(context_embedding_attention)
 
         if self.model_args.HYPERNET:
-            context_embedding_HN = self.context_embed_HN(obs_context)
-            context_embedding_HN = self.context_encoder_HN(context_embedding_HN)
-            # Inject task embedding into the context vector ONLY if HN is active.
+            # 1. Create the base context from morphology only. This has dim `CONTEXT_EMBED_SIZE`.
+            morphology_context_HN = self.context_embed_HN(obs_context)
+            morphology_context_HN = self.context_encoder_HN(morphology_context_HN)
+            
+            # 2. Create a separate variable for the main HN decoder. Start it with the base morphology context.
+            context_for_HN_decoder = morphology_context_HN
+            
+            # 3. Add the task embedding ONLY to the context intended for the main HN decoder.
             if cfg.MODEL.TASK_EMBED_DIM > 0 and hasattr(self, 'task_embed'):
-                # In the wrapper, we placed the task index as the first element of the
-                # `task_embedding` placeholder within the context feature vector.
                 task_embed_start_idx = -cfg.MODEL.TASK_EMBED_DIM
                 if cfg.MODEL.OBJECT_POSE_IN_CONTEXT:
-                        task_embed_start_idx -= 3 # Account for pose if it's also in context
-
+                    task_embed_start_idx -= 3
+                
                 task_indices = obs_context[0, :, task_embed_start_idx].long()
                 task_embedding = self.task_embed(task_indices) # Shape: [batch_size, task_embed_dim]
                 task_embedding_bcast = task_embedding.unsqueeze(0).repeat(self.seq_len, 1, 1)
-                context_embedding_HN = torch.cat([context_embedding_HN, task_embedding_bcast], dim=-1)
-
+                
+                # This now correctly modifies a separate variable, leaving `morphology_context_HN` clean.
+                context_for_HN_decoder = torch.cat([context_for_HN_decoder, task_embedding_bcast], dim=-1)
+        # --- End of Fix ---
 
         if self.model_args.HYPERNET and self.model_args.HN_EMBED:
-            embed_weight = self.hnet_embed_weight(context_embedding_HN).reshape(self.seq_len, batch_size, limb_obs_size, self.d_model)
-            embed_bias = self.hnet_embed_bias(context_embedding_HN)
+            # HN_EMBED uses the main HN decoder context
+            embed_weight = self.hnet_embed_weight(context_for_HN_decoder).reshape(self.seq_len, batch_size, limb_obs_size, self.d_model)
+            embed_bias = self.hnet_embed_bias(context_for_HN_decoder)
             obs_embed = (obs[:, :, :, None] * embed_weight).sum(dim=-2, keepdim=False) + embed_bias
         else:
             if self.model_args.PER_NODE_EMBED:
@@ -389,20 +579,46 @@ class TransformerModel(nn.Module):
         if "hfield" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion == "late":
             decoder_input = torch.cat([decoder_input, hfield_obs], axis=2)
         
-        # if "object-state" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion == "late" and not cfg.MODEL.ADD_OBJECT_NODE:
         if "object-state" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion == "late" and not cfg.MODEL.ADD_OBJECT_NODE:
             # Only add object-state to decoder if NOT using the object-node architecture
             decoder_input = torch.cat([decoder_input, object_obs], axis=2)
-        
+
+        # --- NEW: Apply Task-Specific FiLM modulation if enabled ---
+        if self.model_args.USE_HN_TASK and cfg.MODEL.ADD_OBJECT_NODE:
+            # 1. Use the UNMODIFIED `morphology_context_HN` here. This correctly has dim 64.
+            object_node_context = morphology_context_HN[-1, :, :]
+
+            # 2. Get the task embedding using the passed-in `unimal_ids`.
+            # task_embedding = self.task_embed(unimal_ids) # unimal_ids are the task indices
+            if unimal_ids is None:
+                # Fallback: extract from context if unimal_ids not provided
+                task_embed_start_idx = -cfg.MODEL.TASK_EMBED_DIM
+                if cfg.MODEL.OBJECT_POSE_IN_CONTEXT:
+                    task_embed_start_idx -= 3
+                task_indices = obs_context[0, :, task_embed_start_idx].long()
+            else:
+                # Ensure unimal_ids has the right shape [batch_size]
+                task_indices = unimal_ids.squeeze() if len(unimal_ids.shape) > 1 else unimal_ids
+            
+            task_embedding = self.task_embed(task_indices)  # Shape: [batch_size, task_embed_dim]
+            # 3. Concatenate and generate FiLM parameters. Input dim is now correctly 64+8=72.
+            hn_task_input = torch.cat([object_node_context, task_embedding], dim=-1)
+            film_params = self.hnet_t(hn_task_input)
+            gamma, beta = torch.chunk(film_params, 2, dim=-1)
+
+            # 4. Apply FiLM modulation to the encoder output (broadcasts across all nodes)
+            # obs_embed_t = (gamma.unsqueeze(0) * obs_embed_t) + beta.unsqueeze(0)
+            gamma_broadcast = gamma.unsqueeze(0)  # Shape: [1, batch_size, d_model]
+            beta_broadcast = beta.unsqueeze(0)    # Shape: [1, batch_size, d_model]
+            obs_embed_t = (gamma_broadcast * obs_embed_t) + beta_broadcast
         # (num_limbs, batch_size, J)
         if self.model_args.HYPERNET and self.model_args.HN_DECODER:
             output = decoder_input
             layer_num = len(self.hnet_decoder_weight)
             for i in range(layer_num):
-                # layer_w = self.hnet_decoder_weight[i](context_embedding_HN).reshape(self.seq_len, batch_size, self.decoder_dims[i], self.decoder_dims[i + 1])
-                # layer_b = self.hnet_decoder_bias[i](context_embedding_HN)
-                layer_w = self.hnet_decoder_weight[i](context_embedding_HN).reshape(self.seq_len, batch_size, self.decoder_dims[i], self.decoder_dims[i + 1])
-                layer_b = self.hnet_decoder_bias[i](context_embedding_HN)
+                # 4. The HN decoder correctly uses the context that already includes the task embedding.
+                layer_w = self.hnet_decoder_weight[i](context_for_HN_decoder).reshape(self.seq_len, batch_size, self.decoder_dims[i], self.decoder_dims[i + 1])
+                layer_b = self.hnet_decoder_bias[i](context_for_HN_decoder)
                 output = (output[:, :, :, None] * layer_w).sum(dim=-2, keepdim=False) + layer_b
                 if i != (layer_num - 1):
                     output = F.relu(output)
@@ -418,7 +634,6 @@ class TransformerModel(nn.Module):
         output = output.reshape(batch_size, -1)
 
         return output, attention_maps, dropout_mask
-
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, seq_len, dropout=0., batch_first=False):
