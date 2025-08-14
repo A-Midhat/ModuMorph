@@ -280,8 +280,10 @@ def ppo_train():
         
     # Explanation: Conditional instantiation of PPO or SPO trainer based on config.
     if cfg.PPO.USE_SPO:
+        print("Using SPO for training")
         PPOTrainer = SPO()
     else:
+        print("Using PPO for training")
         PPOTrainer = PPO()
 
     PPOTrainer.train()

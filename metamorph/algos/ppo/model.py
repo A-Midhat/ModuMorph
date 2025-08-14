@@ -121,8 +121,14 @@ class TransformerModel(nn.Module):
 
         # task embed
         if cfg.MODEL.TASK_EMBED_DIM > 0:
-            num_tasks = len(cfg.ROBOSUITE.ENV_NAMES)
+            # num_tasks = len(cfg.ROBOSUITE.ENV_NAMES)
+            # self.task_embed = nn.Embedding(num_tasks, cfg.MODEL.TASK_EMBED_DIM)
+            # --- NEW CODE ---
+            unique_tasks = sorted(list(set(cfg.ROBOSUITE.ENV_NAMES)))
+            num_tasks = len(unique_tasks)
+            # --- END FIX ---
             self.task_embed = nn.Embedding(num_tasks, cfg.MODEL.TASK_EMBED_DIM)
+            
         
         if self.model_args.PER_NODE_DECODER:
             # only support a single output layer

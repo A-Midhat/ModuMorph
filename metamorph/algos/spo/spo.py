@@ -112,6 +112,12 @@ class SPO:
             self.stat_save_freq = 100
         else:
             self.stat_save_freq = 10
+                # --- START FIX ---
+        # Create a mapping from training pair index to unique task index
+        unique_tasks = sorted(list(set(cfg.ROBOSUITE.ENV_NAMES)))
+        all_tasks_in_cfg = cfg.ROBOSUITE.ENV_NAMES
+        task_id_map = torch.tensor([unique_tasks.index(task) for task in all_tasks_in_cfg], device=self.device)
+        # --- END FIX ---
 
         for cur_iter in range(cfg.PPO.MAX_ITERS):
             if cfg.PPO.EARLY_EXIT and cur_iter >= cfg.PPO.EARLY_EXIT_MAX_ITERS:
@@ -121,13 +127,23 @@ class SPO:
             ou.set_lr(self.optimizer, lr, self.lr_scale)
 
             for step in range(cfg.PPO.TIMESTEPS):
-                if cfg.MODEL.TRANSFORMER.PER_NODE_EMBED:
-                    unimal_ids = self.envs.get_unimal_idx()
+                # if cfg.MODEL.TRANSFORMER.PER_NODE_EMBED:
+                #     unimal_ids = self.envs.get_unimal_idx()
+                # --- START FIX ---
+                if cfg.MODEL.TRANSFORMER.PER_NODE_EMBED or cfg.MODEL.TRANSFORMER.USE_HN_TASK:
+                     unimal_ids = self.envs.get_unimal_idx()
                 else:
                     unimal_ids = [0 for _ in range(cfg.PPO.NUM_ENVS)]
                 
-                val, act, logp, dropout_mask_v, dropout_mask_mu = self.agent.act(obs, unimal_ids=unimal_ids)
+                # val, act, logp, dropout_mask_v, dropout_mask_mu = self.agent.act(obs, unimal_ids=unimal_ids)
+                unimal_ids_cuda = torch.tensor(unimal_ids, dtype=torch.long, device=self.device)
+                unimal_ids_cpu = torch.tensor(unimal_ids, dtype=torch.long, device='cpu')
 
+                # Convert training pair ID to unique task ID
+                task_ids_for_model = task_id_map[unimal_ids_cuda]
+                
+                val, act, logp, dropout_mask_v, dropout_mask_mu = self.agent.act(obs, unimal_ids=task_ids_for_model)
+                # --- END FIX ---
                 next_obs, reward, done, infos = self.envs.step(act)
 
                 self.train_meter.add_ep_info(infos, cur_iter)
@@ -143,18 +159,31 @@ class SPO:
                 )
 
                 self.buffer.insert(obs, act, logp, val, reward, masks, timeouts,
-                                   dropout_mask_v, dropout_mask_mu, unimal_ids)
+                                #    dropout_mask_v, dropout_mask_mu, unimal_ids)
+                                                                   # --- START FIX ---
+                                   # Buffer still needs the original training pair ID
+                                   dropout_mask_v, dropout_mask_mu, unimal_ids_cpu)
+                                   # --- END FIX ---
                 obs = next_obs
 
-            if cfg.MODEL.TRANSFORMER.PER_NODE_EMBED:
+            # if cfg.MODEL.TRANSFORMER.PER_NODE_EMBED:
+            if cfg.MODEL.TRANSFORMER.PER_NODE_EMBED or cfg.MODEL.TRANSFORMER.USE_HN_TASK:
                 unimal_ids = self.envs.get_unimal_idx()
             else:
                 unimal_ids = [0 for _ in range(cfg.PPO.NUM_ENVS)]
-            next_val = self.agent.get_value(obs, unimal_ids=unimal_ids)
+            # next_val = self.agent.get_value(obs, unimal_ids=unimal_ids)
+                        
+            unimal_ids_cuda = torch.tensor(unimal_ids, dtype=torch.long, device=self.device)
+            task_ids_for_model = task_id_map[unimal_ids_cuda]
+
+            next_val = self.agent.get_value(obs, unimal_ids=task_ids_for_model)
+            # --- END FIX ---
             self.buffer.compute_returns(next_val)
             
             # Explanation: Call the core optimization method
-            self.train_on_batch(cur_iter) 
+            # self.train_on_batch(cur_iter) 
+            # Pass the task_id_map to the training function
+            self.train_on_batch(cur_iter, task_id_map) 
             
             self.save_sampled_agent_seq(cur_iter)
 
@@ -189,7 +218,11 @@ class SPO:
 
         print("Finished Training: {}".format(self.file_prefix))
 
-    def train_on_batch(self, cur_iter):
+    # def train_on_batch(self, cur_iter):
+        # --- START FIX ---
+    # Add task_id_map as an argument
+    def train_on_batch(self, cur_iter, task_id_map):
+    # --- END FIX ---
         
         adv = self.buffer.ret - self.buffer.val
         adv = (adv - adv.mean()) / (adv.std() + 1e-5) # Advantage normalization
@@ -198,12 +231,17 @@ class SPO:
             batch_sampler = self.buffer.get_sampler(adv) 
  
             for j, batch in enumerate(batch_sampler): # Loop over mini-batches
+                                # --- START FIX ---
+                # Convert training pair IDs from the batch into unique task IDs
+                task_ids_for_model = task_id_map[batch['unimal_ids']]
+                # --- END FIX ---
                 val, pi, logp, ent, _, _ = self.actor_critic(
                     batch["obs"],
                     batch["act"],
                     dropout_mask_v=batch['dropout_mask_v'],
                     dropout_mask_mu=batch['dropout_mask_mu'],
-                    unimal_ids=batch['unimal_ids']
+                    # unimal_ids=batch['unimal_ids']
+                    unimal_ids=task_ids_for_model
                 )
 
                 
