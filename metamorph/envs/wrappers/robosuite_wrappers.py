@@ -540,14 +540,19 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
                 ('gripper_qvel', cfg.ROBOSUITE.get('GRIPPER_DIM', 1)),
             ],
             'object': [
+                ('target_pos', 3),
                 ('target_quat', 4),             # For Lift
                 ('eef_to_target_pos', 3),       # For all tasks (relative position)
-                ('hinge_qpos', 1),              # For Door
-                ('handle_qpos', 1),             # For Door
+                ('hinge_qpos', 1),              # For Door TODO
+                ('handle_qpos', 1),             # For Door TODO
                 ('proportion_wiped', 1),        # For Wipe
                 ('wipe_radius', 1),             # For Wipe
                 ('secondary_target_pos', 3),    # e.g., door_pos for Door task
                 ('door_to_eef_pos', 3),         # For Door
+                # for PickPlaceCan
+                 ('eef_to_target_quat', 4),
+                # 'Can_pos', 'Can_quat', 'Can_to_robot0_eef_pos', 'Can_to_robot0_eef_quat
+                
             ]
         }
         self.context_feat_cfg = {
@@ -949,10 +954,12 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
         geom_map = {
             "Lift": "cube_g0_vis", 
             "Door": "Door_handle_visual", 
-            "Wipe": "table_visual" 
+            "Wipe": "table_visual",
+            "PickPlaceCan": "Can_g0" 
         }
         
         target_geom_name = geom_map.get(task_name)
+        # print("Target Geom Name:", target_geom_name)
         if target_geom_name:
             try:
                 """
@@ -990,7 +997,11 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
             parsed['wipe_radius'] = np.array([obs_dict['wipe_radius']])
             parsed['proportion_wiped'] = np.array([obs_dict['proportion_wiped']])
             # parsed['wipe_centroid'] = obs_dict['wipe_centroid']
-
+        elif task_name == "PickPlaceCan":
+            parsed['target_pos'] = obs_dict['Can_pos']
+            parsed['target_quat'] = obs_dict['Can_quat']
+            parsed['eef_to_target_pos'] = obs_dict['Can_to_robot0_eef_pos']
+            parsed['eef_to_target_quat'] = obs_dict['Can_to_robot0_eef_quat']
         return parsed
 
     def _extract_feat_per_node(self, obs_dict):
@@ -1761,3 +1772,119 @@ class RobosuiteSampleWrapper(gym.Wrapper):
         return [seed] # Return the list of seeds set (standard Gym convention)
 
 
+
+
+# # ============================================================
+# # ====================== TEST BLOCK ==========================
+# # ============================================================
+# if __name__ == '__main__':
+#     # This block allows you to test the wrappers directly by running:
+#     # python metamorph/envs/wrappers/robosuite_wrappers.py
+
+#     print("======================================================")
+#     print("====== Running Test for RobosuiteNodeCentricObservation ======")
+#     print("======================================================")
+
+#     # 1. Import and modify the existing global cfg object for the test
+#     from metamorph.config import cfg
+    
+#     # Set the necessary attributes on the global cfg object
+#     cfg.MODEL.MAX_LIMBS = 11
+#     cfg.MODEL.MAX_JOINTS = 10
+#     cfg.MODEL.TASK_EMBED_DIM = 16
+#     cfg.MODEL.TRANSFORMER.DECODER_OUT_DIM = 6
+#     cfg.ROBOSUITE.ENV_NAMES = ["Lift", "Door", "PickPlaceCan"]
+#     cfg.ROBOSUITE.GRIPPER_DIM = 1
+#     cfg.ROBOSUITE.MAX_OBJECT_STATE_DIM = 40
+#     cfg.MODEL.ADD_OBJECT_NODE = True
+
+#     print("\n[Step 1] Global config object modified for test.")
+
+#     # 2. Create a base Robosuite environment for the new task
+#     try:
+#         import robosuite
+#         from robosuite.controllers import load_controller_config
+
+#         base_env = robosuite.make(
+#             env_name="PickPlaceCan",
+#             robots="Panda",
+#             controller_configs=load_controller_config(default_controller="OSC_POSE"),
+#             has_renderer=False,
+#             has_offscreen_renderer=False,
+#             use_camera_obs=False,
+#             horizon=100,
+#         )
+#         print("[Step 2] Base 'PickPlaceCan' environment created.")
+#     except Exception as e:
+#         print(f"\n[ERROR] Failed to create Robosuite environment: {e}")
+#         print("Please ensure 'robosuite' is installed and that you have a custom 'PickPlaceCan' environment registered.")
+#         exit()
+
+#     # --- NEW: Step to inspect the raw observation dictionary ---
+#     print("\n[Step 2.5] Inspecting raw observation dictionary from base environment...")
+#     raw_obs_dict = base_env.reset()
+#     keys_to_print = ['Can_pos', 'Can_quat', 'Can_to_robot0_eef_pos', 'Can_to_robot0_eef_quat']
+    
+#     print("--- Raw Object Info ---")
+#     for key in keys_to_print:
+#         if key in raw_obs_dict:
+#             # np.round is used to make the output cleaner
+#             value_rounded = np.round(raw_obs_dict[key], 4)
+#             print(f"  - {key}: {value_rounded}")
+#         else:
+#             print(f"  - {key}: Not found in raw observation dictionary.")
+#     print("-----------------------\n")
+#     # --- END OF NEW STEP ---
+
+#     # 3. Wrap the environment with your custom wrappers
+#     env = RobosuiteEnvWrapper(
+#         env_name="PickPlaceCan",
+#         robot_names="Panda", 
+#         controller_names="OSC_POSE", 
+#         horizon=100
+#     )
+#     wrapped_env = RobosuiteNodeCentricObservation(env)
+#     print("[Step 3] Environment wrapped with RobosuiteNodeCentricObservation.")
+
+#     # 4. Reset the environment and get the first observation
+#     print("[Step 4] Resetting environment and getting processed observation...")
+#     obs = wrapped_env.reset()
+#     print("   ...Done.")
+
+#     # 5. Run checks to verify the output
+#     print("\n[Step 5] Running verification checks...")
+    
+#     # (The rest of the checks are the same)
+#     expected_keys = ['proprioceptive', 'context', 'object-state']
+#     for key in expected_keys:
+#         assert key in obs, f"FAILED: Key '{key}' is missing from the observation."
+#     print("  ✅ Check 1/4: All essential keys are present in the observation.")
+
+#     expected_prop_shape = (cfg.MODEL.MAX_LIMBS * wrapped_env.limb_obs_size,)
+#     assert obs['proprioceptive'].shape == expected_prop_shape, f"FAILED: Proprioceptive shape is {obs['proprioceptive'].shape}, expected {expected_prop_shape}."
+#     print(f"  ✅ Check 2/4: 'proprioceptive' vector has the correct shape: {expected_prop_shape}.")
+
+#     prop_unflattened = obs['proprioceptive'].reshape(cfg.MODEL.MAX_LIMBS, wrapped_env.limb_obs_size)
+#     object_node_features = prop_unflattened[-1]
+
+#     feature_map = {}
+#     current_idx = 0
+#     for key, dim in wrapped_env.proprio_feat_cfg['object']:
+#         feature_map[key] = slice(current_idx, current_idx + dim)
+#         current_idx += dim
+    
+#     target_pos_slice = feature_map['target_pos']
+#     can_position_features = object_node_features[target_pos_slice]
+    
+#     assert np.any(can_position_features != 0), "FAILED: The 'target_pos' features for the object node are all zero. The parser logic failed."
+#     print(f"  ✅ Check 3/4: Object node's 'target_pos' features are non-zero: {np.round(can_position_features, 4)}.")
+
+#     target_quat_slice = feature_map['target_quat']
+#     can_orientation_features = object_node_features[target_quat_slice]
+
+#     assert np.any(can_orientation_features != 0), "FAILED: The 'target_quat' features for the object node are all zero. The parser logic failed."
+#     print(f"  ✅ Check 4/4: Object node's 'target_quat' features are non-zero: {np.round(can_orientation_features, 4)}.")
+
+#     print("\n======================================================")
+#     print("====== ✅ SUCCESS! All checks passed. The wrapper is working correctly for the new task. ======")
+#     print("======================================================")

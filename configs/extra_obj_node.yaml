@@ -6,9 +6,12 @@ ROBOSUITE:
   # ENV_NAMES: ["Door", "Lift", "Lift", "Door"]
   # CONTROLLERS: ["OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE"]
   # GRIPPER_TYPES: [null, null, null, null] # default grippers
-  TRAINING_MORPHOLOGIES: ["Panda","Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e", "Panda","Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e"]
-  ENV_NAMES: ["Door","Door","Door","Door","Door","Door","Lift","Lift","Lift","Lift","Lift","Lift"]
-  CONTROLLERS: ["OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE",]
+  # TRAINING_MORPHOLOGIES: ["Panda","Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e", "Panda","Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e"]
+  # ENV_NAMES: ["Door","Door","Door","Door","Door","Door","Lift","Lift","Lift","Lift","Lift","Lift"]
+  # CONTROLLERS: ["OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE",]
+  TRAINING_MORPHOLOGIES: ["Panda","Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e"]
+  ENV_NAMES: ["PickPlaceCan","PickPlaceCan","PickPlaceCan","PickPlaceCan","PickPlaceCan","PickPlaceCan"]
+  CONTROLLERS: ["OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE","OSC_POSE"]
   GRIPPER_TYPES: [null]
   MAX_OBJECT_STATE_DIM: 40
 
@@ -55,7 +58,7 @@ MODEL:
     USE_SWAT_RE: True       
     HN_EMBED: True
     HN_DECODER: True 
-    USE_HN_TASK: True
+    USE_HN_TASK: False
 
 # PPO training parameters
 PPO:
@@ -80,4 +83,4 @@ LOGGING:
   PROJECT: "MR-ST"
   ENTITY: "alimidhat62-org" 
 
-OUT_DIR: "./output/MR-MT_uniqueIdxSPO_64_1409" 
+OUT_DIR: "./output/MR-ST_PickPlaceCan_SPO" 

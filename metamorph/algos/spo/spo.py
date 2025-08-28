@@ -366,36 +366,74 @@ class SPO:
         if self.logger_backend == "wandb":
             wandb.finish()
 
-    def save_video(self, save_dir, xml=None):
-        env = make_vec_envs(training=False, norm_rew=False, save_video=True, xml_file=xml)
+    # def save_video(self, save_dir, xml=None):
+    #     env = make_vec_envs(training=False, norm_rew=False, save_video=True, xml_file=xml)
+    #     set_ob_rms(env, get_ob_rms(self.envs))
+    #     env = VecVideoRecorder(
+    #         env,
+    #         save_dir,
+    #         record_video_trigger=lambda x: x == 0,
+    #         video_length=cfg.PPO.VIDEO_LENGTH,
+    #         file_prefix=xml,
+    #     )
+    #     obs = env.reset()
+    #     returns = []
+    #     episode_count = 0
+    #     for t in range(cfg.PPO.VIDEO_LENGTH + 1):
+    #         _, act, _, _, _ = self.agent.act(obs)
+    #         obs, _, _, infos = env.step(act)
+    #         if 'episode' in infos[0]:
+    #             print(infos[0]['episode']['r'])
+    #             returns.append(infos[0]['episode']['r'])
+    #             episode_count += 1
+    #             if episode_count == 5:
+    #                 break
+    #     env.close()
+    #     avg_return = int(np.array(returns).mean())
+    #     os.remove(os.path.join(save_dir, f"{xml}_video.meta.json"))
+    #     os.rename(os.path.join(save_dir, f"{xml}_video.mp4"),
+    #               os.path.join(save_dir, f"{xml}_video_{avg_return}.mp4"))
+    #     video_path = os.path.join(save_dir, f"{xml}_video_{avg_return}.mp4")
+    #     return returns
+    def save_video(self, save_dir, video_prefix='video', robot_name=None, task_name=None, controller_name=None, gripper_type=None):
+        # Call make_vec_envs with save_video=False. We will wrap it with VecVideoRecorder manually
+        # to use the new custom robot/task creation logic while maintaining the original structure.
+        env = make_vec_envs(
+            training=False,
+            norm_rew=False,
+            save_video=False, # We wrap manually below
+            robot_name=robot_name,
+            task_name=task_name,
+            controller_name=controller_name,
+            gripper_type=gripper_type,
+        )
         set_ob_rms(env, get_ob_rms(self.envs))
+
+        # Now, wrap this custom environment with the video recorder
         env = VecVideoRecorder(
             env,
             save_dir,
-            record_video_trigger=lambda x: x == 0,
+            record_video_trigger=lambda x: x == 0, # Record the first episode
             video_length=cfg.PPO.VIDEO_LENGTH,
-            file_prefix=xml,
+            file_prefix=video_prefix,
         )
+
         obs = env.reset()
         returns = []
-        episode_count = 0
-        for t in range(cfg.PPO.VIDEO_LENGTH + 1):
+        # Run until the first episode is complete, which the recorder will capture
+        for _ in range(cfg.PPO.VIDEO_LENGTH + 1):
             _, act, _, _, _ = self.agent.act(obs)
             obs, _, _, infos = env.step(act)
             if 'episode' in infos[0]:
-                print(infos[0]['episode']['r'])
                 returns.append(infos[0]['episode']['r'])
-                episode_count += 1
-                if episode_count == 5:
-                    break
+                break # Stop after the first completed episode
         env.close()
-        avg_return = int(np.array(returns).mean())
-        os.remove(os.path.join(save_dir, f"{xml}_video.meta.json"))
-        os.rename(os.path.join(save_dir, f"{xml}_video.mp4"),
-                  os.path.join(save_dir, f"{xml}_video_{avg_return}.mp4"))
-        video_path = os.path.join(save_dir, f"{xml}_video_{avg_return}.mp4")
-        return returns
 
+        avg_return = int(np.array(returns).mean()) if returns else "incomplete"
+        os.remove(os.path.join(save_dir, f"{video_prefix}.meta.json"))
+        os.rename(os.path.join(save_dir, f"{video_prefix}.mp4"),
+                os.path.join(save_dir, f"{video_prefix}_{avg_return}.mp4"))
+        return returns
     def save_sampled_agent_seq(self, cur_iter):
         num_agents = len(cfg.ENV.WALKERS)
         if num_agents <= 1:

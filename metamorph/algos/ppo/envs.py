@@ -116,6 +116,12 @@ def make_vec_envs(
     num_env=None,
     save_video=False,
     render_policy=False,
+    # --- fix ---
+    robot_name=None,
+    task_name=None,
+    controller_name=None,
+    gripper_type=None,
+    # ------------
     **kwargs
 ):
     device = torch.device(cfg.DEVICE)
@@ -183,17 +189,40 @@ def make_vec_envs(
                 }
                 all_morph_cfg.append(cfg_dict)
 
-            if save_video or render_policy:
-                # For video, create a single env with the specific morphology to render
-                render_idx = kwargs.get('morph_idx_render', 0)
-                envs = [make_env(env_id, seed, 0, all_morph_cfg=[all_morph_cfg[render_idx]])]
-                num_envs_run = 1
-            else:
-                # For training, create parallel envs that will sample from all morphologies
-                envs = [
-                    make_env(env_id, seed, rank, all_morph_cfg=all_morph_cfg)
-                    for rank in range(num_env)
-                ]
+            # if save_video or render_policy:
+            #     # For video, create a single env with the specific morphology to render
+            #     render_idx = kwargs.get('morph_idx_render', 0)
+            #     envs = [make_env(env_id, seed, 0, all_morph_cfg=[all_morph_cfg[render_idx]])]
+            #     num_envs_run = 1
+            # else:
+            #     # For training, create parallel envs that will sample from all morphologies
+            #     envs = [
+            #         make_env(env_id, seed, rank, all_morph_cfg=all_morph_cfg)
+            #         for rank in range(num_env)
+            #     ]
+        if (save_video or render_policy) and robot_name and task_name and controller_name:
+            # Create a custom environment for evaluation using provided details
+            custom_morph_cfg = [{
+                "env_name": task_name,
+                "robot_names": get_list_cfg(robot_name),
+                "controller_names": get_list_cfg(controller_name),
+                "gripper_types": get_list_cfg(gripper_type) if gripper_type else ["default"],
+                "robosuite_args": robosuite_args,
+            }]
+            envs = [make_env(env_id, seed, 0, all_morph_cfg=custom_morph_cfg)]
+            num_envs_run = 1
+        elif save_video or render_policy:
+            # Works only for seen morphologies during training
+            # Fallback to original behavior: create a single env with a morphology from the training list
+            render_idx = kwargs.get('morph_idx_render', 0)
+            envs = [make_env(env_id, seed, 0, all_morph_cfg=[all_morph_cfg[render_idx]])]
+            num_envs_run = 1
+        else:
+            # For training, create parallel envs that will sample from all morphologies
+            envs = [
+                make_env(env_id, seed, rank, all_morph_cfg=all_morph_cfg)
+                for rank in range(num_env)
+            ]
 
     elif env_id in CUSTOM_ENVS[:-1]: # remove Robosuite-v0
          
@@ -383,3 +412,4 @@ class RecordEpisodeStatistics(gym.Wrapper):
             self.episode_return = 0.0
             self.episode_length = 0
         return observation, reward, done, info
+

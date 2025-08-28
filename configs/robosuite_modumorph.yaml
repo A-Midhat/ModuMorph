@@ -69,8 +69,8 @@ ROBOSUITE:
   TRAINING_MORPHOLOGIES: ["Panda", "Jaco", "Sawyer"]  
   ENV_NAMES: ["Lift", "Lift", "Lift"] 
   CONTROLLERS: ["OSC_POSE", "JOINT_VELOCITY", "OSC_POSE"]
-  GRIPPER_TYPES: ["RethinkGripper", "PandaGripper", "JacoThreeFingerGripper"]
-
+  # GRIPPER_TYPES: ["RethinkGripper", "PandaGripper", "JacoThreeFingerGripper"]
+  
 
 ENV:
   KEYS_TO_KEEP: ["object-state", "proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context", "SWAT_RE", "traversals"] 
