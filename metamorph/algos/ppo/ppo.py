@@ -202,6 +202,20 @@ class PPO:
                         self.log_metric({f"Agent/{agent_name}/Success":agent_meter.mean_success[-1]}, env_step)
                     # min/max/median rewards per morph 
                     # No need for this now (console log is enough)
+                                        # console log is enough for these, but if we want to log them too:
+                    # if agent_meter.mean_min_rew:
+                    #     self.log_metric({f"Agent/{agent_name}/Min_Reward": agent_meter.mean_min_rew[-1]}, env_step)
+                    # if agent_meter.mean_max_rew:
+                    #     self.log_metric({f"Agent/{agent_name}/Max_Reward": agent_meter.mean_max_rew[-1]}, env_step)
+                    # if agent_meter.mean_median_rew:
+                    #     self.log_metric({f"Agent/{agent_name}/Median_Reward": agent_meter.mean_median_rew[-1]}, env_step)
+            
+            # New: Log per-task aggregated metrics
+            for task_name, stats in self.train_meter.per_task_stats.items():
+                if stats["reward"]:
+                    self.log_metric({f"Task_Metrics/{task_name}/Mean_Reward": stats["reward"][-1]}, env_step)
+                if stats["success_rate"]:
+                    self.log_metric({f"Task_Metrics/{task_name}/Mean_Success_Rate": stats["success_rate"][-1]}, env_step)
 
             # ----------Log each morphs stats --------------
 
@@ -366,6 +380,19 @@ class PPO:
                     print("[PPO] Failed to log histogram to TensorBoard due to TypeError.")
                     pass
 
+        for task_name, stats_dict in self.train_meter.per_task_stats.items():
+            # This requires access to raw success history for tasks, which TrainMeter doesn't store currently.
+            # It only stores the *mean* success rate over time.
+            # To get a histogram, we would need to store `AgentMeter.success_history`
+            # and then aggregate that per-task here. For now, we only have the mean to log.
+            if stats_dict["success_rate"]:
+                if self.logger_backend == "wandb":
+                    # Log the mean as a scalar, not a histogram, as raw data isn't here.
+                    wandb.log({f"Task_Metrics/{task_name}/Mean_Success_Rate": stats_dict["success_rate"][-1]}, 
+                              step=self.env_steps_done(cur_iter))
+                else:
+                    self.logger.add_scalar(f"Task_Metrics/{task_name}/Mean_Success_Rate", stats_dict["success_rate"][-1], global_step=self.env_steps_done(cur_iter)) 
+                                           
     def _log_fps(self, cur_iter, log=True):
         env_steps = self.env_steps_done(cur_iter)
         end = time.time()
@@ -433,8 +460,10 @@ class PPO:
         if num_agents <= 1:
             return
         if cfg.ENV.TASK_SAMPLING == "uniform_random_strategy":
+            print("Using uniform random strategy for morph sampling.")
             ep_lens = [1000] * num_agents
         elif cfg.ENV.TASK_SAMPLING == "balanced_replay_buffer":
+            print("Using balanced replay buffer strategy for morph sampling.")
             if cur_iter < 30:
                 ep_lens = [1000] * num_agents
             else:

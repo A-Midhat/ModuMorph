@@ -7,19 +7,11 @@ ROBOSUITE:
   # CONTROLLERS: ["OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE"]
   # GRIPPER_TYPES: [null, null, null, null] # default grippers
   # @@@@@@@@@@@@@@@@@@@@@MR-MT@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-  TRAINING_MORPHOLOGIES: ["Panda", "Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e","Panda", "Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e","Panda", "Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e"]
+  TRAINING_MORPHOLOGIES: ["Panda", "Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e"]
 
-  ENV_NAMES: [
-    "Door", "Door", "Door", "Door", "Door", "Door",           # 6 Door environments
-    "Lift", "Lift", "Lift", "Lift", "Lift", "Lift",          # 6 Lift environments
-    "PickPlaceCan", "PickPlaceCan", "PickPlaceCan", "PickPlaceCan", "PickPlaceCan", "PickPlaceCan"  # 6 PickPlaceCan environments
-  ]
+  ENV_NAMES: ["PickPlaceCan", "PickPlaceCan", "PickPlaceCan", "PickPlaceCan", "PickPlaceCan", "PickPlaceCan" ]
 
-  CONTROLLERS: [
-    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE",     # Door controllers
-    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE",     # Lift controllers
-    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE"      # PickPlaceCan controllers
-  ]
+  CONTROLLERS: ["JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY"]
   # @@@@@@@@@@@@@@@@@@@@@MR-ST@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
   # TRAINING_MORPHOLOGIES: ["Panda","Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e"]
   # ENV_NAMES: ["PickPlaceCan","PickPlaceCan","PickPlaceCan","PickPlaceCan","PickPlaceCan","PickPlaceCan"]
@@ -59,7 +51,7 @@ MODEL:
     NLAYERS: 5
     NHEAD: 2
     DIM_FEEDFORWARD: 1024
-    DECODER_OUT_DIM: 6      # 6 for OSC_POSE controller
+    DECODER_OUT_DIM: 1      # 6 for OSC_POSE controller
     DROPOUT: 0.0            
     EXT_MIX: "late"         # exteroceptive info is mixed (not used if object-node is on) TODO: will change later
     POS_EMBEDDING: "none"   
@@ -70,13 +62,13 @@ MODEL:
     USE_SWAT_RE: True       
     HN_EMBED: True
     HN_DECODER: True 
-    USE_HN_TASK: True
+    USE_HN_TASK: False
 
 # PPO training parameters
 PPO:
   USE_SPO: False
-  SPO_EPSILON : 0.2 
-  SPO_EMA_ALPHA : 0.995 
+  # SPO_EPSILON : 0.2 
+  # SPO_EMA_ALPHA : 0.995 
   MAX_STATE_ACTION_PAIRS: 6e7 
   NUM_ENVS: 32                
   TIMESTEPS: 2560 
@@ -95,4 +87,4 @@ LOGGING:
   PROJECT: "MR-ST"
   ENTITY: "alimidhat62-org" 
 
-OUT_DIR: "./output/MR-MT_newLogic_3TASKS" 
+OUT_DIR: "./output/MR-ST_PickPlaceCan_JNT" 

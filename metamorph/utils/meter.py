@@ -172,6 +172,7 @@ class AgentMeter:
             "total_success": self.total_success,
             "first_success_iter": self.first_success_iter,
         }
+        
         # Return the stats dictionary
         return stats
 
@@ -205,6 +206,12 @@ class TrainMeter:
         # mapping from unique morphology name to its original config index
         # This map is needed by save_sampled_agent_seq in ppo.py
         # It's populated when add_ep_info sees 'morph_config_index' in info
+        
+        # MR-MT: Per-task aggregated statistics
+        self.per_task_stats = defaultdict(lambda: {
+            "reward": [], # History of mean rewards for this task (across all morphs)
+            "success_rate": [] # History of mean success rates for this task (across all morphs)
+        })
         self.morph_name2cfg_idx_map = {}
 
 
@@ -215,11 +222,20 @@ class TrainMeter:
         # Process infos to discover new agents and update name-to-index map
         # Also pass info to each agent meter.
         for info in infos:
-            if "episode" in info:
-                morphology_name = info.get("name")
-                morph_config_index = info.get("morph_config_index") # Get original config index
+            # if "episode" in info:
+            #     morphology_name = info.get("name")
+            #     morph_config_index = info.get("morph_config_index") # Get original config index
 
-                if morphology_name and morphology_name not in self.agent_meters:
+            #     if morphology_name and morphology_name not in self.agent_meters:
+            # Ensure it's an episode info and has a morphology name
+            morphology_name = info.get("name")
+            task_name = info.get("task_name") # Get the explicit task name
+            
+            if "episode" in info and morphology_name:
+                morph_config_index = info.get("morph_config_index") # For sampling logic
+
+                # Discover new agents (morphologies)
+                if morphology_name not in self.agent_meters:
                     self.agent_meters[morphology_name] = AgentMeter(morphology_name)
                     self.max_name_len = max(self.max_name_len, len(morphology_name)) # Update max name length
                 if morphology_name and morph_config_index is not None:
@@ -227,6 +243,10 @@ class TrainMeter:
 
         # Pass the list of infos to each agent meter's add_ep_info method
         for _, agent_meter in self.agent_meters.items():
+            for info in infos:
+                if info.get("name") == agent_meter.name and info.get("task_name"):
+                    agent_meter.task_name = info.get("task_name") # Store task_name in AgentMeter if needed, or pass it later.
+                    break
             agent_meter.add_ep_info(infos, cur_iter)
 
 
@@ -277,7 +297,25 @@ class TrainMeter:
             self.overall_mean_max_rew.append(round(np.mean(latest_max_rew_means), 2)) 
         if latest_median_rew_means:
             self.overall_mean_median_rew.append(round(np.mean(latest_median_rew_means), 2)) 
-
+        
+        # Calculate per-task aggregated means
+        # Iterate through unique task names identified
+        unique_task_names = set(m.task_name for m in self.agent_meters.values() if hasattr(m, 'task_name') and m.task_name)
+        for task_name in unique_task_names:
+            # Get all agent meters belonging to this task
+            task_agent_meters = [m for m in self.agent_meters.values() if hasattr(m, 'task_name') and m.task_name == task_name and m.mean_ep_rews.get("reward")]
+            
+            if not task_agent_meters:
+                continue
+            
+            # Aggregate rewards for the current task
+            task_rewards = [m.mean_ep_rews["reward"][-1] for m in task_agent_meters if m.mean_ep_rews.get("reward")]
+            if task_rewards:
+                self.per_task_stats[task_name]["reward"].append(round(np.mean(task_rewards), 2))
+            # Aggregate success rates for the current task
+            task_success_rates = [m.mean_success[-1] for m in task_agent_meters if m.mean_success]
+            if task_success_rates:
+                self.per_task_stats[task_name]["success_rate"].append(round(np.mean(task_success_rates), 3))
 
         # Calculate overall mean for reward components across active meters
         reward_component_types = set()
@@ -321,6 +359,24 @@ class TrainMeter:
 
             print(print_str)
 
+                # New: Log per-task aggregated statistics
+        for task_name, stats in self.per_task_stats.items():
+            if stats["reward"]: # Ensure there's data to log
+                latest_task_reward = stats["reward"][-1]
+                latest_task_success_rate = stats["success_rate"][-1] if stats["success_rate"] else "N/A"
+                
+                print_str = "Task {:>{size}}: Mean Reward {:>8.2f}".format(
+                    task_name,
+                    latest_task_reward,
+                    size=self.max_name_len # Use max_name_len for alignment
+                )
+                if latest_task_success_rate != "N/A":
+                    print_str += ", Mean Success: {}".format(latest_task_success_rate)
+                print(print_str)
+                # Optionally log to WandB/TensorBoard here, but `PPO._log_stats` usually handles this.
+                # We'll add WandB/TensorBoard logging for this in `PPO` class directly.
+
+
     def get_stats(self):
         # Returns a dictionary containing historical mean stats for this morphology.
         stats = {}
@@ -344,6 +400,12 @@ class TrainMeter:
             "max_reward": list(self.overall_mean_max_rew),
             "median_reward": list(self.overall_mean_median_rew),
         }
+        
+        # New: Include per-task aggregated statistics
+        stats["per_task_stats"] = {task_name: 
+                                   {"reward": s["reward"], 
+                                    "success_rate": s["success_rate"]} 
+                                    for task_name, s in self.per_task_stats.items()}
         # Include other training stats not specific to a morphology (e.g., loss values)
         stats["__env__"].update(dict(self.train_stats))
 
