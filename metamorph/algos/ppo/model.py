@@ -212,18 +212,46 @@ class TransformerModel(nn.Module):
             self.hnet_decoder_weight = nn.ModuleList(self.hnet_decoder_weight)
             self.hnet_decoder_bias = nn.ModuleList(self.hnet_decoder_bias)
             
-        # Dual HN (HN_TASK) - Global task influence approach
-        if self.model_args.USE_HN_TASK: 
-            print("[Model] Use HN_TASK - Global task influence")
-            # HN_Task uses FULL morphology context (all nodes) + task embedding for global modulation
-            hn_task_input_dim = self.model_args.CONTEXT_EMBED_SIZE + cfg.MODEL.TASK_EMBED_DIM
-            # Generate scaling (gamma) and shifting (beta) vector of size d_model for FiLM
+        # # (HN_TASK) - Global task influence approach
+        # if self.model_args.USE_HN_TASK: 
+        #     print("[Model] Use HN_TASK - Global task influence")
+        #     # HN_Task uses FULL morphology context (all nodes) + task embedding for global modulation
+        #     hn_task_input_dim = self.model_args.CONTEXT_EMBED_SIZE + cfg.MODEL.TASK_EMBED_DIM
+        #     # Generate scaling (gamma) and shifting (beta) vector of size d_model for FiLM
+        #     film_out_dim = self.d_model * 2
+        #     # Create the FiLM generator network
+        #     self.hnet_t = tu.make_mlp_default(
+        #         [hn_task_input_dim] + [64] + [film_out_dim]
+        #     )
+        if self.model_args.USE_HN_TASK:
+            print("[Model] Use HN_TASK")
+            film_context_mode = cfg.MODEL.TRANSFORMER.FILM_CONTEXT_MODE
+            if film_context_mode == "avg_nodes":
+                hn_task_input_dim = self.model_args.CONTEXT_EMBED_SIZE + cfg.MODEL.TASK_EMBED_DIM
+                film_hidden_dims = [64, 64]
+            elif film_context_mode == "all_nodes":
+                # All nodes concatenated: seq_len * context_embed_size + task_embed_dim  
+                hn_task_input_dim = (self.seq_len * self.model_args.CONTEXT_EMBED_SIZE) + cfg.MODEL.TASK_EMBED_DIM
+                film_hidden_dims = [256, 128, 64]
+            elif film_context_mode == "object_only":
+                # Only object node context + task embedding
+                hn_task_input_dim = self.model_args.CONTEXT_EMBED_SIZE + cfg.MODEL.TASK_EMBED_DIM
+                film_hidden_dims = [64, 32]
+            elif film_context_mode == "task_only":
+                # Pure task conditioning
+                hn_task_input_dim = cfg.MODEL.TASK_EMBED_DIM
+                film_hidden_dims = [64, 32]
+            else:
+                raise ValueError(f"Unknown FILM_CONTEXT_MODE: {film_context_mode}")
             film_out_dim = self.d_model * 2
-            # Create the FiLM generator network
-            self.hnet_t = tu.make_mlp_default(
-                [hn_task_input_dim] + [64] + [film_out_dim]
-            )
 
+            # Create the FiLM generator network
+            # self.hnet_t = tu.make_mlp_default(
+            #     [hn_task_input_dim] + [64] + [film_out_dim]
+            # )
+            self.hnet_t = tu.make_mlp_default(
+                [hn_task_input_dim] + film_hidden_dims + [film_out_dim]
+            )
         # whether to use SWAT PE and RE: default to False
         if self.model_args.USE_SWAT_PE:
             self.swat_PE_encoder = SWATPEEncoder(self.d_model, self.seq_len)
@@ -381,17 +409,51 @@ class TransformerModel(nn.Module):
             decoder_input = torch.cat([decoder_input, object_obs], axis=2)
 
         # Apply Task-Specific FiLM modulation (Global task influence approach)
+        # if self.model_args.USE_HN_TASK and cfg.MODEL.ADD_OBJECT_NODE:
+        #     # Use FULL morphology context (all nodes) for global task modulation
+        #     # Average across all nodes to get scene-level context
+        #     full_morphology_context = pure_morphology_context.mean(dim=0)  # Shape: [batch_size, context_embed_size]
+
+        #     # Get the task embedding using the passed-in `unimal_ids`
+        #     task_indices = unimal_ids.squeeze() if len(unimal_ids.shape) > 1 else unimal_ids
+        #     task_embedding = self.task_embed(task_indices)  # Shape: [batch_size, task_embed_dim]
+
+        #     # Concatenate full morphology context with task embedding for global modulation
+        #     hn_task_input = torch.cat([full_morphology_context, task_embedding], dim=-1)
+        #     film_params = self.hnet_t(hn_task_input)
+        #     gamma, beta = torch.chunk(film_params, 2, dim=-1)
+
+        #     # Apply FiLM modulation globally to all nodes
+        #     gamma_broadcast = gamma.unsqueeze(0)  # Shape: [1, batch_size, d_model]
+        #     beta_broadcast = beta.unsqueeze(0)    # Shape: [1, batch_size, d_model]
+        #     decoder_input = (gamma_broadcast * decoder_input) + beta_broadcast
         if self.model_args.USE_HN_TASK and cfg.MODEL.ADD_OBJECT_NODE:
-            # Use FULL morphology context (all nodes) for global task modulation
-            # Average across all nodes to get scene-level context
-            full_morphology_context = pure_morphology_context.mean(dim=0)  # Shape: [batch_size, context_embed_size]
+            # Get context based on FILM_CONTEXT_MODE
+            film_context_mode = getattr(self.model_args, 'FILM_CONTEXT_MODE', 'avg_nodes')
+            
+            if film_context_mode == "avg_nodes":
+                # Current approach: Average across all nodes
+                film_morphology_context = pure_morphology_context.mean(dim=0)  # [batch_size, context_embed_size]
+            elif film_context_mode == "all_nodes":
+                # Flatten all node contexts: [seq_len, batch_size, context_embed_size] -> [batch_size, seq_len * context_embed_size]
+                film_morphology_context = pure_morphology_context.permute(1, 0, 2).reshape(batch_size, -1)
+            elif film_context_mode == "object_only":
+                # Use only object node context (last node)
+                if cfg.MODEL.ADD_OBJECT_NODE:
+                    object_node_idx = self.seq_len - 1
+                    film_morphology_context = pure_morphology_context[object_node_idx]  # [batch_size, context_embed_size]
+                else:
+                    # Fallback to avg if no object node
+                    film_morphology_context = pure_morphology_context.mean(dim=0)
+            else:
+                raise ValueError(f"Unknown FILM_CONTEXT_MODE: {film_context_mode}")
 
             # Get the task embedding using the passed-in `unimal_ids`
             task_indices = unimal_ids.squeeze() if len(unimal_ids.shape) > 1 else unimal_ids
             task_embedding = self.task_embed(task_indices)  # Shape: [batch_size, task_embed_dim]
 
-            # Concatenate full morphology context with task embedding for global modulation
-            hn_task_input = torch.cat([full_morphology_context, task_embedding], dim=-1)
+                # Concatenate morphology context with task embedding for global modulation
+            hn_task_input = torch.cat([film_morphology_context, task_embedding], dim=-1)
             film_params = self.hnet_t(hn_task_input)
             gamma, beta = torch.chunk(film_params, 2, dim=-1)
 
@@ -399,7 +461,7 @@ class TransformerModel(nn.Module):
             gamma_broadcast = gamma.unsqueeze(0)  # Shape: [1, batch_size, d_model]
             beta_broadcast = beta.unsqueeze(0)    # Shape: [1, batch_size, d_model]
             decoder_input = (gamma_broadcast * decoder_input) + beta_broadcast
-
+        #########################################
         # Generate final output through decoder
         if self.model_args.HYPERNET and self.model_args.HN_DECODER:
             output = decoder_input

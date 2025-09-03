@@ -71,7 +71,7 @@ MODEL:
     HN_EMBED: True
     HN_DECODER: True 
     USE_HN_TASK: True
-
+    FILM_CONTEXT_MODE: "avg_nodes"  # Options: "avg_nodes", "all_nodes", "object_only"
 # PPO training parameters
 PPO:
   USE_SPO: False
@@ -95,4 +95,4 @@ LOGGING:
   PROJECT: "MR-ST"
   ENTITY: "alimidhat62-org" 
 
-OUT_DIR: "./output/MR-MT_newLogic_3TASKS" 
+OUT_DIR: "./output/MR-MT_svg_nodes" 

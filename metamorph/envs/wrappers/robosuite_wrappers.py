@@ -1243,43 +1243,88 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
                     padded_ctx[:copy_len] = node_context_vec[:copy_len]
                     node_context_vec = padded_ctx
                  self.node_context_global[global_node_idx, :] = node_context_vec
+        ############### OLD WORKING CODE ###################
+        # if cfg.MODEL.ADD_OBJECT_NODE:
+        #     # object_encoder = self.global_max_limbs - 1 
+        #     task_embedding_placeholder = np.zeros(cfg.MODEL.TASK_EMBED_DIM, dtype=np.float32)
+        #     object_node_idx = self.global_max_limbs - 1
+        #     # parsed_object_state = self._parse_object_state(obs_dict)
+        #     universal_object_state = self._parse_object_state(obs_dict)
+        #     proprio_features_obj = []
+        #     for key, _ in self.proprio_feat_cfg['object']:
+        #        proprio_features_obj.append(universal_object_state[key])
+        #     context_features_obj = []
+        #     for key, _ in self.context_feat_cfg['object']:
+        #         if key == 'node_type_encoding':
+        #             context_features_obj.append(np.array([0, 0, 0, 1], dtype=np.float32))
+        #         elif key == 'task_embedding':
+        #             task_idx = cfg.ROBOSUITE.ENV_NAMES.index(self.base_env_ref.env_name)
+        #             task_embedding_placeholder[0] = task_idx
+        #             # context_features_obj.append(task_embedding_placeholder)
+        #             if cfg.MODEL.TASK_EMBED_DIM > 0:
+        #                 task_embedding_placeholder[0] = task_idx
+        #             context_features_obj.append(task_embedding_placeholder)
+        #         else:
+        #             context_features_obj.append(universal_object_state[key])
+
+
+        #     # task_id = self.base_env_ref.env_name
+        #     # # unique_tasks = sorted(list(set(cfg.ROBOSUITE.ENV_NAMES)))
+        #     # # task_idx = unique_tasks.index(task_id) if task_id in unique_tasks else 0
+        #     # task_idx = cfg.ROBOSUITE.ENV_NAMES.index(task_id) if task_id in cfg.ROBOSUITE.ENV_NAMES else 0
+        #     # if cfg.MODEL.TASK_EMBED_DIM > 0:
+        #     #     task_embedding_placeholder[0] = task_idx
+        #     # context_features_obj.append(task_embedding_placeholder)
+
+        #     # if cfg.MODEL.OBJECT_POSE_IN_CONTEXT:
+        #     #     context_features_obj.append(parsed_object_state['target_pos'])
+
+        #     self._pad_and_assign(object_node_idx, proprio_features_obj, self.node_proprio_global, self.limb_obs_size)
+        #     self._pad_and_assign(object_node_idx, context_features_obj, self.node_context_global, self.context_obs_size)
+        # ###########################################################
         if cfg.MODEL.ADD_OBJECT_NODE:
-            # object_encoder = self.global_max_limbs - 1 
             task_embedding_placeholder = np.zeros(cfg.MODEL.TASK_EMBED_DIM, dtype=np.float32)
             object_node_idx = self.global_max_limbs - 1
-            # parsed_object_state = self._parse_object_state(obs_dict)
             universal_object_state = self._parse_object_state(obs_dict)
+            
+            # Proprioceptive features for object node
             proprio_features_obj = []
             for key, _ in self.proprio_feat_cfg['object']:
-               proprio_features_obj.append(universal_object_state[key])
+                # Only add pose-related features if OBJECT_POSE_IN_CONTEXT is True
+                if key in ['target_pos', 'target_quat', 'eef_to_target_pos', 'eef_to_target_quat']:
+                    if cfg.MODEL.OBJECT_POSE_IN_CONTEXT:
+                        proprio_features_obj.append(universal_object_state[key])
+                    else:
+                        # print("[DEBUG]Warning: OBJECT_POSE_IN_CONTEXT is False. Not adding pose features to object node.")
+                        # Add zeros instead of actual pose data
+                        proprio_features_obj.append(np.zeros_like(universal_object_state[key]))
+                else:
+                    # Non-pose features are always included
+                    proprio_features_obj.append(universal_object_state[key])
+            
+            # Context features for object node  
             context_features_obj = []
             for key, _ in self.context_feat_cfg['object']:
                 if key == 'node_type_encoding':
                     context_features_obj.append(np.array([0, 0, 0, 1], dtype=np.float32))
                 elif key == 'task_embedding':
                     task_idx = cfg.ROBOSUITE.ENV_NAMES.index(self.base_env_ref.env_name)
-                    task_embedding_placeholder[0] = task_idx
-                    # context_features_obj.append(task_embedding_placeholder)
                     if cfg.MODEL.TASK_EMBED_DIM > 0:
                         task_embedding_placeholder[0] = task_idx
                     context_features_obj.append(task_embedding_placeholder)
+                elif key == 'target_pos':
+                    # Only include target_pos in context if OBJECT_POSE_IN_CONTEXT is True
+                    if cfg.MODEL.OBJECT_POSE_IN_CONTEXT:
+                        context_features_obj.append(universal_object_state[key])
+                    else:
+                        context_features_obj.append(np.zeros_like(universal_object_state[key]))
                 else:
+                    # Other context features (like object_size) are always included
                     context_features_obj.append(universal_object_state[key])
-
-
-            # task_id = self.base_env_ref.env_name
-            # # unique_tasks = sorted(list(set(cfg.ROBOSUITE.ENV_NAMES)))
-            # # task_idx = unique_tasks.index(task_id) if task_id in unique_tasks else 0
-            # task_idx = cfg.ROBOSUITE.ENV_NAMES.index(task_id) if task_id in cfg.ROBOSUITE.ENV_NAMES else 0
-            # if cfg.MODEL.TASK_EMBED_DIM > 0:
-            #     task_embedding_placeholder[0] = task_idx
-            # context_features_obj.append(task_embedding_placeholder)
-
-            # if cfg.MODEL.OBJECT_POSE_IN_CONTEXT:
-            #     context_features_obj.append(parsed_object_state['target_pos'])
 
             self._pad_and_assign(object_node_idx, proprio_features_obj, self.node_proprio_global, self.limb_obs_size)
             self._pad_and_assign(object_node_idx, context_features_obj, self.node_context_global, self.context_obs_size)
+            
         return self.node_proprio_global, self.node_context_global
  
     def _pad_and_assign(self, node_idx, feature_list, target_array, max_dim):
@@ -1800,181 +1845,3 @@ class RobosuiteSampleWrapper(gym.Wrapper):
         return [seed] # Return the list of seeds set (standard Gym convention)
 
 
-
-# # ============================================================
-# # ====================== MULTI-TASK TEST ====================
-# # ============================================================
-# if __name__ == '__main__':
-#     import numpy as np
-    
-#     print("======================================================")
-#     print("====== Running Multi-Task Test for All Four Tasks ======")
-#     print("======================================================")
-
-#     # 1. Import and modify the existing global cfg object for the test
-#     from metamorph.config import cfg
-    
-#     # Set the necessary attributes on the global cfg object
-#     cfg.MODEL.MAX_LIMBS = 11
-#     cfg.MODEL.MAX_JOINTS = 10
-#     cfg.MODEL.TASK_EMBED_DIM = 16
-#     cfg.MODEL.TRANSFORMER.DECODER_OUT_DIM = 6
-#     cfg.ROBOSUITE.ENV_NAMES = ["Lift", "Door", "Wipe", "PickPlaceCan"]
-#     cfg.ROBOSUITE.GRIPPER_DIM = 1
-#     cfg.ROBOSUITE.MAX_OBJECT_STATE_DIM = 40
-#     cfg.MODEL.ADD_OBJECT_NODE = True
-
-#     print("\n[Step 1] Global config object modified for test.")
-
-#     # 2. Define the tasks to test
-#     tasks_to_test = ["Lift", "Door", "Wipe", "PickPlaceCan"]
-    
-#     # Define expected features for each task
-#     task_features = {
-#         'Lift': ['target_pos', 'target_quat', 'eef_to_target_pos'],
-#         'Door': ['target_pos', 'eef_to_target_pos', 'hinge_qpos', 'handle_qpos', 'secondary_target_pos', 'door_to_eef_pos'],
-#         'Wipe': ['target_pos', 'eef_to_target_pos', 'wipe_radius', 'proportion_wiped'],
-#         'PickPlaceCan': ['target_pos', 'target_quat', 'eef_to_target_pos', 'eef_to_target_quat']
-#     }
-
-#     results = {}
-
-#     for task_name in tasks_to_test:
-#         print(f"\n{'='*60}")
-#         print(f"Testing Task: {task_name}")
-#         print(f"{'='*60}")
-        
-#         try:
-#             # 3. Create base environment for current task
-#             import robosuite
-#             from robosuite.controllers import load_controller_config
-
-#             base_env = robosuite.make(
-#                 env_name=task_name,
-#                 robots="Panda",
-#                 controller_configs=load_controller_config(default_controller="OSC_POSE"),
-#                 has_renderer=False,
-#                 has_offscreen_renderer=False,
-#                 use_camera_obs=False,
-#                 horizon=100,
-#             )
-#             print(f"[Step 2] Base '{task_name}' environment created.")
-#         except Exception as e:
-#             print(f"\n[ERROR] Failed to create {task_name} environment: {e}")
-#             results[task_name] = "FAILED - Environment creation"
-#             continue
-
-#         # 4. Inspect raw observation
-#         print(f"\n[Step 2.5] Inspecting raw observation for {task_name}...")
-#         raw_obs_dict = base_env.reset()
-        
-#         # Show some raw keys for debugging
-#         print(f"Raw obs keys for {task_name}: {list(raw_obs_dict.keys())}")
-        
-#         # 5. Wrap environment
-#         try:
-#             env = RobosuiteEnvWrapper(
-#                 env_name=task_name,
-#                 robot_names="Panda", 
-#                 controller_names="OSC_POSE", 
-#                 horizon=100
-#             )
-#             wrapped_env = RobosuiteNodeCentricObservation(env)
-#             print(f"[Step 3] {task_name} environment wrapped with RobosuiteNodeCentricObservation.")
-#         except Exception as e:
-#             print(f"\n[ERROR] Failed to wrap {task_name} environment: {e}")
-#             results[task_name] = "FAILED - Wrapper creation"
-#             continue
-
-#         # 6. Reset and get observation
-#         try:
-#             obs = wrapped_env.reset()
-#             print(f"[Step 4] {task_name} environment reset and observation obtained.")
-#         except Exception as e:
-#             print(f"\n[ERROR] Failed to reset {task_name}: {e}")
-#             results[task_name] = "FAILED - Environment reset"
-#             continue
-
-#         # 7. Run verification checks
-#         print(f"\n[Step 5] Running verification checks for {task_name}...")
-#         task_passed = True
-        
-#         # Check essential keys
-#         expected_keys = ['proprioceptive', 'context', 'object-state']
-#         for key in expected_keys:
-#             if key not in obs:
-#                 print(f"  ❌ FAILED: Key '{key}' is missing from the observation.")
-#                 task_passed = False
-        
-#         if task_passed:
-#             print(f"  ✅ Check 1/3: All essential keys present for {task_name}.")
-
-#         # Check proprioceptive shape
-#         expected_prop_shape = (cfg.MODEL.MAX_LIMBS * wrapped_env.limb_obs_size,)
-#         if obs['proprioceptive'].shape != expected_prop_shape:
-#             print(f"  ❌ FAILED: Proprioceptive shape is {obs['proprioceptive'].shape}, expected {expected_prop_shape}.")
-#             task_passed = False
-#         else:
-#             print(f"  ✅ Check 2/3: Proprioceptive shape correct for {task_name}.")
-
-#         # Check object node features
-#         prop_unflattened = obs['proprioceptive'].reshape(cfg.MODEL.MAX_LIMBS, wrapped_env.limb_obs_size)
-#         object_node_features = prop_unflattened[-1]
-
-#         # Get feature mapping for object
-#         feature_map = {}
-#         current_idx = 0
-#         for key, dim in wrapped_env.proprio_feat_cfg['object']:
-#             feature_map[key] = slice(current_idx, current_idx + dim)
-#             current_idx += dim
-        
-#         # Test task-specific features
-#         expected_features = task_features[task_name]
-#         features_passed = 0
-        
-#         print(f"\n  --- Testing {task_name}-specific features ---")
-#         for feature_name in expected_features:
-#             if feature_name in feature_map:
-#                 feature_slice = feature_map[feature_name]
-#                 feature_values = object_node_features[feature_slice]
-                
-#                 if np.any(feature_values != 0):
-#                     print(f"    ✅ {feature_name}: {np.round(feature_values, 4)} (non-zero)")
-#                     features_passed += 1
-#                 else:
-#                     print(f"    ❌ {feature_name}: All zeros!")
-#                     task_passed = False
-#             else:
-#                 print(f"    ❌ {feature_name}: Not found in feature map!")
-#                 task_passed = False
-        
-#         print(f"  --- {features_passed}/{len(expected_features)} features passed for {task_name} ---")
-        
-#         if task_passed:
-#             print(f"  ✅ Check 3/3: All {task_name}-specific object features are non-zero.")
-#             results[task_name] = "PASSED"
-#         else:
-#             results[task_name] = "FAILED - Feature validation"
-
-#         # Cleanup
-#         base_env.close()
-#         wrapped_env.close()
-
-#     # 8. Final summary
-#     print(f"\n{'='*60}")
-#     print("FINAL RESULTS SUMMARY")
-#     print(f"{'='*60}")
-    
-#     for task_name, result in results.items():
-#         status_symbol = "✅" if result == "PASSED" else "❌"
-#         print(f"{status_symbol} {task_name}: {result}")
-    
-#     passed_count = sum(1 for r in results.values() if r == "PASSED")
-#     total_count = len(results)
-    
-#     print(f"\nOverall: {passed_count}/{total_count} tasks passed")
-    
-#     if passed_count == total_count:
-#         print("🎉 SUCCESS! All tasks are working correctly!")
-#     else:
-#         print("⚠️  Some tasks failed. Check the error messages above.")

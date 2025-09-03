@@ -522,6 +522,8 @@ _C.MODEL.TRANSFORMER.HN_CONTEXT_LAYER_NUM = 1
 
 # Task Hypernetwork (FiLM)
 _C.MODEL.TRANSFORMER.USE_HN_TASK = False
+ # Options: "avg_nodes", "all_nodes", "object_only"
+_C.MODEL.TRANSFORMER.FILM_CONTEXT_MODE = "avg_nodes"
 # whether to use context to generate fixed attention weights
 _C.MODEL.TRANSFORMER.FIX_ATTENTION = False
 _C.MODEL.TRANSFORMER.CONTEXT_LAYER = 3
