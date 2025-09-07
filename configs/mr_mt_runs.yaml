@@ -15,16 +15,15 @@ ROBOSUITE:
   #   "PickPlaceCan", "PickPlaceCan", "PickPlaceCan", "PickPlaceCan", "PickPlaceCan", "PickPlaceCan"  # 6 PickPlaceCan environments
   # ]
   ENV_NAMES: [
-    "Door", "Door", "Door", "Door", "Door", "Door",           # 6 Door environments
-    "Lift", "Lift", "Lift", "Lift", "Lift", "Lift",          # 6 Lift environments
-    "PickPlaceMilk", "PickPlaceMilk", "PickPlaceMilk", "PickPlaceMilk", "PickPlaceMilk", "PickPlaceMilk",  # 6 PickPlaceCan environments 
-    # "Wipe", "Wipe", "Wipe", "Wipe", "Wipe", "Wipe",  # 6 Wipe environments
+    "Door", "Door", "Door", "Door",           # 6 Door environments
+    "Lift", "Lift", "Lift", "Lift",          # 6 Lift environments
+    "Wipe", "Wipe", "Wipe", "Wipe"  # 6 PickPlaceCan environments 
   ]
 
   CONTROLLERS: [
-    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE",     # Door controllers
-    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE",     # Lift controllers
-    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE"      # PickPlaceCan controllers
+    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE",     # Door controllers
+    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE",     # Lift controllers
+    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE",      # PickPlaceCan controllers
     # "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE"
   ]
   GRIPPER_TYPES: [null]
@@ -63,7 +62,7 @@ MODEL:
     NHEAD: 2
     DIM_FEEDFORWARD: 1024
     DECODER_OUT_DIM: 6      # 6 for OSC_POSE controller
-    DROPOUT: 0.0           
+    DROPOUT: 0.1          
     EXT_MIX: "late"         # exteroceptive info is mixed (not used if object-node is on) TODO: will change later
     POS_EMBEDDING: "none"   
     
