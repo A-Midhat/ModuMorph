@@ -1,10 +1,13 @@
-# My wandb api key: 2ca2f26d3ea46a1aa48e30ff41f2406a72ec8489
-# PS: I am not a noob, just I have a lot of vms to run and I need it. :)
+
 ENV_NAME: "Robosuite-v0"
 
 ROBOSUITE:
   TASK_TYPE: "MR" 
-  TRAINING_MORPHOLOGIES: ["Panda", "Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e","Panda", "Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e","Panda", "Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e", "Panda", "Sawyer", "Jaco", "IIWA", "Kinova3", "UR5e"]
+  # option1: remove panda, saywer 
+  # TRAINING_MORPHOLOGIES: ["Jaco", "IIWA", "Kinova3", "UR5e", "Jaco", "IIWA", "Kinova3", "UR5e",  "Jaco", "IIWA", "Kinova3", "UR5e"]
+  # option2: Panda, UR5e (this is stronger (Generalization across Different DoF)
+  TRAINING_MORPHOLOGIES: ["Sawyer", "Jaco", "IIWA", "Kinova3", "Sawyer", "Jaco", "IIWA", "Kinova3",  "Sawyer", "Jaco", "IIWA", "Kinova3"]
+
   # orgingal :(
   # ENV_NAMES: [
   #   "Door", "Door", "Door", "Door", "Door", "Door",           # 6 Door environments
@@ -15,14 +18,14 @@ ROBOSUITE:
     "Door", "Door", "Door", "Door", "Door", "Door",           # 6 Door environments
     "Lift", "Lift", "Lift", "Lift", "Lift", "Lift",          # 6 Lift environments
     "PickPlaceMilk", "PickPlaceMilk", "PickPlaceMilk", "PickPlaceMilk", "PickPlaceMilk", "PickPlaceMilk",  # 6 PickPlaceCan environments 
-    "Wipe", "Wipe", "Wipe", "Wipe", "Wipe", "Wipe",  # 6 Wipe environments
+    # "Wipe", "Wipe", "Wipe", "Wipe", "Wipe", "Wipe",  # 6 Wipe environments
   ]
 
   CONTROLLERS: [
     "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE",     # Door controllers
     "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE",     # Lift controllers
-    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE",      # PickPlaceCan controllers
-    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE"
+    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE"      # PickPlaceCan controllers
+    # "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE"
   ]
   GRIPPER_TYPES: [null]
   MAX_OBJECT_STATE_DIM: 50
@@ -96,3 +99,19 @@ LOGGING:
   ENTITY: "alimidhat62-org" 
 
 OUT_DIR: "./output/MR-MT_ALLNODES_1409" #MR-MT_<MODE>_<SEED>
+
+
+
+# My wandb api key: 2ca2f26d3ea46a1aa48e30ff41f2406a72ec8489
+
+# git pull origin spo
+
+# nano venv/lib/python3.10/site-packages/robosuite/models/assets/robots/sawyer/robot.xml 
+
+# head_1, head_4
+#                 inertia="shell"
+
+# python tools/train.py --config configs/mr_mt_runs.yaml
+
+
+# PS: I am not a noob, just I have a lot of vms to run and I need it. :)
