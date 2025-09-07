@@ -957,81 +957,86 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
             "Lift": "cube_g0_vis", 
             "Door": "Door_handle_visual", 
             "Wipe": "table_visual",
-            "PickPlaceCan": "Can_g0" 
+            "PickPlaceCan": "Can_g0",
+            "PickPlaceMilk": "Milk_g0",
+            "PickPlaceBread": "Bread_g0",
+            "PickPlaceCereal": "Cereal_g0",
         }
         
         target_geom_name = geom_map.get(task_name)
-        # print("Target Geom Name:", target_geom_name)
         if target_geom_name:
             try:
-                """
-                self.base_env_ref = self.env 
-                self.sim = self.base_env_ref.sim 
-                self.model = self.sim.model 
-                """
-                # geom_id = self.sim.model.geom_name2id(target_geom_name)
-                # geom_id = self.sim.model.geom_name2id(target_geom_name)
                 geom_id = self.model.geom_name2id(target_geom_name)
-                # print("GEOM ID:\t",geom_id)
                 # Get half-extents and convert to full size
                 parsed['object_size'] = self.model.geom_size[geom_id] * 2.0
             except KeyError:
                 print(f"[Parser] Warning: Geom '{target_geom_name}' not found for task '{task_name}'.")
 
-        # # --- Translate task-specific observations into our universal format ---
-        # if task_name == 'Lift':
-        #     parsed['target_pos'] = obs_dict['cube_pos']
-        #     parsed['target_quat'] = obs_dict['cube_quat']
-        #     parsed['eef_to_target_pos'] = obs_dict['gripper_to_cube_pos']
-        # elif task_name == 'Door':
-        #     # print("[DEBUG] [_PARSE_*]Obsrvation",obs_dict.keys())
-        #     parsed['target_pos'] = obs_dict['handle_pos'] # Primary target
-        #     parsed['eef_to_target_pos'] = obs_dict['handle_to_eef_pos'] # Canonical name
-        #     # parsed['hinge_qpos'] = np.array([obs_dict['hinge_qpos']])
-        #     # parsed['handle_qpos'] = np.array([obs_dict['handle_qpos']])
-        #     parsed['handle_pos'] = np.array([obs_dict['handle_pos']])
-        #     parsed['secondary_target_pos'] = obs_dict['door_pos'] # Store door pos as secondary
-        #     parsed['door_to_eef_pos'] = obs_dict['door_to_eef_pos']
-        # elif task_name == 'Wipe':
-        #     # parsed['eef_to_target_pos'] = obs_dict['gripper_to_wipe_centroid']
-        #     parsed['target_pos'] = obs_dict['wipe_centroid'] # Primary target
-        #     parsed['eef_to_target_pos'] = obs_dict['gripper_to_wipe_centroid'] # Canonical name
-        #     parsed['wipe_radius'] = np.array([obs_dict['wipe_radius']])
-        #     parsed['proportion_wiped'] = np.array([obs_dict['proportion_wiped']])
-        #     # parsed['wipe_centroid'] = obs_dict['wipe_centroid']
-        # elif task_name == "PickPlaceCan":
-        #     # TODO: 
-        #     # Fix the "eef_to_target_quat" error for future.
-        #     # for now I commented it out since not used in the model
-        #     parsed['target_pos'] = obs_dict['Can_pos']
-        #     parsed['target_quat'] = obs_dict['Can_quat']
-        #     parsed['eef_to_target_pos'] = obs_dict['Can_to_robot0_eef_pos']
-        #     parsed['eef_to_target_quat'] = obs_dict['Can_to_robot0_eef_quat']
-        # return parsed
+        # Helper function to safely convert to array
+        def safe_array_convert(value, target_shape, dtype=np.float32):
+            if value is None:
+                return np.zeros(target_shape, dtype=dtype)
+            value_arr = np.asarray(value, dtype=dtype)
+            if value_arr.ndim == 0:  # scalar
+                if target_shape == 1 or (isinstance(target_shape, tuple) and target_shape == (1,)):
+                    return np.array([value_arr], dtype=dtype)
+                else:
+                    result = np.zeros(target_shape, dtype=dtype)
+                    result[0] = value_arr
+                    return result
+            else:
+                return value_arr.flatten()[:np.prod(target_shape) if isinstance(target_shape, tuple) else target_shape]
+
         # --- Translate task-specific observations into our universal format ---
         if task_name == 'Lift':
-            parsed['target_pos'] = obs_dict.get('cube_pos', parsed['target_pos'])
-            parsed['target_quat'] = obs_dict.get('cube_quat', parsed['target_quat'])
-            parsed['eef_to_target_pos'] = obs_dict.get('gripper_to_cube_pos', parsed['eef_to_target_pos'])
+            parsed['target_pos'] = safe_array_convert(obs_dict.get('cube_pos'), 3)
+            parsed['target_quat'] = safe_array_convert(obs_dict.get('cube_quat'), 4)
+            parsed['eef_to_target_pos'] = safe_array_convert(obs_dict.get('gripper_to_cube_pos'), 3)
+            
         elif task_name == 'Door':
-            parsed['target_pos'] = obs_dict.get('handle_pos', parsed['target_pos']) # Primary target
-            parsed['eef_to_target_pos'] = obs_dict.get('handle_to_eef_pos', parsed['eef_to_target_pos']) # Canonical name
-            parsed['hinge_qpos'] = obs_dict.get('hinge_qpos', parsed['hinge_qpos'])
-            parsed['handle_qpos'] = obs_dict.get('handle_qpos', parsed['handle_qpos'])
-            parsed['secondary_target_pos'] = obs_dict.get('door_pos', parsed['secondary_target_pos']) # Store door pos as secondary
-            parsed['door_to_eef_pos'] = obs_dict.get('door_to_eef_pos', parsed['door_to_eef_pos'])
+            parsed['target_pos'] = safe_array_convert(obs_dict.get('handle_pos'), 3)
+            parsed['eef_to_target_pos'] = safe_array_convert(obs_dict.get('handle_to_eef_pos'), 3)
+            # Fix: Handle scalar values properly
+            parsed['hinge_qpos'] = safe_array_convert(obs_dict.get('hinge_qpos'), 1)
+            parsed['handle_qpos'] = safe_array_convert(obs_dict.get('handle_qpos'), 1)
+            parsed['secondary_target_pos'] = safe_array_convert(obs_dict.get('door_pos'), 3)
+            parsed['door_to_eef_pos'] = safe_array_convert(obs_dict.get('door_to_eef_pos'), 3)
+            
         elif task_name == 'Wipe':
-            parsed['target_pos'] = obs_dict.get('wipe_centroid', parsed['target_pos']) # Primary target
-            parsed['eef_to_target_pos'] = obs_dict.get('gripper_to_wipe_centroid', parsed['eef_to_target_pos']) # Canonical name
-            parsed['wipe_radius'] = obs_dict.get('wipe_radius', parsed['wipe_radius'])
-            parsed['proportion_wiped'] = obs_dict.get('proportion_wiped', parsed['proportion_wiped'])
+            parsed['target_pos'] = safe_array_convert(obs_dict.get('wipe_centroid'), 3)
+            parsed['eef_to_target_pos'] = safe_array_convert(obs_dict.get('gripper_to_wipe_centroid'), 3)
+            parsed['wipe_radius'] = safe_array_convert(obs_dict.get('wipe_radius'), 1)
+            parsed['proportion_wiped'] = safe_array_convert(obs_dict.get('proportion_wiped'), 1)
+            
         elif task_name == "PickPlaceCan":
-            parsed['target_pos'] = obs_dict.get('Can_pos', parsed['target_pos'])
-            parsed['target_quat'] = obs_dict.get('Can_quat', parsed['target_quat'])
-            parsed['eef_to_target_pos'] = obs_dict.get('Can_to_robot0_eef_pos', parsed['eef_to_target_pos'])
-            parsed['eef_to_target_quat'] = obs_dict.get('Can_to_robot0_eef_quat', parsed['eef_to_target_quat'])
-        return parsed
+            parsed['target_pos'] = safe_array_convert(obs_dict.get('Can_pos'), 3)
+            parsed['target_quat'] = safe_array_convert(obs_dict.get('Can_quat'), 4)
+            parsed['eef_to_target_pos'] = safe_array_convert(obs_dict.get('Can_to_robot0_eef_pos'), 3)
+            parsed['eef_to_target_quat'] = safe_array_convert(obs_dict.get('Can_to_robot0_eef_quat'), 4)
+            
+        elif task_name == "PickPlaceMilk":
+            parsed['target_pos'] = safe_array_convert(obs_dict.get('Milk_pos'), 3)
+            parsed['target_quat'] = safe_array_convert(obs_dict.get('Milk_quat'), 4)
+            parsed['eef_to_target_pos'] = safe_array_convert(obs_dict.get('Milk_to_robot0_eef_pos'), 3)
+            parsed['eef_to_target_quat'] = safe_array_convert(obs_dict.get('Milk_to_robot0_eef_quat'), 4)
 
+        elif task_name == "PickPlaceBread":
+            parsed['target_pos'] = safe_array_convert(obs_dict.get('Bread_pos'), 3)
+            parsed['target_quat'] = safe_array_convert(obs_dict.get('Bread_quat'), 4)
+            parsed['eef_to_target_pos'] = safe_array_convert(obs_dict.get('Bread_to_robot0_eef_pos'), 3)
+            parsed['eef_to_target_quat'] = safe_array_convert(obs_dict.get('Bread_to_robot0_eef_quat'), 4)
+            
+        elif task_name == "PickPlaceCereal":
+            parsed['target_pos'] = safe_array_convert(obs_dict.get('Cereal_pos'), 3)
+            parsed['target_quat'] = safe_array_convert(obs_dict.get('Cereal_quat'), 4)
+            parsed['eef_to_target_pos'] = safe_array_convert(obs_dict.get('Cereal_to_robot0_eef_pos'), 3)
+            parsed['eef_to_target_quat'] = safe_array_convert(obs_dict.get('Cereal_to_robot0_eef_quat'), 4)
+            
+        elif task_name == "PickPlace":
+            """Here we should pass the four objects at once, Future work"""
+            raise NotImplementedError
+            
+        return parsed
     def _extract_feat_per_node(self, obs_dict):
         """Extracts and pads proprioceptive and context features for each node."""
         if not hasattr(self, '_structure_initialized') or not self._structure_initialized:
@@ -1845,3 +1850,187 @@ class RobosuiteSampleWrapper(gym.Wrapper):
         return [seed] # Return the list of seeds set (standard Gym convention)
 
 
+# if __name__ == '__main__':
+#     import numpy as np
+    
+#     print("======================================================")
+#     print("====== Running Multi-Task Test for All Tasks ======")
+#     print("======================================================")
+
+#     # 1. Import and modify the existing global cfg object for the test
+#     from metamorph.config import cfg
+    
+#     # Set the necessary attributes on the global cfg object
+#     cfg.MODEL.MAX_LIMBS = 11
+#     cfg.MODEL.MAX_JOINTS = 10
+#     cfg.MODEL.TASK_EMBED_DIM = 16
+#     cfg.MODEL.TRANSFORMER.DECODER_OUT_DIM = 6
+#     cfg.ROBOSUITE.ENV_NAMES = ["Lift", "Door", "Wipe", "PickPlaceCan", "PickPlaceMilk", "PickPlaceBread", "PickPlaceCereal"]
+#     cfg.ROBOSUITE.GRIPPER_DIM = 1
+#     cfg.ROBOSUITE.MAX_OBJECT_STATE_DIM = 40
+#     cfg.MODEL.ADD_OBJECT_NODE = True
+#     cfg.MODEL.OBJECT_POSE_IN_CONTEXT = True  # CRUCIAL: Set this to True
+
+#     print("\n[Step 1] Global config object modified for test.")
+
+#     # 2. Define the tasks to test - NOW INCLUDING ALL TASKS
+#     tasks_to_test = ["Lift", "Door", "Wipe", "PickPlaceCan", "PickPlaceMilk", "PickPlaceBread", "PickPlaceCereal"]
+    
+#     # Define expected features for each task
+#     task_features = {
+#         'Lift': ['target_pos', 'target_quat', 'eef_to_target_pos'],
+#         'Door': ['target_pos', 'eef_to_target_pos', 'hinge_qpos', 'handle_qpos', 'secondary_target_pos', 'door_to_eef_pos'],
+#         'Wipe': ['target_pos', 'eef_to_target_pos', 'wipe_radius', 'proportion_wiped'],
+#         'PickPlaceCan': ['target_pos', 'target_quat', 'eef_to_target_pos', 'eef_to_target_quat'],
+#         'PickPlaceMilk':  ['target_pos', 'target_quat', 'eef_to_target_pos', 'eef_to_target_quat'],
+#         'PickPlaceBread': ['target_pos', 'target_quat', 'eef_to_target_pos', 'eef_to_target_quat'],
+#         'PickPlaceCereal': ['target_pos', 'target_quat', 'eef_to_target_pos', 'eef_to_target_quat']
+#     }
+
+#     results = {}
+
+#     for task_name in tasks_to_test:
+#         print(f"\n{'='*60}")
+#         print(f"Testing Task: {task_name}")
+#         print(f"{'='*60}")
+        
+#         try:
+#             # 3. Create base environment for current task
+#             import robosuite
+#             from robosuite.controllers import load_controller_config
+
+#             base_env = robosuite.make(
+#                 env_name=task_name,
+#                 robots="Panda",
+#                 controller_configs=load_controller_config(default_controller="OSC_POSE"),
+#                 has_renderer=False,
+#                 has_offscreen_renderer=False,
+#                 use_camera_obs=False,
+#                 horizon=100,
+#             )
+#             print(f"[Step 2] Base '{task_name}' environment created.")
+#         except Exception as e:
+#             print(f"\n[ERROR] Failed to create {task_name} environment: {e}")
+#             results[task_name] = "FAILED - Environment creation"
+#             continue
+
+#         # 4. Inspect raw observation
+#         print(f"\n[Step 2.5] Inspecting raw observation for {task_name}...")
+#         raw_obs_dict = base_env.reset()
+        
+#         # Show some raw keys for debugging
+#         print(f"Raw obs keys for {task_name}: {list(raw_obs_dict.keys())}")
+        
+#         # Show relevant raw values for debugging
+#         if task_name == 'Lift':
+#             print(f"  cube_pos: {raw_obs_dict.get('cube_pos', 'NOT FOUND')}")
+#             print(f"  gripper_to_cube_pos: {raw_obs_dict.get('gripper_to_cube_pos', 'NOT FOUND')}")
+#         elif task_name == 'Door':
+#             print(f"  handle_pos: {raw_obs_dict.get('handle_pos', 'NOT FOUND')}")
+#             print(f"  hinge_qpos: {raw_obs_dict.get('hinge_qpos', 'NOT FOUND')} (type: {type(raw_obs_dict.get('hinge_qpos'))})")
+        
+#         # 5. Wrap environment
+#         try:
+#             env = RobosuiteEnvWrapper(
+#                 env_name=task_name,
+#                 robot_names="Panda", 
+#                 controller_names="OSC_POSE", 
+#                 horizon=100
+#             )
+#             wrapped_env = RobosuiteNodeCentricObservation(env)
+#             print(f"[Step 3] {task_name} environment wrapped with RobosuiteNodeCentricObservation.")
+#         except Exception as e:
+#             print(f"\n[ERROR] Failed to wrap {task_name} environment: {e}")
+#             results[task_name] = "FAILED - Wrapper creation"
+#             continue
+
+#         # 6. Reset and get observation
+#         try:
+#             obs = wrapped_env.reset()
+#             print(f"[Step 4] {task_name} environment reset and observation obtained.")
+#         except Exception as e:
+#             print(f"\n[ERROR] Failed to reset {task_name}: {e}")
+#             results[task_name] = "FAILED - Environment reset"
+#             continue
+
+#         # 7. Run verification checks
+#         print(f"\n[Step 5] Running verification checks for {task_name}...")
+#         task_passed = True
+        
+#         # Check essential keys
+#         expected_keys = ['proprioceptive', 'context', 'object-state']
+#         for key in expected_keys:
+#             if key not in obs:
+#                 print(f"  ❌ FAILED: Key '{key}' is missing from the observation.")
+#                 task_passed = False
+        
+#         if task_passed:
+#             print(f"  ✅ Check 1/3: All essential keys present for {task_name}.")
+
+#         # Check proprioceptive shape
+#         expected_prop_shape = (cfg.MODEL.MAX_LIMBS * wrapped_env.limb_obs_size,)
+#         if obs['proprioceptive'].shape != expected_prop_shape:
+#             print(f"  ❌ FAILED: Proprioceptive shape is {obs['proprioceptive'].shape}, expected {expected_prop_shape}.")
+#             task_passed = False
+#         else:
+#             print(f"  ✅ Check 2/3: Proprioceptive shape correct for {task_name}.")
+
+#         # Check object node features
+#         prop_unflattened = obs['proprioceptive'].reshape(cfg.MODEL.MAX_LIMBS, wrapped_env.limb_obs_size)
+#         object_node_features = prop_unflattened[-1]
+
+#         # Get feature mapping for object
+#         feature_map = {}
+#         current_idx = 0
+#         for key, dim in wrapped_env.proprio_feat_cfg['object']:
+#             feature_map[key] = slice(current_idx, current_idx + dim)
+#             current_idx += dim
+        
+#         # Test task-specific features
+#         expected_features = task_features[task_name]
+#         features_passed = 0
+        
+#         print(f"\n  --- Testing {task_name}-specific features ---")
+#         print(f"  Object node features shape: {object_node_features.shape}")
+#         print(f"  Object node features (first 20): {object_node_features[:20]}")
+        
+#         for feature_name in expected_features:
+#             if feature_name in feature_map:
+#                 feature_slice = feature_map[feature_name]
+#                 feature_values = object_node_features[feature_slice]
+                
+#                 if np.any(feature_values != 0):
+#                     print(f"    ✅ {feature_name}: {np.round(feature_values, 4)} (non-zero)")
+#                     features_passed += 1
+#                 else:
+#                     print(f"    ❌ {feature_name}: All zeros!")
+#                     task_passed = False
+#             else:
+#                 print(f"    ❌ {feature_name}: Not found in feature map!")
+#                 task_passed = False
+        
+#         print(f"  --- {features_passed}/{len(expected_features)} features passed for {task_name} ---")
+        
+#         if task_passed:
+#             print(f"  ✅ Check 3/3: All {task_name}-specific object features are non-zero.")
+#             results[task_name] = "PASSED"
+#         else:
+#             results[task_name] = "FAILED - Feature validation"
+
+#         # Cleanup
+#         base_env.close()
+#         wrapped_env.close()
+
+#     # 8. Final summary
+#     print(f"\n{'='*60}")
+#     print("FINAL RESULTS SUMMARY")
+#     print(f"{'='*60}")
+    
+#     for task_name, result in results.items():
+#         status_symbol = "✅" if result == "PASSED" else "❌"
+#         print(f"{status_symbol} {task_name}: {result}")
+    
+#     passed_count = sum(1 for r in results.values() if r == "PASSED")
+#     total_count = len(results)
+    
+#     print(f"\nOverall: {passed_count}/{total_count} tasks passed")
