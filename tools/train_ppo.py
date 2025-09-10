@@ -72,6 +72,7 @@ def calculate_max_limbs_joints_robosuite():
     task_lst = f"\nTasks: {cfg.ROBOSUITE.ENV_NAMES}" if cfg.ROBOSUITE.TASK_TYPE == "SR_MT" else ""
     print(f"Training on {cfg.ROBOSUITE.TASK_TYPE}{task_lst}\nMorphs: {morphs}\nControllers: {controllers}\n")
     print(f"[Config] Set MAX_LIMBS={cfg.MODEL.MAX_LIMBS}, MAX_JOINTS={cfg.MODEL.MAX_JOINTS}")
+    print(f"FiLM Context Mode: {cfg.MODEL.TRANSFORMER.FILM_CONTEXT_MODE}")
 def calculate_max_limbs_joints():
     if cfg.ENV_NAME == "Unimal-v0":
 

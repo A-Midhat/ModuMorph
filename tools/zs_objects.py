@@ -12,25 +12,39 @@ from metamorph.algos.ppo.model import Agent
 from metamorph.envs.vec_env.vec_video_recorder import VecVideoRecorder
 
 """
-Example for generalization testing:
-python tools/generalization_eval.py \
-  --run_dir ./output/MR-MT_ALLNODES_1409/ \
-  --checkpoint checkpoint_200.pt \
+Example for object generalization testing:
+python tools/zs_objects.py \
+  --run_dir ./artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run:v3/ \
+  --checkpoint Robosuite-v0.pt \
+  --morph Kinova3 \
+  --task PickPlaceMilk \
+  --base_task PickPlaceCan \
+  --controller OSC_POSE \
+  --episodes 5 \
+  --save_video ./test_object_generalization/ \
+  --debug
+"""
+
+"""
+python tools/normal_eval.py \
+  --run_dir ./artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run:v3/ \
+  --checkpoint Robosuite-v0.pt \
   --morph Panda \
   --task Door \
   --controller OSC_POSE \
   --episodes 5 \
-  --save_video ./test_generalization/ \
-  --debug
+  --save_video ./test_videos/ \
+    
 """
 
 def parse_args():
     """Parses the arguments for evaluation."""
-    parser = argparse.ArgumentParser(description="Evaluate a trained agent on unseen morphologies and save a video.")
+    parser = argparse.ArgumentParser(description="Evaluate a trained agent on unseen objects and save a video.")
     parser.add_argument("--run_dir", required=True, type=str, help="Path to the training output directory")
     parser.add_argument("--checkpoint", required=True, type=str, help="Checkpoint filename")
-    parser.add_argument("--morph", required=True, type=str, help="Robot morphology to test (can be unseen)")
-    parser.add_argument("--task", required=True, type=str, help="Robosuite task to test")
+    parser.add_argument("--morph", required=True, type=str, help="Robot morphology to test (should be seen during training)")
+    parser.add_argument("--task", required=True, type=str, help="New task/object variant to test (e.g., PickPlaceMilk)")
+    parser.add_argument("--base_task", required=True, type=str, help="Base task to use embedding from (e.g., PickPlaceCan)")
     parser.add_argument("--controller", required=True, type=str, help="Controller to use (e.g., OSC_POSE)")
     parser.add_argument("--episodes", default=5, type=int, help="Number of episodes for evaluation")
     parser.add_argument("--save_video", default=None, type=str, help="Directory to save evaluation videos")
@@ -95,44 +109,53 @@ def main():
 
     cfg.defrost()
     
-    # --- 2. Setup evaluation config for GENERALIZATION ---
+    # --- 2. Setup evaluation config for OBJECT GENERALIZATION ---
     cfg.ROBOSUITE.TASK_TYPE = "MR"
     
-    # Check if this is generalization (unseen morph) or standard evaluation
+    # Check if this is object generalization (unseen task but seen morph)
     desired_pair = (args.morph, args.task)
     training_pairs = list(zip(original_morphs, original_tasks))
-    is_generalization = desired_pair not in training_pairs
+    is_object_generalization = desired_pair not in training_pairs
     
-    if is_generalization:
-        print(f"🚀 GENERALIZATION MODE: Testing unseen morphology '{args.morph}' on task '{args.task}'")
+    # Verify the morph was seen during training
+    if args.morph not in original_morphs:
+        print(f"❌ ERROR: Morphology '{args.morph}' was not seen during training!")
+        print(f"Available training morphs: {list(set(original_morphs))}")
+        print("For object generalization, use a seen morphology with an unseen task variant.")
+        sys.exit(1)
+    
+    # Verify the base_task was seen during training
+    if args.base_task not in original_tasks:
+        print(f"❌ ERROR: Base task '{args.base_task}' was not seen during training!")
+        print(f"Available training tasks: {list(set(original_tasks))}")
+        sys.exit(1)
+    
+    if is_object_generalization:
+        print(f"🎯 OBJECT GENERALIZATION MODE: Testing unseen task '{args.task}' on seen morph '{args.morph}'")
+        print(f"📚 Using task embedding from base task '{args.base_task}'")
         
-        # For generalization, we need to:
-        # 1. Add the new morph to the config temporarily for environment creation
-        # 2. Use task-based embedding indexing (not pair-based)
-        
-        # Find a training pair with the same task for reference
-        task_pairs = [(m, t) for m, t in training_pairs if t == args.task]
-        if not task_pairs:
-            print(f"❌ ERROR: Task '{args.task}' was not seen during training!")
-            print(f"Available training tasks: {list(set(original_tasks))}")
+        # Find a training pair with the same morph for reference  
+        morph_pairs = [(m, t) for m, t in training_pairs if m == args.morph]
+        if not morph_pairs:
+            print(f"❌ ERROR: No training pairs found with morphology '{args.morph}'")
             sys.exit(1)
         
-        # Use the first occurrence of this task for render_idx
-        reference_pair = task_pairs[0]
+        # Use the first occurrence of this morph for render_idx (we'll override the task)
+        reference_pair = morph_pairs[0]
         render_idx = training_pairs.index(reference_pair)
         
-        print(f"🎯 Using task '{args.task}' (reference pair: {reference_pair} at index {render_idx})")
-        print(f"📝 Will create environment with morph '{args.morph}' but use task embedding from training")
+        print(f"🔧 Using morph '{args.morph}' (reference pair: {reference_pair} at index {render_idx})")
+        print(f"📝 Will create environment with task '{args.task}' but use '{args.base_task}' embedding")
         
-        # Temporarily extend the training lists to include our test morph
+        # Extend the training lists to include our new task variant
         extended_morphs = original_morphs + [args.morph]
         extended_tasks = original_tasks + [args.task]
-        extened_controllers = list(cfg.ROBOSUITE.CONTROLLERS) + [args.controller]
-        extended_render_idx = len(original_morphs)  # Index of our new morph
+        extended_controllers = list(cfg.ROBOSUITE.CONTROLLERS) + [args.controller]
+        extended_render_idx = len(original_morphs)  # Index of our new pair
         
         cfg.ROBOSUITE.TRAINING_MORPHOLOGIES = extended_morphs
         cfg.ROBOSUITE.ENV_NAMES = extended_tasks
-        cfg.ROBOSUITE.CONTROLLERS = extened_controllers
+        cfg.ROBOSUITE.CONTROLLERS = extended_controllers
         
     else:
         print(f"📊 STANDARD MODE: Testing seen morphology-task pair '{args.morph}'-'{args.task}'")
@@ -183,7 +206,7 @@ def main():
 
     # --- 4. Determine task embedding index ---
     print(f"\n🔍 Task Embedding Logic:")
-    print(f"Target: Morph='{args.morph}', Task='{args.task}', Generalization={is_generalization}")
+    print(f"Target: Morph='{args.morph}', Task='{args.task}', Base_task='{args.base_task}', Object_generalization={is_object_generalization}")
 
     unique_tasks = list(dict.fromkeys(original_tasks))
     debug_print(f"Unique training tasks (preserve order): {unique_tasks}", args.debug)
@@ -199,19 +222,22 @@ def main():
     except Exception:
         pass
 
-    if args.task not in unique_tasks:
-        print(f"❌ ERROR: Task '{args.task}' not found in training set.")
+    # For object generalization, use the base_task embedding
+    task_for_embedding = args.base_task if is_object_generalization else args.task
+    
+    if task_for_embedding not in unique_tasks:
+        print(f"❌ ERROR: Task '{task_for_embedding}' not found in training set.")
         print(f"Available unique tasks: {unique_tasks}")
         sys.exit(1)
 
-    task_idx_unique = unique_tasks.index(args.task)
-    print(f"[Eval] Task '{args.task}' => unique task index {task_idx_unique}")
+    task_idx_unique = unique_tasks.index(task_for_embedding)
+    print(f"[Eval] Using embedding from task '{task_for_embedding}' => unique task index {task_idx_unique}")
 
     # Use task-based embedding (critical for generalization)
     if task_embed_module is not None:
         print(f"[Eval] Using model.v_net.task_embed (num={num_task_emb})")
         eval_id = int(task_idx_unique)
-        mapping_used = "task-embedding (generalization-friendly)"
+        mapping_used = "task-embedding (object-generalization-friendly)"
         try:
             emb_vec = task_embed_module.weight.data[eval_id].cpu().numpy()
             print(f"[Eval] task_embed[{eval_id}] preview (first 8): {emb_vec.reshape(-1)[:8].tolist()}")
@@ -220,9 +246,14 @@ def main():
             print(f"[Eval] Could not read embedding vector preview: {e}")
     else:
         print("[Eval] WARNING: model has no v_net.task_embed. Using fallback approach.")
-        if is_generalization:
-            print("[Eval] For generalization, using reference pair index from training")
-            eval_id = render_idx  # Use reference pair index
+        if is_object_generalization:
+            # Find a pair with the base_task for fallback
+            base_task_pairs = [(m, t) for m, t in training_pairs if t == args.base_task]
+            if base_task_pairs:
+                fallback_pair = base_task_pairs[0]
+                eval_id = training_pairs.index(fallback_pair)
+            else:
+                eval_id = render_idx
         else:
             eval_id = extended_render_idx
         mapping_used = "pair-index (fallback)"
@@ -235,7 +266,7 @@ def main():
     device = getattr(cfg, "DEVICE", "cpu")
     unimal_id_tensor = torch.tensor([int(eval_id)], dtype=torch.long, device=device)
     print(f"[Eval] Final unimal_id_tensor = {unimal_id_tensor.tolist()}, mapping_used = {mapping_used}")
-    print(f"[Eval] Environment will render morph '{args.morph}' at extended_render_idx = {extended_render_idx}")
+    print(f"[Eval] Environment will render: morph='{args.morph}' + task='{args.task}' at extended_render_idx = {extended_render_idx}")
 
     # --- 5. Optional debug runs ---
     if args.debug:
@@ -283,7 +314,7 @@ def main():
             except Exception:
                 pass
             scan_results[test_id] = ep_ret
-            print(f"  ID {test_id}: quick-return={ep_ret:.2f}")
+            print(f"  ID {test_id} ({unique_tasks[test_id] if test_id < len(unique_tasks) else 'unknown'}): quick-return={ep_ret:.2f}")
 
     # --- 6. Main evaluation loop ---
     episode_returns = []
@@ -291,7 +322,7 @@ def main():
 
     video_kwargs = {"video_dir": args.save_video, "video_prefix": f"{args.task}_{args.morph}"} if args.save_video else {}
 
-    for i in tqdm(range(args.episodes), desc="🤖 Running Evaluation Episodes"):
+    for i in tqdm(range(args.episodes), desc="🎯 Running Object Generalization Episodes"):
         envs = make_vec_envs(training=False, save_video=bool(args.save_video), morph_idx_render=extended_render_idx, **video_kwargs)
         set_ob_rms(envs, ob_rms)
 
@@ -373,8 +404,8 @@ def main():
                 if is_success:
                     success_str = "SUCCESS"
                     reward_str = int(float(episode_reward))
-                    morph_label = "GENERALIZATION" if is_generalization else "TRAINED"
-                    new_video_name = f"episode_{i+1}_{morph_label}_{success_str}_reward_{reward_str}.mp4"
+                    obj_label = "OBJECT_GEN" if is_object_generalization else "TRAINED"
+                    new_video_name = f"episode_{i+1}_{obj_label}_{success_str}_reward_{reward_str}.mp4"
                     new_video_path = os.path.join(args.save_video, new_video_name)
                     os.rename(video_path, new_video_path)
                     tqdm.write(f"Success! Saved video to {new_video_name}")
@@ -392,36 +423,25 @@ def main():
     std_reward = float(np.std(episode_returns)) if episode_returns else 0.0
     avg_success_rate = float(np.mean(episode_successes) * 100) if episode_successes else 0.0
 
-    print("\n" + "="*50)
-    if is_generalization:
-        print(f"🚀 GENERALIZATION RESULTS: {args.morph} on {args.task}")
+    print("\n" + "="*60)
+    if is_object_generalization:
+        print(f"🎯 OBJECT GENERALIZATION RESULTS: {args.morph} on {args.task}")
+        print(f"📚 Using {args.base_task} task knowledge")
     else:
         print(f"📊 STANDARD EVALUATION: {args.morph} on {args.task}")
-    print("="*50)
+    print("="*60)
     print(f"Episodes:    {args.episodes}")
     print(f"Avg. Reward: {avg_reward:.2f} ± {std_reward:.2f}")
     print(f"Success Rate: {avg_success_rate:.1f}%")
     print(f"Individual episode rewards: {episode_returns}")
-    print("="*50 + "\n")
+    print("="*60 + "\n")
 
     if args.debug:
         print("\n--- Debug Information ---")
-        print(f"Evaluation mode: {'Generalization' if is_generalization else 'Standard'}")
-        print(f"Task embedding index used: {eval_id}")
-        print(f"Environment morph index: {extended_render_idx}")
+        print(f"Evaluation mode: {'Object Generalization' if is_object_generalization else 'Standard'}")
+        print(f"Task embedding used: {task_for_embedding} (index {eval_id})")
+        print(f"Environment pair: {args.morph} + {args.task}")
         print("---------------------------\n")
 
 if __name__ == "__main__":
     main()
-
-"""
-python tools/zs_morph_eval.py \
-  --run_dir ./artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run:v3/ \
-  --checkpoint Robosuite-v0.pt \
-  --morph Panda \
-  --task Door \
-  --controller OSC_POSE \
-  --episodes 5 \
-  --save_video ./test_videos/ \
-  --debug
-  """

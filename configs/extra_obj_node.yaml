@@ -56,7 +56,7 @@ MODEL:
   ACTION_STD_FIXED: False 
   
   TRANSFORMER:
-    NLAYERS: 7
+    NLAYERS: 5
     NHEAD: 2
     DIM_FEEDFORWARD: 1024
     DECODER_OUT_DIM: 6      # 6 for OSC_POSE controller
@@ -64,14 +64,23 @@ MODEL:
     EXT_MIX: "late"         # exteroceptive info is mixed (not used if object-node is on) TODO: will change later
     POS_EMBEDDING: "none"   
     
-    HYPERNET: True 
-    FIX_ATTENTION: True 
-    USE_SWAT_PE: True       
-    USE_SWAT_RE: True       
-    HN_EMBED: True
-    HN_DECODER: True 
-    USE_HN_TASK: True
-    FILM_CONTEXT_MODE: "all_nodes"  # Options: "avg_nodes", "all_nodes", "object_only"
+    # HYPERNET: True 
+    # FIX_ATTENTION: True 
+    # USE_SWAT_PE: True       
+    # USE_SWAT_RE: True       
+    # HN_EMBED: True
+    # HN_DECODER: True 
+    # USE_HN_TASK: True
+    # FILM_CONTEXT_MODE: "avg_nodes_no_object"  # Options: "avg_nodes", "all_nodes", "object_only"
+    # python tools/train_ppo.py --cfg configs/extra_obj_node.yaml OUT_DIR output/test_metamorph
+    HYPERNET: False
+    USE_SWAT_PE: True 
+    USE_SWAT_RE: True
+    FIX_ATTENTION: False
+    HN_EMBED: False
+    HN_DECODER: False
+    USE_HN_TASK: False
+
 # PPO training parameters
 PPO:
   USE_SPO: False
@@ -91,7 +100,7 @@ LOG_PERIOD: 10
 CHECKPOINT_PERIOD: 100
 
 LOGGING:
-  USE_WANDB: True 
+  USE_WANDB: False 
   PROJECT: "MR-ST"
   ENTITY: "alimidhat62-org" 
 

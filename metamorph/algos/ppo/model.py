@@ -70,6 +70,10 @@ class TransformerModel(nn.Module):
         self.seq_len = cfg.MODEL.MAX_LIMBS
         # Embedding layer for per limb obs
         limb_obs_size = obs_space["proprioceptive"].shape[0] // self.seq_len
+        # --- For metamorph --- 
+        context_obs_size = obs_space["context"].shape[0] // self.seq_len\
+        # ----              ---- 
+        
         self.d_model = cfg.MODEL.LIMB_EMBED_SIZE
         if self.model_args.PER_NODE_EMBED:
             print ('independent weights for each node')
@@ -77,7 +81,14 @@ class TransformerModel(nn.Module):
             self.limb_embed_weights = nn.Parameter(torch.zeros(self.seq_len, len(cfg.ENV.WALKERS), limb_obs_size, self.d_model).uniform_(-initrange, initrange))
             self.limb_embed_bias = nn.Parameter(torch.zeros(self.seq_len, len(cfg.ENV.WALKERS), self.d_model))
         else:
-            self.limb_embed = nn.Linear(limb_obs_size, self.d_model)
+            # self.limb_embed = nn.Linear(limb_obs_size, self.d_model)
+            # --- For vanilla MetaMorph: embed proprio + context together ---
+            if not (self.model_args.HYPERNET or self.model_args.FIX_ATTENTION):
+                combined_obs_size = limb_obs_size + context_obs_size
+                self.limb_embed = nn.Linear(combined_obs_size, self.d_model)
+            else:
+                self.limb_embed = nn.Linear(limb_obs_size, self.d_model)
+
         self.ext_feat_fusion = self.model_args.EXT_MIX
 
         if self.model_args.POS_EMBEDDING == "learnt":
@@ -103,14 +114,35 @@ class TransformerModel(nn.Module):
         # Map encoded observations to per node action mu or critic value
         decoder_input_dim = self.d_model
 
-        if self.ext_feat_fusion == "late" and "hfield" in cfg.ENV.KEYS_TO_KEEP:
-            self.hfield_encoder = GlobalObsEncoder(obs_space.spaces["hfield"].shape[0])
-            decoder_input_dim += self.hfield_encoder.obs_feat_dim
-        # for robosuite 
-        if self.ext_feat_fusion == "late" and "object-state" in cfg.ENV.KEYS_TO_KEEP:
-            self.object_encoder = GlobalObsEncoder(obs_space.spaces["object-state"].shape[0])
-            decoder_input_dim += self.object_encoder.obs_feat_dim
-        self.decoder_input_dim = decoder_input_dim
+        # if self.ext_feat_fusion == "late" and "hfield" in cfg.ENV.KEYS_TO_KEEP:
+        #     self.hfield_encoder = GlobalObsEncoder(obs_space.spaces["hfield"].shape[0])
+        #     decoder_input_dim += self.hfield_encoder.obs_feat_dim
+        # # for robosuite 
+        # if self.ext_feat_fusion == "late" and "object-state" in cfg.ENV.KEYS_TO_KEEP:
+        #     self.object_encoder = GlobalObsEncoder(obs_space.spaces["object-state"].shape[0])
+        #     decoder_input_dim += self.object_encoder.obs_feat_dim
+               # For vanilla MetaMorph, decoder input is just transformer output.
+       # For other methods, it can include late-fused features.
+        if not (self.model_args.HYPERNET or self.model_args.FIX_ATTENTION):
+            if self.ext_feat_fusion == "late" and "hfield" in cfg.ENV.KEYS_TO_KEEP:
+                self.hfield_encoder = GlobalObsEncoder(obs_space.spaces["hfield"].shape[0])
+                decoder_input_dim += self.hfield_encoder.obs_feat_dim
+            # for robosuite 
+            if self.ext_feat_fusion == "late" and "object-state" in cfg.ENV.KEYS_TO_KEEP and not cfg.MODEL.ADD_OBJECT_NODE:
+                self.object_encoder = GlobalObsEncoder(obs_space.spaces["object-state"].shape[0])
+                decoder_input_dim += self.object_encoder.obs_feat_dim
+
+            pass 
+
+        else:
+            if self.ext_feat_fusion == "late" and "hfield" in cfg.ENV.KEYS_TO_KEEP:
+                self.hfield_encoder = GlobalObsEncoder(obs_space.spaces["hfield"].shape[0])
+                decoder_input_dim += self.hfield_encoder.obs_feat_dim
+            # for robosuite 
+            if self.ext_feat_fusion == "late" and "object-state" in cfg.ENV.KEYS_TO_KEEP:
+                self.object_encoder = GlobalObsEncoder(obs_space.spaces["object-state"].shape[0])
+                decoder_input_dim += self.object_encoder.obs_feat_dim
+        
 
         # task embed
         if cfg.MODEL.TASK_EMBED_DIM > 0:
@@ -226,7 +258,7 @@ class TransformerModel(nn.Module):
         if self.model_args.USE_HN_TASK:
             print("[Model] Use HN_TASK")
             film_context_mode = cfg.MODEL.TRANSFORMER.FILM_CONTEXT_MODE
-            if film_context_mode == "avg_nodes":
+            if film_context_mode == "avg_nodes" or film_context_mode == "avg_nodes_no_object":
                 hn_task_input_dim = self.model_args.CONTEXT_EMBED_SIZE + cfg.MODEL.TASK_EMBED_DIM
                 film_hidden_dims = [64, 64]
             elif film_context_mode == "all_nodes":
@@ -302,7 +334,8 @@ class TransformerModel(nn.Module):
             hfield_obs = hfield_obs.repeat(self.seq_len, 1)
             hfield_obs = hfield_obs.reshape(self.seq_len, batch_size, -1)
 
-        if "object-state" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion in ["late"]:
+        # if "object-state" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion in ["late"]:
+        if "object-state" in cfg.ENV.KEYS_TO_KEEP and self.ext_feat_fusion in ["late"] and hasattr(self, "object_encoder"):
             object_obs = self.object_encoder(obs_env["object-state"])
             object_obs = object_obs.repeat(self.seq_len, 1)
             object_obs = object_obs.reshape(self.seq_len, batch_size, -1)
@@ -340,8 +373,16 @@ class TransformerModel(nn.Module):
             if self.model_args.PER_NODE_EMBED:
                 obs_embed = (obs[:, :, :, None] * self.limb_embed_weights[:, unimal_ids, :, :]).sum(dim=-2, keepdim=False) + self.limb_embed_bias[:, unimal_ids, :]
             else:
-                obs_embed = self.limb_embed(obs)
-        
+
+                # obs_embed = self.limb_embed(obs)
+                # --- METAMORPH: Combine proprio + context before embedding ---
+                if not (self.model_args.HYPERNET or self.model_args.FIX_ATTENTION):
+                    # Concat proprio and context
+                    obs_with_context = torch.cat([obs, obs_context], dim=-1)
+                    obs_embed = self.limb_embed(obs_with_context)
+                else:
+                    # Use only proprio for embedding
+                    obs_embed = self.limb_embed(obs)
         if self.model_args.EMBEDDING_SCALE: # default to true
             obs_embed *= math.sqrt(self.d_model)
 
@@ -434,6 +475,10 @@ class TransformerModel(nn.Module):
             if film_context_mode == "avg_nodes":
                 # Current approach: Average across all nodes
                 film_morphology_context = pure_morphology_context.mean(dim=0)  # [batch_size, context_embed_size]
+            elif film_context_mode == "avg_nodes_no_object":
+                # we rremove the last node (object node) when averaging
+                robot_nodes_context = pure_morphology_context[:-1]  # [seq_len-1, batch_size, context_embed_size]
+                film_morphology_context = robot_nodes_context.mean(dim=0)  # [batch_size, context_embed_size]
             elif film_context_mode == "all_nodes":
                 # Flatten all node contexts: [seq_len, batch_size, context_embed_size] -> [batch_size, seq_len * context_embed_size]
                 film_morphology_context = pure_morphology_context.permute(1, 0, 2).reshape(batch_size, -1)
@@ -485,6 +530,8 @@ class TransformerModel(nn.Module):
         output = output.reshape(batch_size, -1)
 
         return output, attention_maps, dropout_mask
+    
+    
 
 
 class PositionalEncoding(nn.Module):

@@ -13,11 +13,11 @@ from metamorph.envs.vec_env.vec_video_recorder import VecVideoRecorder
 
 """
 Example:
-python tools/test_eval_best_one.py \
-  --run_dir ./output/MR-MT_newLogic_3TASKS/ \
+python tools/normal_eval.py \
+  --run_dir ./artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run:v3/ \
   --checkpoint Robosuite-v0.pt \
   --morph Panda \
-  --task PickPlaceCan \
+  --task Door \
   --controller OSC_POSE \
   --episodes 5 \
   --save_video ./test_videos/ \
@@ -143,7 +143,6 @@ def main():
 
     cfg.freeze()
 
-    # --- 3. Load model ---
     model_path = os.path.join(args.run_dir, args.checkpoint)
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Checkpoint not found at {model_path}")
@@ -169,7 +168,6 @@ def main():
         debug_print(f"Obs RMS mean: {getattr(ob_rms, 'mean', 'No mean')}", args.debug)
         debug_print(f"Obs RMS var: {getattr(ob_rms, 'var', 'No var')}", args.debug)
 
-    # --- 4. Determine/force unimal_id (task embedding index) ---
     print(f"\n🔍 Foundation Model Evaluation Logic:")
     print(f"Target: Morph='{args.morph}', Task='{args.task}'")
     print(f"Training pair found at index: {render_idx}")
@@ -188,7 +186,7 @@ def main():
     for nm, nemb, edim in emb_modules:
         print(f"   {nm:40s}  |  num={nemb:3d}  dim={edim:3d}")
 
-    # prefer v_net.task_embed if present
+    
     num_task_emb = None
     task_embed_module = None
     try:
@@ -200,7 +198,7 @@ def main():
         num_task_emb = None
 
     if args.task not in unique_tasks:
-        print(f"❌ ERROR: Task '{args.task}' not found in training set (unique tasks).")
+        print(f"ERROR: Task '{args.task}' not found in training set (unique tasks).")
         print(f"Available unique tasks: {unique_tasks}")
         sys.exit(1)
 
@@ -227,8 +225,6 @@ def main():
 
     if num_task_emb is not None and eval_id >= num_task_emb:
         print("ERROR: requested eval_id >= model.task_embed.num_embeddings.")
-        print("  You must use the matching index space used during training (pair-index vs task-index).")
-        print("  Aborting to avoid accidental wrong embedding usage.")
         sys.exit(1)
 
     device = getattr(cfg, "DEVICE", "cpu")
@@ -236,7 +232,6 @@ def main():
     print(f"[Eval] Final unimal_id_tensor = {unimal_id_tensor.tolist()}, mapping_used = {mapping_used}")
     print(f"[Eval] Environment will be created at render_idx = {render_idx} for pair {training_pairs[render_idx]}")
 
-    # Optional quick sanity-run (1 episode) if debug
     if args.debug:
         print("[Eval] Running quick 1-episode sanity check with forced index...")
         quick_video_kwargs = {"video_dir": args.save_video, "video_prefix": f"quick_{args.task}_{args.morph}"} if args.save_video else {}
@@ -258,7 +253,6 @@ def main():
             pass
         print(f"[Eval] Quick sanity-check return: {ep_ret:.3f} (should reflect correct task behaviour)")
 
-    # If requested, run a quick id scan (debug)
     if args.test_all_ids:
         print("\n[Eval] Running quick ID scan across all pair ids (first occurrence mapping size).")
         scan_results = {}
@@ -286,7 +280,6 @@ def main():
             print(f"  ID {test_id}: quick-return={ep_ret:.2f}")
         print("[Eval] ID scan done. Results:", scan_results)
 
-    # --- 5. Evaluation loop ---
     episode_returns = []
     episode_successes = []
 
@@ -327,7 +320,7 @@ def main():
                 with torch.no_grad():
                     _, act, _, value, _ = agent.act(obs, unimal_ids=unimal_id_tensor, compute_val=True)
             except RuntimeError as e:
-                print("\n❌ RuntimeError during agent.act():")
+                print("\nRuntimeError during agent.act():")
                 print(f"   Exception: {e}")
                 print("   unimal_id_tensor:", unimal_id_tensor)
                 try:
