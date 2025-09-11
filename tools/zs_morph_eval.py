@@ -13,13 +13,14 @@ from metamorph.envs.vec_env.vec_video_recorder import VecVideoRecorder
 
 """
 Example for generalization testing:
-python tools/generalization_eval.py \
-  --run_dir ./output/MR-MT_ALLNODES_1409/ \
-  --checkpoint checkpoint_200.pt \
-  --morph Panda \
+python tools/zs_morph_eval.py \
+  --run_dir ./artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_1409-run:v9/ \
+  --checkpoint Robosuite-v0.pt \
+  --morph UR5e \
   --task Door \
   --controller OSC_POSE \
-  --episodes 5 \
+  --episodes 1 \
+  --seed 42 \
   --save_video ./test_generalization/ \
   --debug
 """
@@ -37,6 +38,7 @@ def parse_args():
     parser.add_argument("--gripper", default=None, type=str, help="Override gripper type")
     parser.add_argument("--debug", action="store_true", help="Enable debug prints")
     parser.add_argument("--test_all_ids", action="store_true", help="Quick scan for all unimal ids (debug)")
+
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -70,7 +72,6 @@ def _to_scalar_float(x):
 
 def main():
     args = parse_args()
-
     # --- 1. Load config ---
     config_path = os.path.join(args.run_dir, "config.yaml")
     if not os.path.exists(config_path):

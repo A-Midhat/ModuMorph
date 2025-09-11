@@ -1,124 +1,3 @@
-
-ENV_NAME: "Robosuite-v0"
-
-ROBOSUITE:
-  TASK_TYPE: "MR" 
-  # option1: remove panda, saywer 
-  # TRAINING_MORPHOLOGIES: ["Jaco", "IIWA", "Kinova3", "UR5e", "Jaco", "IIWA", "Kinova3", "UR5e",  "Jaco", "IIWA", "Kinova3", "UR5e"]
-  # option2: Panda, UR5e (this is stronger (Generalization across Different DoF)
-  TRAINING_MORPHOLOGIES: ["Sawyer", "Jaco", "IIWA", "Kinova3", "Sawyer", "Jaco", "IIWA", "Kinova3",  "Sawyer", "Jaco", "IIWA", "Kinova3"]
-
-  # orgingal :(
-  # ENV_NAMES: [
-  #   "Door", "Door", "Door", "Door", "Door", "Door",           # 6 Door environments
-  #   "Lift", "Lift", "Lift", "Lift", "Lift", "Lift",          # 6 Lift environments
-  #   "PickPlaceCan", "PickPlaceCan", "PickPlaceCan", "PickPlaceCan", "PickPlaceCan", "PickPlaceCan"  # 6 PickPlaceCan environments
-  # ]
-  ENV_NAMES: [
-    "Door", "Door", "Door", "Door",           # 6 Door environments
-    "Lift", "Lift", "Lift", "Lift",          # 6 Lift environments
-    "Wipe", "Wipe", "Wipe", "Wipe"  # 6 PickPlaceCan environments 
-  ]
-
-  CONTROLLERS: [
-    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE",     # Door controllers
-    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE",     # Lift controllers
-    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE",      # PickPlaceCan controllers
-    # "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE"
-  ]
-  GRIPPER_TYPES: [null]
-  MAX_OBJECT_STATE_DIM: 50
-
-  ENV_ARGS:
-    has_renderer: False
-    ignore_done: False
-    has_offscreen_renderer: False
-    use_camera_obs: False
-    control_freq: 20                                                                                                                                                         
-    horizon: 500
-    reward_shaping: True
-    reward_scale: 1.0
-
-ENV:
-  KEYS_TO_KEEP: ["object-state", "proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context", "SWAT_RE", "traversals"] 
-  TASK_SAMPLING: "uniform_random_strategy"
-MODEL:
-  TYPE: "transformer" 
-  OBS_TYPES: ["proprioceptive", "obs_padding_mask", "act_padding_mask", "edges", "context", "SWAT_RE", "traversals"]
-  OBS_TO_NORM: []
-
-  # --- Object-Node Configuration ---
-  ADD_OBJECT_NODE: True
-  OBJECT_POSE_IN_CONTEXT: True  # dynamic pose in of static context
-  TASK_EMBED_DIM: 64            
-  
-  MAX_LIMBS: 11 # Max robot limbs (Panda=10) + 1 for the object-node
-  MAX_JOINTS: 10 # Max robot joints (Panda=9) + 1 for padding/safety
-
-  ACTION_STD_FIXED: False 
-  
-  TRANSFORMER:
-    NLAYERS: 5
-    NHEAD: 2
-    DIM_FEEDFORWARD: 1024
-    DECODER_OUT_DIM: 6      # 6 for OSC_POSE controller
-    DROPOUT: 0.1          
-    EXT_MIX: "late"         # exteroceptive info is mixed (not used if object-node is on) TODO: will change later
-    POS_EMBEDDING: "none"   
-    
-    HYPERNET: True 
-    FIX_ATTENTION: True 
-    USE_SWAT_PE: True       
-    USE_SWAT_RE: True       
-    HN_EMBED: True
-    HN_DECODER: True 
-    USE_HN_TASK: True
-    FILM_CONTEXT_MODE: "all_nodes"  # Options: "avg_nodes", "all_nodes", "object_only"
-# PPO training parameters
-PPO:
-  USE_SPO: False # Use PPO
-  SPO_EPSILON : 0.2 
-  SPO_EMA_ALPHA : 0.995 
-  MAX_STATE_ACTION_PAIRS: 1e8 
-  NUM_ENVS: 32                
-  TIMESTEPS: 2560 
-  BATCH_SIZE: 5120
-  KL_TARGET_COEF: 9.0 
-  ENTROPY_COEF: 0.0
-  BASE_LR: 0.0003
-
-RNG_SEED: 1409 # 3296, 2008
-DEVICE: "cuda:0"
-LOG_PERIOD: 10
-CHECKPOINT_PERIOD: 100
-
-LOGGING:
-  USE_WANDB: True 
-  PROJECT: "MR-MT_FULL"
-  ENTITY: "alimidhat62-org" 
-
-OUT_DIR: "./output/MR-MT_ALLNODES_1409" #MR-MT_<MODE>_<SEED>
-
-# cd ModuMorph/ && git checkout -- . && git checkout spo && git pull origin spo && source venv/bin/activate && code venv/lib/python3.10/site-packages/robosuite/models/assets/robots/sawyer/robot.xml && code configs/mr_mt_runs.yaml
-
-# My wandb api key: 2ca2f26d3ea46a1aa48e30ff41f2406a72ec8489
-
-# git pull origin spo
-
-# code venv/lib/python3.10/site-packages/robosuite/models/assets/robots/sawyer/robot.xml 
-
-# head_1, head_4
-#                 inertia="shell"
-
-# source venv/bin/activate && python tools/train_ppo.py --cfg configs/mr_mt_runs.yaml
-
-
-# PS: I am not a noob, just I have a lot of vms to run and I need it. :)
-
-
-
-
-
 ENV_NAME: "Robosuite-v0"
 
 ROBOSUITE:
@@ -131,10 +10,10 @@ ROBOSUITE:
     "Wipe", "Wipe", "Wipe"  # 6 PickPlaceCan environments 
   ]
   CONTROLLERS: [
-    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE",     # Door controllers
-    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE",     # Lift controllers
-    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE",
-    "OSC_POSE", "OSC_POSE", "OSC_POSE",      # PickPlaceCan controllers
+    "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY",     # Door controllers
+    "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY",     # Lift controllers
+    "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY",
+    "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY",      # PickPlaceCan controllers
     # "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE"
   ]
   GRIPPER_TYPES: [null]
@@ -172,7 +51,7 @@ MODEL:
     NLAYERS: 5
     NHEAD: 2
     DIM_FEEDFORWARD: 1024
-    DECODER_OUT_DIM: 6      # 6 for OSC_POSE controller
+    DECODER_OUT_DIM: 1      # 6 for OSC_POSE controller
     DROPOUT: 0.1          
     EXT_MIX: "late"         # exteroceptive info is mixed (not used if object-node is on) TODO: will change later
     POS_EMBEDDING: "none"   
@@ -184,7 +63,7 @@ MODEL:
     HN_EMBED: True
     HN_DECODER: True 
     USE_HN_TASK: True
-    FILM_CONTEXT_MODE: "all_nodes"  # Options: "avg_nodes", "all_nodes", "object_only"
+    FILM_CONTEXT_MODE: "all_nodes"  # Options: "avg_nodes", "all_nodes", "object_only", "avg_nodes_no_object"
 # PPO training parameters
 PPO:
   USE_SPO: False # Use PPO
@@ -208,7 +87,7 @@ LOGGING:
   PROJECT: "MR-MT_FULL"
   ENTITY: "alimidhat62-org" 
 
-OUT_DIR: "./output/MR-MT_ALLNODES4_1409" #MR-MT_<MODE>_<SEED>
+OUT_DIR: "./output/MR-MT_ALLNODES4_JNT_1409" #MR-MT_<MODE>_<SEED>
 
 
 
