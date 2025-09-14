@@ -13,19 +13,22 @@ from metamorph.algos.ppo.envs import make_vec_envs
 from metamorph.algos.ppo.envs import set_ob_rms
 from metamorph.algos.ppo.model import Agent
 from metamorph.envs.vec_env.vec_video_recorder import VecVideoRecorder
-
+# test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19
+# artifacts/Robosuite-v0-MR-ST-MR-MT_ModuMorph_1409-run:v4
 """
 Example for object generalization testing:
 python tools/obj_geom_seeded.py \
   --run_dir ./test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19 \
   --checkpoint checkpoint_600.pt \
-  --morph Jaco \
+  --morph Kinova3 \
   --task LiftCylinder  \
   --base_task Lift \
   --controller OSC_POSE \
-  --episodes 1 \
+  --episodes 10 \
   --save_video ./test_object_generalization/ \
-  --scale 1.0
+  --scale 2.0 \ 
+  --friction 1.5 0.0005 0.0001 \
+  --density 600 
   --debug
 """
 
@@ -57,6 +60,8 @@ def parse_args():
     parser.add_argument("--test_all_ids", action="store_true", help="Quick scan for all unimal ids (debug)")
     parser.add_argument("--seed", default=None, type=int, help="Master seed for reproducibility")
     parser.add_argument("--scale", type=float, default=1.0, help="Uniform scaling factor for the custom object's geometry.")
+    parser.add_argument("--friction", default=None, nargs="+", help="Enter modfieid friction values")
+    parser.add_argument("--density", default=None, help="Add modified density")
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
@@ -127,6 +132,30 @@ def main():
             cfg.ROBOSUITE.OBJECTS.CYLINDER_SCALE = args.scale
         elif "Rectangle" in args.task:
             cfg.ROBOSUITE.OBJECTS.RECT_SCALE = args.scale
+        else:
+            print(f"[SCALE-LOG] Warning: Could not determine object type from task name '{args.task}'. Scale not applied.")
+    if args.friction: 
+        print(f"[Friction] Applying this friction values: {list(args.friction)}")
+        if "Ball" in args.task:
+            cfg.ROBOSUITE.OBJECTS.SPHERE_FRICTION = args.friction
+        elif "Cube" in args.task:
+            cfg.ROBOSUITE.OBJECTS.CUBE_FRICTION = args.friction
+        elif "Cylinder" in args.task:
+            cfg.ROBOSUITE.OBJECTS.CYLINDER_FRICTION = args.friction
+        elif "Rectangle" in args.task:
+            cfg.ROBOSUITE.OBJECTS.RECT_FRICTION = args.friction
+        else:
+            print(f"[SCALE-LOG] Warning: Could not determine object type from task name '{args.task}'. Scale not applied.")
+    if args.density: 
+        print(f"[Density] Applying this density values: {list(args.density)}")
+        if "Ball" in args.task:
+            cfg.ROBOSUITE.OBJECTS.SPHERE_DENSITY = args.density
+        elif "Cube" in args.task:
+            cfg.ROBOSUITE.OBJECTS.CUBE_DENSITY = args.density
+        elif "Cylinder" in args.task:
+            cfg.ROBOSUITE.OBJECTS.CYLINDER_DENSITY = args.density
+        elif "Rectangle" in args.task:
+            cfg.ROBOSUITE.OBJECTS.RECT_DENSITY = args.density
         else:
             print(f"[SCALE-LOG] Warning: Could not determine object type from task name '{args.task}'. Scale not applied.")
     # --- 2. Setup evaluation config for OBJECT GENERALIZATION ---

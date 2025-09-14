@@ -354,22 +354,24 @@
 # cat $RESULTS_FILE
 
 
-
+##################################################################
+###################### best script for now #######################
+##################################################################
 #!/bin/bash
 
 # --- 1. CONFIGURATION ---
 # The only things you need to change are in this section.
 
 # Path to the trained model's directory and the checkpoint file
-RUN_DIR="./test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19"
-CHECKPOINT="checkpoint_600.pt"
+RUN_DIR="./artifacts/Robosuite-v0-MR-ST-MR-MT_ModuMorph_1409-run:v4"
+CHECKPOINT="checkpoint_400.pt"
 
 # The specific SEEN morphology you want to test this generalization on
 MORPH="Kinova3"
 
 # The CUSTOM task variant you want to test (e.g., LiftScalableCube, LiftBall)
 # This will be the environment that is physically simulated.
-TASK="LiftScalableCube"
+TASK="LiftCylinder"
 
 # The BASE task from which the learned skill/embedding should be drawn
 BASE_TASK="Lift"
@@ -381,7 +383,7 @@ CONTROLLER="OSC_POSE"
 SEED=1409
 
 # Number of episodes to run for each scaling factor
-EPISODES=5
+EPISODES=3
 
 # Directory to save videos (optional, can be left empty)
 VIDEO_DIR="./analysis_results/geom_generalization_videos/"
@@ -405,7 +407,7 @@ echo "Results will be saved to: $RESULTS_FILE"
 echo "======================================================"
 
 # Define the percentage increases you want to test
-PERCENT_INCREASES=(0 20 40 50 90 100 120 140 150 200)
+PERCENT_INCREASES=(0 20 30 50 70 90 100 150 200)
 
 # Function to extract values from the Python script's final summary
 extract_values() {
@@ -476,14 +478,14 @@ cat $RESULTS_FILE
 
 # Create plots using embedded Python script
 echo -e "\n📈 Generating plots..."
-python3 << 'EOF'
+python3 << EOF
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 
 # Read the results
 try:
-    df = pd.read_csv('size_generalization_results.txt')
+    df = pd.read_csv("$RESULTS_FILE")
     
     print("\nData loaded successfully:")
     print(df)
@@ -492,7 +494,7 @@ try:
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
     
     # Plot 1: Success Rate vs Size Increase
-    ax1.plot(df['Size_Percent'], df['Success_Rate'], 'o-', linewidth=2, markersize=8, color='#2E86AB')
+    ax1.plot(df['Percentage_Increase'], df['Success_Rate'], 'o-', linewidth=2, markersize=8, color='#2E86AB')
     ax1.set_xlabel('Object Size Increase (%)', fontsize=12)
     ax1.set_ylabel('Success Rate (%)', fontsize=12)
     ax1.set_title('Success Rate vs Object Size Increase', fontsize=14, fontweight='bold')
@@ -501,11 +503,11 @@ try:
     ax1.set_xlim([-2, 27])
     
     # Add value labels on points
-    for x, y in zip(df['Size_Percent'], df['Success_Rate']):
+    for x, y in zip(df['Percentage_Increase'], df['Success_Rate']):
         ax1.annotate(f'{y:.1f}%', (x, y), textcoords="offset points", xytext=(0,5), ha='center', fontsize=9)
     
     # Plot 2: Average Reward vs Size Increase
-    ax2.plot(df['Size_Percent'], df['Avg_Reward'], 's-', linewidth=2, markersize=8, color='#A23B72')
+    ax2.plot(df['Percentage_Increase'], df['Avg_Reward'], 's-', linewidth=2, markersize=8, color='#A23B72')
     ax2.set_xlabel('Object Size Increase (%)', fontsize=12)
     ax2.set_ylabel('Average Reward', fontsize=12)
     ax2.set_title('Average Reward vs Object Size Increase', fontsize=14, fontweight='bold')
@@ -513,7 +515,7 @@ try:
     ax2.set_xlim([-2, 27])
     
     # Add value labels on points
-    for x, y in zip(df['Size_Percent'], df['Avg_Reward']):
+    for x, y in zip(df['Percentage_Increase'], df['Avg_Reward']):
         ax2.annotate(f'{y:.2f}', (x, y), textcoords="offset points", xytext=(0,5), ha='center', fontsize=9)
     
     # Get task and morph from the first line of the shell script output if possible
@@ -533,8 +535,8 @@ try:
     # Also create individual plots for better clarity
     # Individual plot for Success Rate
     fig1, ax = plt.subplots(figsize=(8, 6))
-    ax.plot(df['Size_Percent'], df['Success_Rate'], 'o-', linewidth=2.5, markersize=10, color='#2E86AB')
-    ax.fill_between(df['Size_Percent'], df['Success_Rate'], alpha=0.3, color='#2E86AB')
+    ax.plot(df['Percentage_Increase'], df['Success_Rate'], 'o-', linewidth=2.5, markersize=10, color='#2E86AB')
+    ax.fill_between(df['Percentage_Increase'], df['Success_Rate'], alpha=0.3, color='#2E86AB')
     ax.set_xlabel('Object Size Increase (%)', fontsize=14)
     ax.set_ylabel('Success Rate (%)', fontsize=14)
     ax.set_title('Success Rate vs Object Size Increase', fontsize=16, fontweight='bold')
@@ -542,7 +544,7 @@ try:
     ax.set_ylim([max(0, df['Success_Rate'].min()-5), min(105, df['Success_Rate'].max()+5)])
     ax.set_xlim([-2, 27])
     
-    for x, y in zip(df['Size_Percent'], df['Success_Rate']):
+    for x, y in zip(df['Percentage_Increase'], df['Success_Rate']):
         ax.annotate(f'{y:.1f}%', (x, y), textcoords="offset points", xytext=(0,8), ha='center', fontsize=11, fontweight='bold')
     
     plt.tight_layout()
@@ -551,8 +553,8 @@ try:
     
     # Individual plot for Average Reward
     fig2, ax = plt.subplots(figsize=(8, 6))
-    ax.plot(df['Size_Percent'], df['Avg_Reward'], 's-', linewidth=2.5, markersize=10, color='#A23B72')
-    ax.fill_between(df['Size_Percent'], df['Avg_Reward'], alpha=0.3, color='#A23B72')
+    ax.plot(df['Percentage_Increase'], df['Avg_Reward'], 's-', linewidth=2.5, markersize=10, color='#A23B72')
+    ax.fill_between(df['Percentage_Increase'], df['Avg_Reward'], alpha=0.3, color='#A23B72')
     ax.set_xlabel('Object Size Increase (%)', fontsize=14)
     ax.set_ylabel('Average Reward', fontsize=14)
     ax.set_title('Average Reward vs Object Size Increase', fontsize=16, fontweight='bold')
@@ -564,24 +566,44 @@ try:
     y_range = y_max - y_min
     ax.set_ylim([y_min - 0.1*y_range, y_max + 0.1*y_range])
     
-    for x, y in zip(df['Size_Percent'], df['Avg_Reward']):
+    for x, y in zip(df['Percentage_Increase'], df['Avg_Reward']):
         ax.annotate(f'{y:.2f}', (x, y), textcoords="offset points", xytext=(0,8), ha='center', fontsize=11, fontweight='bold')
     
     plt.tight_layout()
     plt.savefig('avg_reward_vs_size.png', dpi=150, bbox_inches='tight')
     print("✅ Average reward plot saved to 'avg_reward_vs_size.png'")
     
-    # Print summary statistics
-    print("\n📊 Summary Statistics:")
-    print("="*40)
-    print(f"Original (0%) Success Rate: {df.loc[df['Size_Percent']==0, 'Success_Rate'].values[0]:.1f}%")
-    print(f"25% Increase Success Rate: {df.loc[df['Size_Percent']==25, 'Success_Rate'].values[0]:.1f}%")
-    print(f"Success Rate Drop: {df.loc[df['Size_Percent']==0, 'Success_Rate'].values[0] - df.loc[df['Size_Percent']==25, 'Success_Rate'].values[0]:.1f}%")
-    print("-"*40)
-    print(f"Original (0%) Avg Reward: {df.loc[df['Size_Percent']==0, 'Avg_Reward'].values[0]:.2f}")
-    print(f"25% Increase Avg Reward: {df.loc[df['Size_Percent']==25, 'Avg_Reward'].values[0]:.2f}")
-    print(f"Reward Drop: {df.loc[df['Size_Percent']==0, 'Avg_Reward'].values[0] - df.loc[df['Size_Percent']==25, 'Avg_Reward'].values[0]:.2f}")
-    print("="*40)
+    # # Print summary statistics
+    # print("\n📊 Summary Statistics:")
+    # print("="*40)
+    # print(f"Original (0%) Success Rate: {df.loc[df['Percentage_Increase']==0, 'Success_Rate'].values[0]:.1f}%")
+    # print(f"25% Increase Success Rate: {df.loc[df['Percentage_Increase']==25, 'Success_Rate'].values[0]:.1f}%")
+    # print(f"Success Rate Drop: {df.loc[df['Percentage_Increase']==0, 'Success_Rate'].values[0] - df.loc[df['Percentage_Increase']==25, 'Success_Rate'].values[0]:.1f}%")
+    # print("-"*40)
+    # print(f"Original (0%) Avg Reward: {df.loc[df['Percentage_Increase']==0, 'Avg_Reward'].values[0]:.2f}")
+    # print(f"25% Increase Avg Reward: {df.loc[df['Percentage_Increase']==25, 'Avg_Reward'].values[0]:.2f}")
+    # print(f"Reward Drop: {df.loc[df['Percentage_Increase']==0, 'Avg_Reward'].values[0] - df.loc[df['Percentage_Increase']==25, 'Avg_Reward'].values[0]:.2f}")
+    # print("="*40)
+    # Check if there's enough data to compare (at least two points)
+    if len(df) >= 2:
+        # Find the rows with the minimum and maximum percentage increase
+        baseline_row = df.loc[df['Percentage_Increase'].idxmin()]
+        test_row = df.loc[df['Percentage_Increase'].idxmax()]
+
+        # --- Success Rate Summary ---
+        print(f"Baseline ({baseline_row['Percentage_Increase']}%) Success Rate: {baseline_row['Success_Rate']:.1f}%")
+        print(f"Test ({test_row['Percentage_Increase']}%) Success Rate: {test_row['Success_Rate']:.1f}%")
+        print(f"Success Rate Change: {test_row['Success_Rate'] - baseline_row['Success_Rate']:.1f}%")
+        print("-"*40)
+
+        # --- Average Reward Summary ---
+        print(f"Baseline ({baseline_row['Percentage_Increase']}%) Avg Reward: {baseline_row['Avg_Reward']:.2f}")
+        print(f"Test ({test_row['Percentage_Increase']}%) Avg Reward: {test_row['Avg_Reward']:.2f}")
+        print(f"Reward Change: {test_row['Avg_Reward'] - baseline_row['Avg_Reward']:.2f}")
+        print("="*40)
+    else:
+        print("Not enough data points (requires at least 2) for a summary comparison.")
+        print("="*40)
     
 except Exception as e:
     print(f"Error creating plots: {e}")
@@ -591,3 +613,263 @@ except Exception as e:
 EOF
 
 echo -e "\n✨ All done! Check the generated plots and results file."
+
+######################################################################
+######################################################################
+######################################################################
+
+# #!/bin/bash
+
+# # --- 1. CONFIGURATION ---
+# # The only things you need to change are in this section.
+
+# # Path to the trained model's directory and the checkpoint file
+# RUN_DIR="./artifacts/Robosuite-v0-MR-ST-MR-MT_ModuMorph_1409-run:v4"
+# CHECKPOINT="checkpoint_400.pt"
+
+# # The specific SEEN morphology you want to test this generalization on
+# MORPH="Kinova3"
+
+# # The CUSTOM task variant you want to test (e.g., LiftScalableCube, LiftBall)
+# # This will be the environment that is physically simulated.
+# TASK="LiftCylinder"  # Fixed typo: was "LifyCylinder"
+
+# # The BASE task from which the learned skill/embedding should be drawn
+# BASE_TASK="Lift"
+
+# # Controller used for this robot-task pair
+# CONTROLLER="OSC_POSE"
+
+# # The seed used for training, to ensure evaluation is reproducible
+# SEED=1409
+
+# # Number of episodes to run for each scaling factor
+# EPISODES=1
+
+# # Directory to save videos (optional, can be left empty)
+# VIDEO_DIR="./analysis_results/geom_generalization_videos/"
+
+# # --- END OF CONFIGURATION ---
+
+
+# # --- 2. SCRIPT LOGIC (No changes needed below this line) ---
+
+# # Create a unique results file based on the config
+# RESULTS_FILE="results_${MORPH}_${TASK}_seed${SEED}.csv"
+# echo "Percentage_Increase,Scale_Factor,Success_Rate,Avg_Reward" > $RESULTS_FILE
+
+# echo "======================================================"
+# echo "Object Geometry Generalization Evaluation"
+# echo "Run: $RUN_DIR"
+# echo "Task: $TASK (using $BASE_TASK knowledge)"
+# echo "Morph: $MORPH"
+# echo "Seed: $SEED"
+# echo "Results will be saved to: $RESULTS_FILE"
+# echo "======================================================"
+
+# # Define the percentage increases you want to test
+# PERCENT_INCREASES=(0 20 40 50 90 100 120 140 150 200)
+
+# # Function to extract values from the Python script's final summary
+# extract_values() {
+#     local output="$1"
+    
+#     echo "DEBUG: Full output from Python script:"
+#     echo "$output"
+#     echo "END DEBUG OUTPUT"
+    
+#     # Extract success rate: "Success Rate: 60.0%"
+#     local success_rate=$(echo "$output" | grep -oP 'Success Rate:\s*\K[0-9.]+')
+    
+#     # Extract average reward: "Avg. Reward: 255.36 ± 111.54" or "Avg. Reward: 255.36"
+#     local avg_reward=$(echo "$output" | grep -oP 'Avg. Reward:\s*\K[0-9.]+(\.[0-9]+)?')
+    
+#     # Default to 0.0 if not found
+#     success_rate=${success_rate:-0.0}
+#     avg_reward=${avg_reward:-0.0}
+    
+#     echo "Extracted: Success Rate=$success_rate, Avg Reward=$avg_reward" >&2
+#     echo "$success_rate,$avg_reward"
+# }
+
+# # Loop over each percentage increase
+# for percent in "${PERCENT_INCREASES[@]}"; do
+#     # Convert percentage to a scale factor (e.g., 20% -> 1.2)
+#     scale=$(printf "%.2f" $(echo "1 + $percent / 100" | bc -l))
+    
+#     echo -e "\n📊 Testing with ${percent}% size increase (scale factor: ${scale})..."
+    
+#     # Construct the command
+#     CMD="python tools/obj_geom_seeded.py \
+#       --run_dir $RUN_DIR \
+#       --checkpoint $CHECKPOINT \
+#       --morph $MORPH \
+#       --task $TASK \
+#       --base_task $BASE_TASK \
+#       --controller $CONTROLLER \
+#       --episodes $EPISODES \
+#       --save_video $VIDEO_DIR \
+#       --scale $scale \
+#       --seed $SEED"
+
+#     echo "Running command: $CMD"
+    
+#     # Execute the command and capture output
+#     output=$($CMD 2>&1)
+#     exit_code=$?
+    
+#     if [ $exit_code -ne 0 ]; then
+#         echo "❌ Command failed with exit code $exit_code"
+#         echo "Output: $output"
+#         # Still save zeros to maintain CSV structure
+#         echo "$percent,$scale,0.0,0.0" >> $RESULTS_FILE
+#         continue
+#     fi
+
+#     # Extract results from the output
+#     values=$(extract_values "$output")
+#     success_rate=$(echo $values | cut -d',' -f1)
+#     avg_reward=$(echo $values | cut -d',' -f2)
+    
+#     # Save to CSV
+#     echo "$percent,$scale,$success_rate,$avg_reward" >> $RESULTS_FILE
+    
+#     echo "✅ ${percent}% - Success Rate: ${success_rate}%, Avg Reward: ${avg_reward}"
+# done
+
+# echo -e "\n======================================================"
+# echo "Evaluation Complete! Results saved to $RESULTS_FILE"
+# echo "======================================================"
+
+# # Display the collected data
+# echo -e "\nCollected Data:"
+# cat $RESULTS_FILE
+
+# # Create plots using embedded Python script
+# echo -e "\n📈 Generating plots..."
+# python3 << EOF
+# import matplotlib.pyplot as plt
+# import pandas as pd
+# import numpy as np
+# import os
+
+# # Read the results - use the actual results file created by this script
+# results_file = '$RESULTS_FILE'
+# try:
+#     df = pd.read_csv(results_file)
+    
+#     print(f"\nData loaded successfully from {results_file}:")
+#     print(df)
+    
+#     # Create figure with two subplots
+#     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    
+#     # Plot 1: Success Rate vs Size Increase
+#     ax1.plot(df['Percentage_Increase'], df['Success_Rate'], 'o-', linewidth=2, markersize=8, color='#2E86AB')
+#     ax1.set_xlabel('Object Size Increase (%)', fontsize=12)
+#     ax1.set_ylabel('Success Rate (%)', fontsize=12)
+#     ax1.set_title('Success Rate vs Object Size Increase', fontsize=14, fontweight='bold')
+#     ax1.grid(True, alpha=0.3)
+#     ax1.set_ylim([max(0, df['Success_Rate'].min()-5), min(105, df['Success_Rate'].max()+5)])
+    
+#     # Add value labels on points
+#     for x, y in zip(df['Percentage_Increase'], df['Success_Rate']):
+#         ax1.annotate(f'{y:.1f}%', (x, y), textcoords="offset points", xytext=(0,5), ha='center', fontsize=9)
+    
+#     # Plot 2: Average Reward vs Size Increase
+#     ax2.plot(df['Percentage_Increase'], df['Avg_Reward'], 's-', linewidth=2, markersize=8, color='#A23B72')
+#     ax2.set_xlabel('Object Size Increase (%)', fontsize=12)
+#     ax2.set_ylabel('Average Reward', fontsize=12)
+#     ax2.set_title('Average Reward vs Object Size Increase', fontsize=14, fontweight='bold')
+#     ax2.grid(True, alpha=0.3)
+    
+#     # Add value labels on points
+#     for x, y in zip(df['Percentage_Increase'], df['Avg_Reward']):
+#         ax2.annotate(f'{y:.2f}', (x, y), textcoords="offset points", xytext=(0,5), ha='center', fontsize=9)
+    
+#     # Add a main title
+#     fig.suptitle(f'Generalization to Different Object Sizes\\nTask: $TASK, Morph: $MORPH', 
+#                  fontsize=16, fontweight='bold', y=1.02)
+    
+#     plt.tight_layout()
+    
+#     # Save the figure
+#     plot_filename = f'generalization_plots_{MORPH}_{TASK}_seed{SEED}.png'
+#     plt.savefig(plot_filename, dpi=150, bbox_inches='tight')
+#     print(f"✅ Plots saved to '{plot_filename}'")
+    
+#     # Also create individual plots for better clarity
+#     # Individual plot for Success Rate
+#     fig1, ax = plt.subplots(figsize=(8, 6))
+#     ax.plot(df['Percentage_Increase'], df['Success_Rate'], 'o-', linewidth=2.5, markersize=10, color='#2E86AB')
+#     ax.fill_between(df['Percentage_Increase'], df['Success_Rate'], alpha=0.3, color='#2E86AB')
+#     ax.set_xlabel('Object Size Increase (%)', fontsize=14)
+#     ax.set_ylabel('Success Rate (%)', fontsize=14)
+#     ax.set_title(f'Success Rate vs Object Size Increase\\n$TASK on $MORPH', fontsize=16, fontweight='bold')
+#     ax.grid(True, alpha=0.3, linestyle='--')
+#     ax.set_ylim([max(0, df['Success_Rate'].min()-5), min(105, df['Success_Rate'].max()+5)])
+    
+#     for x, y in zip(df['Percentage_Increase'], df['Success_Rate']):
+#         ax.annotate(f'{y:.1f}%', (x, y), textcoords="offset points", xytext=(0,8), ha='center', fontsize=11, fontweight='bold')
+    
+#     plt.tight_layout()
+#     success_plot_filename = f'success_rate_vs_size_{MORPH}_{TASK}_seed{SEED}.png'
+#     plt.savefig(success_plot_filename, dpi=150, bbox_inches='tight')
+#     print(f"✅ Success rate plot saved to '{success_plot_filename}'")
+    
+#     # Individual plot for Average Reward
+#     fig2, ax = plt.subplots(figsize=(8, 6))
+#     ax.plot(df['Percentage_Increase'], df['Avg_Reward'], 's-', linewidth=2.5, markersize=10, color='#A23B72')
+#     ax.fill_between(df['Percentage_Increase'], df['Avg_Reward'], alpha=0.3, color='#A23B72')
+#     ax.set_xlabel('Object Size Increase (%)', fontsize=14)
+#     ax.set_ylabel('Average Reward', fontsize=14)
+#     ax.set_title(f'Average Reward vs Object Size Increase\\n$TASK on $MORPH', fontsize=16, fontweight='bold')
+#     ax.grid(True, alpha=0.3, linestyle='--')
+    
+#     # Adjust y-axis to show the data better
+#     if df['Avg_Reward'].max() > df['Avg_Reward'].min():
+#         y_min, y_max = df['Avg_Reward'].min(), df['Avg_Reward'].max()
+#         y_range = y_max - y_min
+#         ax.set_ylim([y_min - 0.1*y_range, y_max + 0.1*y_range])
+    
+#     for x, y in zip(df['Percentage_Increase'], df['Avg_Reward']):
+#         ax.annotate(f'{y:.2f}', (x, y), textcoords="offset points", xytext=(0,8), ha='center', fontsize=11, fontweight='bold')
+    
+#     plt.tight_layout()
+#     reward_plot_filename = f'avg_reward_vs_size_{MORPH}_{TASK}_seed{SEED}.png'
+#     plt.savefig(reward_plot_filename, dpi=150, bbox_inches='tight')
+#     print(f"✅ Average reward plot saved to '{reward_plot_filename}'")
+    
+#     # Print summary statistics if we have valid data
+#     if len(df) > 0 and df['Success_Rate'].max() > 0:
+#         print("\n📊 Summary Statistics:")
+#         print("="*40)
+#         original_success = df.loc[df['Percentage_Increase']==0, 'Success_Rate'].values
+#         original_reward = df.loc[df['Percentage_Increase']==0, 'Avg_Reward'].values
+        
+#         if len(original_success) > 0:
+#             print(f"Original (0%) Success Rate: {original_success[0]:.1f}%")
+#             print(f"Original (0%) Avg Reward: {original_reward[0]:.2f}")
+            
+#             # Find max degradation
+#             max_success = df['Success_Rate'].max()
+#             min_success = df['Success_Rate'].min()
+#             print(f"Max Success Rate: {max_success:.1f}%")
+#             print(f"Min Success Rate: {min_success:.1f}%")
+#             print(f"Performance Drop: {max_success - min_success:.1f}%")
+        
+#         print("="*40)
+#     else:
+#         print("\n⚠️  No successful episodes found. Check if:")
+#         print("   1. The model checkpoint exists and is valid")
+#         print("   2. The Python script 'tools/obj_geom_seeded.py' exists")
+#         print("   3. The task name '$TASK' is correct")
+#         print("   4. The morphology '$MORPH' is valid")
+    
+# except Exception as e:
+#     print(f"Error creating plots: {e}")
+#     import traceback
+#     traceback.print_exc()
+# EOF
+
+# echo -e "\n✨ All done! Check the generated plots and results file."

@@ -39,11 +39,22 @@ import numpy as np
 
 class LiftBall(Lift):
     """Lift task with a ball object"""
-    def __init__(self, sphere_scale=1.0, **kwargs):
+    def __init__(self, ball_friction=None, ball_density=None, sphere_scale=1.0, **kwargs):
+        self.ball_friction = ball_friction
+        self.ball_density = ball_density
+        
+        if cfg.ROBOSUITE.OBJECTS.SPHERE_DENSITY:
+            self.ball_density = cfg.ROBOSUITE.OBJECTS.SPHERE_DENSITY
+            print(f"[LiftBall] Using sphere with custom density: {self.ball_density}")
+        if cfg.ROBOSUITE.OBJECTS.SPHERE_FRICTION:
+            self.ball_friction = cfg.ROBOSUITE.OBJECTS.SPHERE_FRICTION
+            print(f"[LiftBall] Using sphere with custom friction: {self.ball_friction}")
+
         self.sphere_scale = cfg.ROBOSUITE.OBJECTS.SPHERE_SCALE 
-        if self.sphere_scale !=1.0:
+        if self.sphere_scale != 1.0:
             print(f"[LiftBall] Using sphere scale: {self.sphere_scale}")
         super().__init__(**kwargs)
+
     def _load_model(self):
         super(Lift, self)._load_model()
         
@@ -56,8 +67,17 @@ class LiftBall(Lift):
             table_offset=self.table_offset,
         )
         mujoco_arena.set_origin([0, 0, 0])
-
-        self.ball = BallObject(name="ball", size=[0.02*self.sphere_scale], rgba=[0.5, 0.3, 0.7, 1])
+        
+        ball_kwargs = {
+            "name": "ball",
+            "size": [0.02 * self.sphere_scale],
+            "rgba": [0.5, 0.3, 0.7, 1]
+        }
+        if self.ball_friction is not None:
+            ball_kwargs["friction"] = self.ball_friction
+        if self.ball_density is not None:
+            ball_kwargs["density"] = self.ball_density
+        self.ball = BallObject(**ball_kwargs)
 
         self.placement_initializer = UniformRandomSampler(
             name="ObjectSampler", mujoco_objects=self.ball,
@@ -112,7 +132,8 @@ class LiftBall(Lift):
     def _check_success(self):
         ball_height = self.sim.data.body_xpos[self.ball_body_id][2]
         table_height = self.model.mujoco_arena.table_offset[2]
-        return ball_height > table_height + 0.04
+        scaled_threshold = self.sphere_scale * 0.04
+        return ball_height > table_height + scaled_threshold
 
     def reward(self, action=None):
         reward = 0.0
@@ -134,14 +155,23 @@ class LiftBall(Lift):
 
 
 class LiftScalableCube(Lift):
-    def __init__(self, cube_scale=1.0, **kwargs):
+    def __init__(self, cube_friction=None, cube_density=None, cube_scale=1.0, **kwargs):
+        self.cube_friction = cube_friction
+        self.cube_density = cube_density
+
+        if cfg.ROBOSUITE.OBJECTS.CUBE_FRICTION:
+            self.cube_friction = cfg.ROBOSUITE.OBJECTS.CUBE_FRICTION
+            print(f"[LiftScalableCube] Using cube with custom friction: {self.cube_friction}")
+        if cfg.ROBOSUITE.OBJECTS.CUBE_DENSITY:
+            self.cube_density = cfg.ROBOSUITE.OBJECTS.CUBE_DENSITY
+            print(f"[LiftScalableCube] Using cube with custom density: {self.cube_density}")
+
         self.cube_scale = cfg.ROBOSUITE.OBJECTS.CUBE_SCALE 
-        if self.cube_scale !=1.0:
+        if self.cube_scale != 1.0:
             print(f"[LiftScalableCube] Using cube scale: {self.cube_scale}")
         super().__init__(**kwargs)
     
     def _load_model(self):
-        # Copy the entire _load_model from Lift, but modify the cube creation
         super(Lift, self)._load_model()
         
         xpos = self.robots[0].robot_model.base_xpos_offset["table"](self.table_full_size[0])
@@ -154,17 +184,20 @@ class LiftScalableCube(Lift):
         )
         mujoco_arena.set_origin([0, 0, 0])
 
-        # ONLY THIS PART CHANGES - scaled cube instead of default
         base_size = [0.02, 0.02, 0.02] 
         scaled_size = [s * self.cube_scale for s in base_size]
         
-        self.cube = BoxObject(
-            name="cube",
-            size=scaled_size,
-            rgba=[1, 0, 0, 1]
-        )
+        cube_kwargs = {
+            "name": "cube",
+            "size": scaled_size,
+            "rgba": [1, 0, 0, 1]
+        }
+        if self.cube_friction is not None:
+            cube_kwargs["friction"] = self.cube_friction
+        if self.cube_density is not None:
+            cube_kwargs["density"] = self.cube_density
+        self.cube = BoxObject(**cube_kwargs)
 
-        # Rest is identical to original Lift
         self.placement_initializer = UniformRandomSampler(
             name="ObjectSampler", mujoco_objects=self.cube,
             x_range=[-0.03, 0.03], y_range=[-0.03, 0.03],
@@ -178,9 +211,24 @@ class LiftScalableCube(Lift):
             mujoco_robots=[robot.robot_model for robot in self.robots],
             mujoco_objects=self.cube,
         ) 
+    def _check_success(self):
+        cylinder_height = self.sim.data.body_xpos[self.cylinder_body_id][2]
+        table_height = self.model.mujoco_arena.table_offset[2]
+        scaled_threshold = self.cube_scale * 0.04
+        return cylinder_height > table_height + scaled_threshold
 
 class LiftCylinder(Lift):
-    def __init__(self, cylinder_scale=1.0, **kwargs):
+    def __init__(self, cylinder_friction=None, cylinder_density=None, cylinder_scale=1.0, **kwargs):
+        self.cylinder_friction = cylinder_friction
+        self.cylinder_density = cylinder_density
+
+        if cfg.ROBOSUITE.OBJECTS.CYLINDER_FRICTION:
+            self.cylinder_friction = cfg.ROBOSUITE.OBJECTS.CYLINDER_FRICTION
+            print(f"[LiftCylinder] Using cylinder with custom friction: {self.cylinder_friction}")
+        if cfg.ROBOSUITE.OBJECTS.CYLINDER_DENSITY:
+            self.cylinder_density = cfg.ROBOSUITE.OBJECTS.CYLINDER_DENSITY
+            print(f"[LiftCylinder] Using cylinder with custom density: {self.cylinder_density}")
+
         self.cylinder_scale = cfg.ROBOSUITE.OBJECTS.CYLINDER_SCALE
         if self.cylinder_scale != 1.0:
             print(f"[LiftCylinder] Using cylinder scale: {self.cylinder_scale}")
@@ -199,11 +247,16 @@ class LiftCylinder(Lift):
         )
         mujoco_arena.set_origin([0, 0, 0])
         
-        self.cylinder = CylinderObject(
-            name="cylinder", 
-            size=[0.02*self.cylinder_scale, 0.03*self.cylinder_scale], # [radius, height]
-            rgba=[0.3, 0.7, 0.5, 1]
-        )
+        cylinder_kwargs = {
+            "name": "cylinder",
+            "size": [0.02 * self.cylinder_scale, 0.03 * self.cylinder_scale],
+            "rgba": [0.3, 0.7, 0.5, 1]
+        }
+        if self.cylinder_friction is not None:
+            cylinder_kwargs["friction"] = self.cylinder_friction
+        if self.cylinder_density is not None:
+            cylinder_kwargs["density"] = self.cylinder_density
+        self.cylinder = CylinderObject(**cylinder_kwargs)
 
         self.placement_initializer = UniformRandomSampler(
             name="ObjectSampler", mujoco_objects=self.cylinder,
@@ -258,7 +311,9 @@ class LiftCylinder(Lift):
     def _check_success(self):
         cylinder_height = self.sim.data.body_xpos[self.cylinder_body_id][2]
         table_height = self.model.mujoco_arena.table_offset[2]
-        return cylinder_height > table_height + 0.04
+        scaled_threshold = self.cylinder_scale * 0.04
+        return cylinder_height > table_height + scaled_threshold
+        
 
     def reward(self, action=None):
         reward = 0.0
@@ -278,7 +333,17 @@ class LiftCylinder(Lift):
         return reward
 
 class LiftRectangle(Lift):
-    def __init__(self, rect_scale=1.0, **kwargs):
+    def __init__(self, rect_friction=None, rect_density=None, rect_scale=1.0, **kwargs):
+        self.rect_friction = rect_friction
+        self.rect_density = rect_density
+
+        if cfg.ROBOSUITE.OBJECTS.RECT_FRICTION:
+            self.rect_friction = cfg.ROBOSUITE.OBJECTS.RECT_FRICTION
+            print(f"[LiftRectangle] Using rectangle with custom friction: {self.rect_friction}")
+        if cfg.ROBOSUITE.OBJECTS.RECT_DENSITY:
+            self.rect_density = cfg.ROBOSUITE.OBJECTS.RECT_DENSITY
+            print(f"[LiftRectangle] Using rectangle with custom density: {self.rect_density}")
+
         self.rect_scale = cfg.ROBOSUITE.OBJECTS.RECT_SCALE
         super().__init__(**kwargs)
     
@@ -295,11 +360,16 @@ class LiftRectangle(Lift):
         )
         mujoco_arena.set_origin([0, 0, 0])
         
-        self.rectangle = BoxObject(
-            name="rectangle",
-            size=[0.01*self.rect_scale, 0.03*self.rect_scale, 0.02*self.rect_scale], # [x, y, z]
-            rgba=[0.7, 0.5, 0.3, 1]
-        )
+        rect_kwargs = {
+            "name": "rectangle",
+            "size": [0.01 * self.rect_scale, 0.03 * self.rect_scale, 0.02 * self.rect_scale],
+            "rgba": [0.7, 0.5, 0.3, 1]
+        }
+        if self.rect_friction is not None:
+            rect_kwargs["friction"] = self.rect_friction
+        if self.rect_density is not None:
+            rect_kwargs["density"] = self.rect_density
+        self.rectangle = BoxObject(**rect_kwargs)
 
         self.placement_initializer = UniformRandomSampler(
             name="ObjectSampler", mujoco_objects=self.rectangle,
@@ -352,9 +422,11 @@ class LiftRectangle(Lift):
         return observables
 
     def _check_success(self):
+        
         rectangle_height = self.sim.data.body_xpos[self.rectangle_body_id][2]
         table_height = self.model.mujoco_arena.table_offset[2]
-        return rectangle_height > table_height + 0.04
+        scaled_threshold = self.rect_scale *  0.04
+        return rectangle_height > table_height + scaled_threshold
 
     def reward(self, action=None):
         reward = 0.0
@@ -2602,198 +2674,206 @@ class RobosuiteSampleWrapper(gym.Wrapper):
         return [seed] # Return the list of seeds set (standard Gym convention)
 
 
-# if __name__ == '__main__':
-#     import numpy as np
+if __name__ == '__main__':
+    import numpy as np
     
-#     print("======================================================")
-#     print("====== Running Multi-Task Test for All Tasks ======")
-#     print("======================================================")
+    print("======================================================")
+    print("====== Running Multi-Task Test for All Tasks ======")
+    print("======================================================")
 
-#     # 1. Import and modify the existing global cfg object for the test
-#     from metamorph.config import cfg
+    # 1. Import and modify the existing global cfg object for the test
+    from metamorph.config import cfg
     
-#     # Set the necessary attributes on the global cfg object
-#     cfg.MODEL.MAX_LIMBS = 11
-#     cfg.MODEL.MAX_JOINTS = 10
-#     cfg.MODEL.TASK_EMBED_DIM = 16
-#     cfg.MODEL.TRANSFORMER.DECODER_OUT_DIM = 6
-#     cfg.ROBOSUITE.ENV_NAMES = ["Lift", "LiftBall","LiftScalableCube","LiftCylinder", "LiftRectangle", "Door", "Wipe", "PickPlaceCan", "PickPlaceMilk", "PickPlaceBread", "PickPlaceCereal"]
-#     cfg.ROBOSUITE.GRIPPER_DIM = 1
-#     cfg.ROBOSUITE.MAX_OBJECT_STATE_DIM = 40
-#     cfg.MODEL.ADD_OBJECT_NODE = True
-#     cfg.MODEL.OBJECT_POSE_IN_CONTEXT = True  # CRUCIAL: Set this to True
-#     cfg.ROBOSUITE.OBJECTS.CUBE_SCALE = 2.0
-#     cfg.ROBOSUITE.OBJECTS.SPHERE_SCALE = 2.0
-#     cfg.ROBOSUITE.OBJECTS.CYLINDER_SCALE = 2.0
-#     cfg.ROBOSUITE.OBJECTS.RECT_SCALE = 2.0
+    # Set the necessary attributes on the global cfg object
+    cfg.MODEL.MAX_LIMBS = 11
+    cfg.MODEL.MAX_JOINTS = 10
+    cfg.MODEL.TASK_EMBED_DIM = 16
+    cfg.MODEL.TRANSFORMER.DECODER_OUT_DIM = 6
+    cfg.ROBOSUITE.ENV_NAMES = ["Lift", "LiftBall","LiftScalableCube","LiftCylinder", "LiftRectangle", "Door", "Wipe", "PickPlaceCan", "PickPlaceMilk", "PickPlaceBread", "PickPlaceCereal"]
+    cfg.ROBOSUITE.GRIPPER_DIM = 1
+    cfg.ROBOSUITE.MAX_OBJECT_STATE_DIM = 40
+    cfg.MODEL.ADD_OBJECT_NODE = True
+    cfg.MODEL.OBJECT_POSE_IN_CONTEXT = True  # CRUCIAL: Set this to True
+    cfg.ROBOSUITE.OBJECTS.CUBE_SCALE = 2.0 # FOR CUSTOM ENV
+    cfg.ROBOSUITE.OBJECTS.CUBE_FRICTION = (0.6, 0.005, 0.0001)
+    cfg.ROBOSUITE.OBJECTS.CUBE_DENSITY = 1000
+    cfg.ROBOSUITE.OBJECTS.SPHERE_SCALE = 2.0
+    cfg.ROBOSUITE.OBJECTS.SPHERE_FRICTION = (0.6, 0.005, 0.0001)
+    cfg.ROBOSUITE.OBJECTS.SPHERE_DENSITY = 1000
+    cfg.ROBOSUITE.OBJECTS.CYLINDER_SCALE = 2.0
+    cfg.ROBOSUITE.OBJECTS.CYLINDER_FRICTION = (0.6, 0.005, 0.0001)
+    cfg.ROBOSUITE.OBJECTS.CYLINDER_DENSITY = 1000
+    cfg.ROBOSUITE.OBJECTS.RECT_SCALE = 2.0
+    cfg.ROBOSUITE.OBJECTS.RECT_FRICTION = (0.6, 0.005, 0.0001) 
+    cfg.ROBOSUITE.OBJECTS.RECT_DENSITY = 1000
     
-#     print("\n[Step 1] Global config object modified for test.")
+    print("\n[Step 1] Global config object modified for test.")
 
-#     # 2. Define the tasks to test - NOW INCLUDING ALL TASKS
-#     tasks_to_test = ["Lift", "LiftBall","LiftScalableCube", "LiftCylinder", "LiftRectangle", "Door", "Wipe", "PickPlaceCan", "PickPlaceMilk", "PickPlaceBread", "PickPlaceCereal"]
+    # 2. Define the tasks to test - NOW INCLUDING ALL TASKS
+    tasks_to_test = ["Lift", "LiftBall","LiftScalableCube", "LiftCylinder", "LiftRectangle", "Door", "Wipe", "PickPlaceCan", "PickPlaceMilk", "PickPlaceBread", "PickPlaceCereal"]
     
-#     # Define expected features for each task
-#     task_features = {
-#         'Lift': ['target_pos', 'target_quat', 'eef_to_target_pos'],
-#         'LiftScalableCube': ['target_pos', 'target_quat', 'eef_to_target_pos'],
-#         'LiftBall': ['target_pos', 'target_quat', 'eef_to_target_pos'],
-#         'LiftCylinder': ['target_pos', 'target_quat', 'eef_to_target_pos'],
-#         'LiftRectangle': ['target_pos', 'target_quat', 'eef_to_target_pos'],
-#         'Door': ['target_pos', 'eef_to_target_pos', 'hinge_qpos', 'handle_qpos', 'secondary_target_pos', 'door_to_eef_pos'],
-#         'Wipe': ['target_pos', 'eef_to_target_pos', 'wipe_radius', 'proportion_wiped'],
-#         'PickPlaceCan': ['target_pos', 'target_quat', 'eef_to_target_pos', 'eef_to_target_quat'],
-#         'PickPlaceMilk':  ['target_pos', 'target_quat', 'eef_to_target_pos', 'eef_to_target_quat'],
-#         'PickPlaceBread': ['target_pos', 'target_quat', 'eef_to_target_pos', 'eef_to_target_quat'],
-#         'PickPlaceCereal': ['target_pos', 'target_quat', 'eef_to_target_pos', 'eef_to_target_quat']
-#     }
+    # Define expected features for each task
+    task_features = {
+        'Lift': ['target_pos', 'target_quat', 'eef_to_target_pos'],
+        'LiftScalableCube': ['target_pos', 'target_quat', 'eef_to_target_pos'],
+        'LiftBall': ['target_pos', 'target_quat', 'eef_to_target_pos'],
+        'LiftCylinder': ['target_pos', 'target_quat', 'eef_to_target_pos'],
+        'LiftRectangle': ['target_pos', 'target_quat', 'eef_to_target_pos'],
+        'Door': ['target_pos', 'eef_to_target_pos', 'hinge_qpos', 'handle_qpos', 'secondary_target_pos', 'door_to_eef_pos'],
+        'Wipe': ['target_pos', 'eef_to_target_pos', 'wipe_radius', 'proportion_wiped'],
+        'PickPlaceCan': ['target_pos', 'target_quat', 'eef_to_target_pos', 'eef_to_target_quat'],
+        'PickPlaceMilk':  ['target_pos', 'target_quat', 'eef_to_target_pos', 'eef_to_target_quat'],
+        'PickPlaceBread': ['target_pos', 'target_quat', 'eef_to_target_pos', 'eef_to_target_quat'],
+        'PickPlaceCereal': ['target_pos', 'target_quat', 'eef_to_target_pos', 'eef_to_target_quat']
+    }
 
-#     results = {}
+    results = {}
 
-#     for task_name in tasks_to_test:
-#         print(f"\n{'='*60}")
-#         print(f"Testing Task: {task_name}")
-#         print(f"{'='*60}")
+    for task_name in tasks_to_test:
+        print(f"\n{'='*60}")
+        print(f"Testing Task: {task_name}")
+        print(f"{'='*60}")
         
-#         try:
-#             # 3. Create base environment for current task
-#             import robosuite
-#             from robosuite.controllers import load_controller_config
+        try:
+            # 3. Create base environment for current task
+            import robosuite
+            from robosuite.controllers import load_controller_config
 
-#             base_env = robosuite.make(
-#                 env_name=task_name,
-#                 robots="Panda",
-#                 controller_configs=load_controller_config(default_controller="OSC_POSE"),
-#                 has_renderer=False,
-#                 has_offscreen_renderer=False,
-#                 use_camera_obs=False,
-#                 horizon=100,
-#             )
-#             print(f"[Step 2] Base '{task_name}' environment created.")
-#         except Exception as e:
-#             print(f"\n[ERROR] Failed to create {task_name} environment: {e}")
-#             results[task_name] = "FAILED - Environment creation"
-#             continue
+            base_env = robosuite.make(
+                env_name=task_name,
+                robots="Panda",
+                controller_configs=load_controller_config(default_controller="OSC_POSE"),
+                has_renderer=False,
+                has_offscreen_renderer=False,
+                use_camera_obs=False,
+                horizon=100,
+            )
+            print(f"[Step 2] Base '{task_name}' environment created.")
+        except Exception as e:
+            print(f"\n[ERROR] Failed to create {task_name} environment: {e}")
+            results[task_name] = "FAILED - Environment creation"
+            continue
 
-#         # 4. Inspect raw observation
-#         print(f"\n[Step 2.5] Inspecting raw observation for {task_name}...")
-#         raw_obs_dict = base_env.reset()
+        # 4. Inspect raw observation
+        print(f"\n[Step 2.5] Inspecting raw observation for {task_name}...")
+        raw_obs_dict = base_env.reset()
         
-#         # Show some raw keys for debugging
-#         print(f"Raw obs keys for {task_name}: {list(raw_obs_dict.keys())}")
+        # Show some raw keys for debugging
+        print(f"Raw obs keys for {task_name}: {list(raw_obs_dict.keys())}")
         
-#         # Show relevant raw values for debugging
-#         if task_name == 'Lift' or task_name == 'LiftScalableCube':
-#             print(f"  cube_pos: {raw_obs_dict.get('cube_pos', 'NOT FOUND')}")
-#             print(f"  gripper_to_cube_pos: {raw_obs_dict.get('gripper_to_cube_pos', 'NOT FOUND')}")
-#         elif task_name == 'LiftBall':
-#             print(f"  ball_pos: {raw_obs_dict.get('ball_pos', 'NOT FOUND')}")
-#             print(f"  gripper_to_ball_pos: {raw_obs_dict.get('gripper_to_ball_pos', 'NOT FOUND')}")
-#         elif task_name == 'Door':
-#             print(f"  handle_pos: {raw_obs_dict.get('handle_pos', 'NOT FOUND')}")
-#             print(f"  hinge_qpos: {raw_obs_dict.get('hinge_qpos', 'NOT FOUND')} (type: {type(raw_obs_dict.get('hinge_qpos'))})")
+        # Show relevant raw values for debugging
+        if task_name == 'Lift' or task_name == 'LiftScalableCube':
+            print(f"  cube_pos: {raw_obs_dict.get('cube_pos', 'NOT FOUND')}")
+            print(f"  gripper_to_cube_pos: {raw_obs_dict.get('gripper_to_cube_pos', 'NOT FOUND')}")
+        elif task_name == 'LiftBall':
+            print(f"  ball_pos: {raw_obs_dict.get('ball_pos', 'NOT FOUND')}")
+            print(f"  gripper_to_ball_pos: {raw_obs_dict.get('gripper_to_ball_pos', 'NOT FOUND')}")
+        elif task_name == 'Door':
+            print(f"  handle_pos: {raw_obs_dict.get('handle_pos', 'NOT FOUND')}")
+            print(f"  hinge_qpos: {raw_obs_dict.get('hinge_qpos', 'NOT FOUND')} (type: {type(raw_obs_dict.get('hinge_qpos'))})")
         
-#         # 5. Wrap environment
-#         try:
-#             env = RobosuiteEnvWrapper(
-#                 env_name=task_name,
-#                 robot_names="Panda", 
-#                 controller_names="OSC_POSE", 
-#                 horizon=100
-#             )
-#             wrapped_env = RobosuiteNodeCentricObservation(env)
-#             print(f"[Step 3] {task_name} environment wrapped with RobosuiteNodeCentricObservation.")
-#         except Exception as e:
-#             print(f"\n[ERROR] Failed to wrap {task_name} environment: {e}")
-#             results[task_name] = "FAILED - Wrapper creation"
-#             continue
+        # 5. Wrap environment
+        try:
+            env = RobosuiteEnvWrapper(
+                env_name=task_name,
+                robot_names="Panda", 
+                controller_names="OSC_POSE", 
+                horizon=100
+            )
+            wrapped_env = RobosuiteNodeCentricObservation(env)
+            print(f"[Step 3] {task_name} environment wrapped with RobosuiteNodeCentricObservation.")
+        except Exception as e:
+            print(f"\n[ERROR] Failed to wrap {task_name} environment: {e}")
+            results[task_name] = "FAILED - Wrapper creation"
+            continue
 
-#         # 6. Reset and get observation
-#         try:
-#             obs = wrapped_env.reset()
-#             print(f"[Step 4] {task_name} environment reset and observation obtained.")
-#         except Exception as e:
-#             print(f"\n[ERROR] Failed to reset {task_name}: {e}")
-#             results[task_name] = "FAILED - Environment reset"
-#             continue
+        # 6. Reset and get observation
+        try:
+            obs = wrapped_env.reset()
+            print(f"[Step 4] {task_name} environment reset and observation obtained.")
+        except Exception as e:
+            print(f"\n[ERROR] Failed to reset {task_name}: {e}")
+            results[task_name] = "FAILED - Environment reset"
+            continue
 
-#         # 7. Run verification checks
-#         print(f"\n[Step 5] Running verification checks for {task_name}...")
-#         task_passed = True
+        # 7. Run verification checks
+        print(f"\n[Step 5] Running verification checks for {task_name}...")
+        task_passed = True
         
-#         # Check essential keys
-#         expected_keys = ['proprioceptive', 'context', 'object-state']
-#         for key in expected_keys:
-#             if key not in obs:
-#                 print(f"  ❌ FAILED: Key '{key}' is missing from the observation.")
-#                 task_passed = False
+        # Check essential keys
+        expected_keys = ['proprioceptive', 'context', 'object-state']
+        for key in expected_keys:
+            if key not in obs:
+                print(f"  ❌ FAILED: Key '{key}' is missing from the observation.")
+                task_passed = False
         
-#         if task_passed:
-#             print(f"  ✅ Check 1/3: All essential keys present for {task_name}.")
+        if task_passed:
+            print(f"  ✅ Check 1/3: All essential keys present for {task_name}.")
 
-#         # Check proprioceptive shape
-#         expected_prop_shape = (cfg.MODEL.MAX_LIMBS * wrapped_env.limb_obs_size,)
-#         if obs['proprioceptive'].shape != expected_prop_shape:
-#             print(f"  ❌ FAILED: Proprioceptive shape is {obs['proprioceptive'].shape}, expected {expected_prop_shape}.")
-#             task_passed = False
-#         else:
-#             print(f"  ✅ Check 2/3: Proprioceptive shape correct for {task_name}.")
+        # Check proprioceptive shape
+        expected_prop_shape = (cfg.MODEL.MAX_LIMBS * wrapped_env.limb_obs_size,)
+        if obs['proprioceptive'].shape != expected_prop_shape:
+            print(f"  ❌ FAILED: Proprioceptive shape is {obs['proprioceptive'].shape}, expected {expected_prop_shape}.")
+            task_passed = False
+        else:
+            print(f"  ✅ Check 2/3: Proprioceptive shape correct for {task_name}.")
 
-#         # Check object node features
-#         prop_unflattened = obs['proprioceptive'].reshape(cfg.MODEL.MAX_LIMBS, wrapped_env.limb_obs_size)
-#         object_node_features = prop_unflattened[-1]
+        # Check object node features
+        prop_unflattened = obs['proprioceptive'].reshape(cfg.MODEL.MAX_LIMBS, wrapped_env.limb_obs_size)
+        object_node_features = prop_unflattened[-1]
 
-#         # Get feature mapping for object
-#         feature_map = {}
-#         current_idx = 0
-#         for key, dim in wrapped_env.proprio_feat_cfg['object']:
-#             feature_map[key] = slice(current_idx, current_idx + dim)
-#             current_idx += dim
+        # Get feature mapping for object
+        feature_map = {}
+        current_idx = 0
+        for key, dim in wrapped_env.proprio_feat_cfg['object']:
+            feature_map[key] = slice(current_idx, current_idx + dim)
+            current_idx += dim
         
-#         # Test task-specific features
-#         expected_features = task_features[task_name]
-#         features_passed = 0
+        # Test task-specific features
+        expected_features = task_features[task_name]
+        features_passed = 0
         
-#         print(f"\n  --- Testing {task_name}-specific features ---")
-#         print(f"  Object node features shape: {object_node_features.shape}")
-#         print(f"  Object node features (first 20): {object_node_features[:20]}")
+        print(f"\n  --- Testing {task_name}-specific features ---")
+        print(f"  Object node features shape: {object_node_features.shape}")
+        print(f"  Object node features (first 20): {object_node_features[:20]}")
         
-#         for feature_name in expected_features:
-#             if feature_name in feature_map:
-#                 feature_slice = feature_map[feature_name]
-#                 feature_values = object_node_features[feature_slice]
+        for feature_name in expected_features:
+            if feature_name in feature_map:
+                feature_slice = feature_map[feature_name]
+                feature_values = object_node_features[feature_slice]
                 
-#                 if np.any(feature_values != 0):
-#                     print(f"    ✅ {feature_name}: {np.round(feature_values, 4)} (non-zero)")
-#                     features_passed += 1
-#                 else:
-#                     print(f"    ❌ {feature_name}: All zeros!")
-#                     task_passed = False
-#             else:
-#                 print(f"    ❌ {feature_name}: Not found in feature map!")
-#                 task_passed = False
+                if np.any(feature_values != 0):
+                    print(f"    ✅ {feature_name}: {np.round(feature_values, 4)} (non-zero)")
+                    features_passed += 1
+                else:
+                    print(f"    ❌ {feature_name}: All zeros!")
+                    task_passed = False
+            else:
+                print(f"    ❌ {feature_name}: Not found in feature map!")
+                task_passed = False
         
-#         print(f"  --- {features_passed}/{len(expected_features)} features passed for {task_name} ---")
+        print(f"  --- {features_passed}/{len(expected_features)} features passed for {task_name} ---")
         
-#         if task_passed:
-#             print(f"  ✅ Check 3/3: All {task_name}-specific object features are non-zero.")
-#             results[task_name] = "PASSED"
-#         else:
-#             results[task_name] = "FAILED - Feature validation"
+        if task_passed:
+            print(f"  ✅ Check 3/3: All {task_name}-specific object features are non-zero.")
+            results[task_name] = "PASSED"
+        else:
+            results[task_name] = "FAILED - Feature validation"
 
-#         # Cleanup
-#         base_env.close()
-#         wrapped_env.close()
+        # Cleanup
+        base_env.close()
+        wrapped_env.close()
 
-#     # 8. Final summary
-#     print(f"\n{'='*60}")
-#     print("FINAL RESULTS SUMMARY")
-#     print(f"{'='*60}")
+    # 8. Final summary
+    print(f"\n{'='*60}")
+    print("FINAL RESULTS SUMMARY")
+    print(f"{'='*60}")
     
-#     for task_name, result in results.items():
-#         status_symbol = "✅" if result == "PASSED" else "❌"
-#         print(f"{status_symbol} {task_name}: {result}")
+    for task_name, result in results.items():
+        status_symbol = "✅" if result == "PASSED" else "❌"
+        print(f"{status_symbol} {task_name}: {result}")
     
-#     passed_count = sum(1 for r in results.values() if r == "PASSED")
-#     total_count = len(results)
+    passed_count = sum(1 for r in results.values() if r == "PASSED")
+    total_count = len(results)
     
-#     print(f"\nOverall: {passed_count}/{total_count} tasks passed")
+    print(f"\nOverall: {passed_count}/{total_count} tasks passed")
