@@ -1,0 +1,9 @@
+Method,Morph,Task,Percentage_Increase,Scale_Factor,Success_Rate_Mean,Success_Rate_Std,Avg_Reward_Mean,Avg_Reward_Std
+Modumorph,Jaco,LiftBall,0,1.00000000000000000000,0.00,0.00,0.07,0.05
+Modumorph,Jaco,LiftBall,20,1.20000000000000000000,0.00,0.00,0.07,0.05
+Modumorph,Jaco,LiftCylinder,0,1.00000000000000000000,0.00,0.00,0.07,0.05
+Modumorph,Jaco,LiftCylinder,20,1.20000000000000000000,0.00,0.00,0.08,0.06
+Modumorph,Kinova3,LiftBall,0,1.00000000000000000000,0.00,0.00,0.20,0.14
+Modumorph,Kinova3,LiftBall,20,1.20000000000000000000,0.00,0.00,0.21,0.15
+Modumorph,Kinova3,LiftCylinder,0,1.00000000000000000000,0.00,0.00,0.22,0.16
+Modumorph,Kinova3,LiftCylinder,20,1.20000000000000000000,0.00,0.00,0.23,0.16

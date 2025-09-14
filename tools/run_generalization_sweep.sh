@@ -383,7 +383,7 @@ CONTROLLER="OSC_POSE"
 SEED=1409
 
 # Number of episodes to run for each scaling factor
-EPISODES=3
+EPISODES=1
 
 # Directory to save videos (optional, can be left empty)
 VIDEO_DIR="./analysis_results/geom_generalization_videos/"
@@ -407,7 +407,7 @@ echo "Results will be saved to: $RESULTS_FILE"
 echo "======================================================"
 
 # Define the percentage increases you want to test
-PERCENT_INCREASES=(0 20 30 50 70 90 100 150 200)
+PERCENT_INCREASES=(0 20 30)
 
 # Function to extract values from the Python script's final summary
 extract_values() {
@@ -489,7 +489,12 @@ try:
     
     print("\nData loaded successfully:")
     print(df)
-    
+    # --- DYNAMIC AXIS LIMITS ---
+    # Calculate dynamic X limits with 5% padding to fit all data
+    x_min = df['Percentage_Increase'].min()
+    x_max = df['Percentage_Increase'].max()
+    x_padding = (x_max - x_min) * 0.05
+    dynamic_xlim = [x_min - x_padding, x_max + x_padding]
     # Create figure with two subplots
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
     
@@ -500,7 +505,7 @@ try:
     ax1.set_title('Success Rate vs Object Size Increase', fontsize=14, fontweight='bold')
     ax1.grid(True, alpha=0.3)
     ax1.set_ylim([max(0, df['Success_Rate'].min()-5), min(105, df['Success_Rate'].max()+5)])
-    ax1.set_xlim([-2, 27])
+    ax1.set_xlim(dynamic_xlim)
     
     # Add value labels on points
     for x, y in zip(df['Percentage_Increase'], df['Success_Rate']):
@@ -512,7 +517,7 @@ try:
     ax2.set_ylabel('Average Reward', fontsize=12)
     ax2.set_title('Average Reward vs Object Size Increase', fontsize=14, fontweight='bold')
     ax2.grid(True, alpha=0.3)
-    ax2.set_xlim([-2, 27])
+    ax2.set_xlim(dynamic_xlim)
     
     # Add value labels on points
     for x, y in zip(df['Percentage_Increase'], df['Avg_Reward']):
@@ -542,7 +547,7 @@ try:
     ax.set_title('Success Rate vs Object Size Increase', fontsize=16, fontweight='bold')
     ax.grid(True, alpha=0.3, linestyle='--')
     ax.set_ylim([max(0, df['Success_Rate'].min()-5), min(105, df['Success_Rate'].max()+5)])
-    ax.set_xlim([-2, 27])
+    ax.set_xlim(dynamic_xlim)
     
     for x, y in zip(df['Percentage_Increase'], df['Success_Rate']):
         ax.annotate(f'{y:.1f}%', (x, y), textcoords="offset points", xytext=(0,8), ha='center', fontsize=11, fontweight='bold')
@@ -559,7 +564,7 @@ try:
     ax.set_ylabel('Average Reward', fontsize=14)
     ax.set_title('Average Reward vs Object Size Increase', fontsize=16, fontweight='bold')
     ax.grid(True, alpha=0.3, linestyle='--')
-    ax.set_xlim([-2, 27])
+    ax.set_xlim(dynamic_xlim)
     
     # Adjust y-axis to show the data better
     y_min, y_max = df['Avg_Reward'].min(), df['Avg_Reward'].max()

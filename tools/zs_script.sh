@@ -611,7 +611,7 @@ declare -A ARTIFACT_PATHS=(
     ["object_only_seed3"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_object_only4_2008-run:v9"
 )
 
-MORPHS=("UR5e")
+MORPHS=("Jaco" "Kinova3" "IIWA" "Sawyer")
 TASKS=("Door" "Lift" "PickPlaceCan" "Wipe")
 
 # RUN EVALUATIONS

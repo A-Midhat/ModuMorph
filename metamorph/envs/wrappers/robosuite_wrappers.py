@@ -28,7 +28,9 @@ from metamorph.config import get_list_cfg
 
 import robosuite
 from robosuite.environments.manipulation.lift import Lift
-from robosuite.models.objects import BallObject, CylinderObject, BoxObject
+from robosuite.environments.manipulation.door import Door 
+from robosuite.environments.manipulation.pick_place import PickPlaceBread, PickPlaceCereal, PickPlaceMilk, PickPlaceCan
+from robosuite.models.objects import BallObject, CylinderObject, BoxObject, DoorObject
 from robosuite.models.tasks import ManipulationTask
 from robosuite.models.arenas import TableArena
 from robosuite.utils.placement_samplers import UniformRandomSampler
@@ -154,68 +156,7 @@ class LiftBall(Lift):
 
 
 
-class LiftScalableCube(Lift):
-    def __init__(self, cube_friction=None, cube_density=None, cube_scale=1.0, **kwargs):
-        self.cube_friction = cube_friction
-        self.cube_density = cube_density
 
-        if cfg.ROBOSUITE.OBJECTS.CUBE_FRICTION:
-            self.cube_friction = cfg.ROBOSUITE.OBJECTS.CUBE_FRICTION
-            print(f"[LiftScalableCube] Using cube with custom friction: {self.cube_friction}")
-        if cfg.ROBOSUITE.OBJECTS.CUBE_DENSITY:
-            self.cube_density = cfg.ROBOSUITE.OBJECTS.CUBE_DENSITY
-            print(f"[LiftScalableCube] Using cube with custom density: {self.cube_density}")
-
-        self.cube_scale = cfg.ROBOSUITE.OBJECTS.CUBE_SCALE 
-        if self.cube_scale != 1.0:
-            print(f"[LiftScalableCube] Using cube scale: {self.cube_scale}")
-        super().__init__(**kwargs)
-    
-    def _load_model(self):
-        super(Lift, self)._load_model()
-        
-        xpos = self.robots[0].robot_model.base_xpos_offset["table"](self.table_full_size[0])
-        self.robots[0].robot_model.set_base_xpos(xpos)
-
-        mujoco_arena = TableArena(
-            table_full_size=self.table_full_size,
-            table_friction=self.table_friction,
-            table_offset=self.table_offset,
-        )
-        mujoco_arena.set_origin([0, 0, 0])
-
-        base_size = [0.02, 0.02, 0.02] 
-        scaled_size = [s * self.cube_scale for s in base_size]
-        
-        cube_kwargs = {
-            "name": "cube",
-            "size": scaled_size,
-            "rgba": [1, 0, 0, 1]
-        }
-        if self.cube_friction is not None:
-            cube_kwargs["friction"] = self.cube_friction
-        if self.cube_density is not None:
-            cube_kwargs["density"] = self.cube_density
-        self.cube = BoxObject(**cube_kwargs)
-
-        self.placement_initializer = UniformRandomSampler(
-            name="ObjectSampler", mujoco_objects=self.cube,
-            x_range=[-0.03, 0.03], y_range=[-0.03, 0.03],
-            rotation=None, ensure_object_boundary_in_range=False,
-            ensure_valid_placement=True, reference_pos=self.table_offset,
-            z_offset=0.01,
-        )
-
-        self.model = ManipulationTask(
-            mujoco_arena=mujoco_arena,
-            mujoco_robots=[robot.robot_model for robot in self.robots],
-            mujoco_objects=self.cube,
-        ) 
-    def _check_success(self):
-        cylinder_height = self.sim.data.body_xpos[self.cylinder_body_id][2]
-        table_height = self.model.mujoco_arena.table_offset[2]
-        scaled_threshold = self.cube_scale * 0.04
-        return cylinder_height > table_height + scaled_threshold
 
 class LiftCylinder(Lift):
     def __init__(self, cylinder_friction=None, cylinder_density=None, cylinder_scale=1.0, **kwargs):
@@ -425,7 +366,7 @@ class LiftRectangle(Lift):
         
         rectangle_height = self.sim.data.body_xpos[self.rectangle_body_id][2]
         table_height = self.model.mujoco_arena.table_offset[2]
-        scaled_threshold = self.rect_scale *  0.04
+        scaled_threshold = self.rect_scale * 0.04
         return rectangle_height > table_height + scaled_threshold
 
     def reward(self, action=None):
@@ -444,6 +385,154 @@ class LiftRectangle(Lift):
         if self.reward_scale is not None:
             reward *= self.reward_scale / 2.25
         return reward
+
+
+
+
+#####################################################
+############### SCALABLE SEEN OBJECTS ###############
+#####################################################
+
+class LiftScalableCube(Lift):
+    def __init__(self, cube_friction=None, cube_density=None, cube_scale=1.0, **kwargs):
+        self.cube_friction = cube_friction
+        self.cube_density = cube_density
+
+        if cfg.ROBOSUITE.OBJECTS.CUBE_FRICTION:
+            self.cube_friction = cfg.ROBOSUITE.OBJECTS.CUBE_FRICTION
+            print(f"[LiftScalableCube] Using cube with custom friction: {self.cube_friction}")
+        if cfg.ROBOSUITE.OBJECTS.CUBE_DENSITY:
+            self.cube_density = cfg.ROBOSUITE.OBJECTS.CUBE_DENSITY
+            print(f"[LiftScalableCube] Using cube with custom density: {self.cube_density}")
+
+        self.cube_scale = cfg.ROBOSUITE.OBJECTS.CUBE_SCALE 
+        if self.cube_scale != 1.0:
+            print(f"[LiftScalableCube] Using cube scale: {self.cube_scale}")
+        super().__init__(**kwargs)
+    
+    def _load_model(self):
+        super(Lift, self)._load_model()
+        
+        xpos = self.robots[0].robot_model.base_xpos_offset["table"](self.table_full_size[0])
+        self.robots[0].robot_model.set_base_xpos(xpos)
+
+        mujoco_arena = TableArena(
+            table_full_size=self.table_full_size,
+            table_friction=self.table_friction,
+            table_offset=self.table_offset,
+        )
+        mujoco_arena.set_origin([0, 0, 0])
+
+        base_size = [0.02, 0.02, 0.02] 
+        scaled_size = [s * self.cube_scale for s in base_size]
+        
+        cube_kwargs = {
+            "name": "cube",
+            "size": scaled_size,
+            "rgba": [1, 0, 0, 1]
+        }
+        if self.cube_friction is not None:
+            cube_kwargs["friction"] = self.cube_friction
+        if self.cube_density is not None:
+            cube_kwargs["density"] = self.cube_density
+        self.cube = BoxObject(**cube_kwargs)
+
+        self.placement_initializer = UniformRandomSampler(
+            name="ObjectSampler", mujoco_objects=self.cube,
+            x_range=[-0.03, 0.03], y_range=[-0.03, 0.03],
+            rotation=None, ensure_object_boundary_in_range=False,
+            ensure_valid_placement=True, reference_pos=self.table_offset,
+            z_offset=0.01,
+        )
+
+        self.model = ManipulationTask(
+            mujoco_arena=mujoco_arena,
+            mujoco_robots=[robot.robot_model for robot in self.robots],
+            mujoco_objects=self.cube,
+        ) 
+    def _check_success(self):
+        cube_height = self.sim.data.body_xpos[self.cube_body_id][2]
+        table_height = self.model.mujoco_arena.table_offset[2]
+        scaled_threshold = self.cube_scale * 0.04
+        return cube_height > table_height + scaled_threshold
+
+
+class DoorScalableHandle(Door):
+    def __init__(self, handle_friction=0.0, handel_damping=0.1, handle_scale=1.0, **kwargs):
+            self.handle_friction = handle_friction 
+            self.handel_damping = handel_damping
+            if cfg.ROBOSUITE.OBJECTS.HANDLE_FRICTION:
+                self.handle_friction = cfg.ROBOSUITE.OBJECTS.HANDLE_FRICTION
+                print(f"[DoorScalableHandle] Using handle with custom friction: {self.handle_friction}")
+            if cfg.ROBOSUITE.OBJECTS.HANDLE_DAMPING:
+                self.handel_damping = cfg.ROBOSUITE.OBJECTS.HANDLE_DAMPING
+                print(f"[DoorScalableHandle] Using handle with custom dampping: {self.handel_damping}")
+
+            self.handle_scale = cfg.ROBOSUITE.OBJECTS.HANDLE_SCALE 
+            if self.handle_scale != 1.0:
+                print(f"[DoorScalableHandle] Using handle scale: {self.handle_scale}")
+            super().__init__(**kwargs)
+
+    def _load_model(self):
+        """
+        Loads an xml model, puts it in self.model
+        """
+        super()._load_model()
+
+        # Adjust base pose accordingly
+        xpos = self.robots[0].robot_model.base_xpos_offset["table"](self.table_full_size[0])
+        self.robots[0].robot_model.set_base_xpos(xpos)
+
+        # load model for table top workspace
+        mujoco_arena = TableArena(
+            table_full_size=self.table_full_size,
+            table_offset=self.table_offset,
+        )
+
+        # Arena always gets set to zero origin
+        mujoco_arena.set_origin([0, 0, 0])
+
+        # Modify default agentview camera
+        mujoco_arena.set_camera(
+            camera_name="agentview",
+            pos=[0.5986131746834771, -4.392035683362857e-09, 1.5903500240372423],
+            quat=[0.6380177736282349, 0.3048497438430786, 0.30484986305236816, 0.6380177736282349],
+        )
+
+        # initialize objects of interest
+        self.door = DoorObject(
+            name="Door",
+            friction=0.0,
+            damping=0.1,
+            lock=self.use_latch,
+        )
+
+        # Create placement initializer
+        if self.placement_initializer is not None:
+            self.placement_initializer.reset()
+            self.placement_initializer.add_objects(self.door)
+        else:
+            self.placement_initializer = UniformRandomSampler(
+                name="ObjectSampler",
+                mujoco_objects=self.door,
+                x_range=[0.07, 0.09],
+                y_range=[-0.01, 0.01],
+                rotation=(-np.pi / 2.0 - 0.25, -np.pi / 2.0),
+                rotation_axis="z",
+                ensure_object_boundary_in_range=False,
+                ensure_valid_placement=True,
+                reference_pos=self.table_offset,
+                rng=self.rng,
+            )
+
+        # task includes arena, robot, and objects of interest
+        self.model = ManipulationTask(
+            mujoco_arena=mujoco_arena,
+            mujoco_robots=[robot.robot_model for robot in self.robots],
+            mujoco_objects=self.door,
+        )
+
+
 def register_custom_environments():
     """Register custom environments so they work with robosuite.make()"""
     
@@ -453,7 +542,7 @@ def register_custom_environments():
     def custom_make(env_name, **kwargs):
         if env_name == "LiftBall":
             return LiftBall(**kwargs)
-        else:
+        elif env_name == ... :
             return original_make(env_name, **kwargs)
     
     robosuite.make = custom_make
