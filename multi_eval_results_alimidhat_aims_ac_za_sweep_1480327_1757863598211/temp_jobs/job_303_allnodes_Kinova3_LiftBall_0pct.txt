@@ -1,0 +1,3 @@
+[JOB-303] Starting: allnodes Kinova3 LiftBall 0% (seed 2008)
+SUCCESS,0.0,15.76
+[JOB-303] ✅ Success=0.0%, Reward=15.76

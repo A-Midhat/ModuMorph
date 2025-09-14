@@ -1,0 +1,3 @@
+[JOB-194] Starting: avg_nodes Sawyer LiftBall 60% (seed 3296)
+SUCCESS,100.0,457.21
+[JOB-194] ✅ Success=100.0%, Reward=457.21

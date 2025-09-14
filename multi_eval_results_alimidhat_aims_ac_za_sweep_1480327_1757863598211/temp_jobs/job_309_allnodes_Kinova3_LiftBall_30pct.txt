@@ -1,0 +1,56 @@
+[JOB-309] Starting: allnodes Kinova3 LiftBall 30% (seed 2008)
+FAILED,0.0,0.0
+[JOB-309] ❌ FAILED
+Error output: [SEED-LOG] Using master seed: 2008
+[SCALE-LOG] Applying scale factor 1.3 for task 'LiftBall'
+🎯 OBJECT GENERALIZATION MODE: Testing unseen task 'LiftBall' on seen morph 'Kinova3'
+📚 Using task embedding from base task 'Lift'
+🔧 Using morph 'Kinova3' (reference pair: ('Kinova3', 'Door') at index 3)
+📝 Will create environment with task 'LiftBall' but use 'Lift' embedding
+Loading model from: test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_2008-run:v9/checkpoint_600.pt
+
+🔍 Task Embedding Logic:
+Target: Morph='Kinova3', Task='LiftBall', Base_task='Lift', Object_generalization=True
+[Eval] Using embedding from task 'Lift' => unique task index 1
+[Eval] Using model.v_net.task_embed (num=4)
+[Eval] task_embed[1] preview (first 8): [1.741107702255249, 0.8508663773536682, -1.2809242010116577, 0.45982080698013306, 1.1912022829055786, 1.7705471515655518, -1.1450129747390747, -0.12695415318012238]
+[Eval] task_embed[1] L2 norm: 8.598563
+[Eval] Final unimal_id_tensor = [1], mapping_used = task-embedding (object-generalization-friendly)
+[Eval] Environment will render: morph='Kinova3' + task='LiftBall' at extended_render_idx = 15
+🎯 Running Object Generalization Episodes:   0%|          | 0/5 [00:00<?, ?it/s]/home/alimidhat_aims_ac_za/ModuMorph/venv/lib/python3.10/site-packages/gym/logger.py:30: UserWarning: [33mWARN: Box bound precision lowered by casting to float32[0m
+  warnings.warn(colorize('%s: %s'%('WARN', msg % args), 'yellow'))
+/home/alimidhat_aims_ac_za/ModuMorph/venv/lib/python3.10/site-packages/gym/spaces/box.py:49: RuntimeWarning: invalid value encountered in cast
+  self.low = self.low.astype(self.dtype)
+/home/alimidhat_aims_ac_za/ModuMorph/venv/lib/python3.10/site-packages/gym/spaces/box.py:50: RuntimeWarning: invalid value encountered in cast
+  self.high = self.high.astype(self.dtype)
+🎯 Running Object Generalization Episodes:   0%|          | 0/5 [00:02<?, ?it/s]
+[VecEnv] Using DummyVecEnv (n=1)
+[LiftBall] Using sphere scale: 1.3
+not use VecNorm
+[make_vec_envs] Applied VecVideoRecorder. Saving to ./analysis_results/multi_eval_videos_alimidhat_aims_ac_za_sweep_1480327_1757863598211/ with prefix LiftBall_Kinova3
+
+❌ RuntimeError during agent.act():
+   Exception: CUDA error: CUBLAS_STATUS_ALLOC_FAILED when calling `cublasCreate(handle)`
+   unimal_id_tensor: tensor([1], device='cuda:0')
+Traceback (most recent call last):
+  File "/home/alimidhat_aims_ac_za/ModuMorph/tools/obj_geom_seeded.py", line 497, in <module>
+    main()
+  File "/home/alimidhat_aims_ac_za/ModuMorph/tools/obj_geom_seeded.py", line 390, in main
+    _, act, _, value, _ = agent.act(obs, unimal_ids=unimal_id_tensor, compute_val=True)
+  File "/home/alimidhat_aims_ac_za/ModuMorph/venv/lib/python3.10/site-packages/torch/autograd/grad_mode.py", line 27, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/alimidhat_aims_ac_za/ModuMorph/metamorph/algos/ppo/model.py", line 735, in act
+    val, pi, v_attention_maps, mu_attention_maps, dropout_mask_v, dropout_mask_mu = self.ac(obs, return_attention=return_attention, dropout_mask_v=dropout_mask_v, dropout_mask_mu=dropout_mask_mu, unimal_ids=unimal_ids, compute_val=compute_val)
+  File "/home/alimidhat_aims_ac_za/ModuMorph/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1194, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/alimidhat_aims_ac_za/ModuMorph/metamorph/algos/ppo/model.py", line 683, in forward
+    limb_vals, v_attention_maps, dropout_mask_v = self.v_net(
+  File "/home/alimidhat_aims_ac_za/ModuMorph/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1194, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/alimidhat_aims_ac_za/ModuMorph/metamorph/algos/ppo/model.py", line 347, in forward
+    pure_morphology_context = self.context_embed_HN(obs_context)
+  File "/home/alimidhat_aims_ac_za/ModuMorph/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1194, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/alimidhat_aims_ac_za/ModuMorph/venv/lib/python3.10/site-packages/torch/nn/modules/linear.py", line 114, in forward
+    return F.linear(input, self.weight, self.bias)
+RuntimeError: CUDA error: CUBLAS_STATUS_ALLOC_FAILED when calling `cublasCreate(handle)`

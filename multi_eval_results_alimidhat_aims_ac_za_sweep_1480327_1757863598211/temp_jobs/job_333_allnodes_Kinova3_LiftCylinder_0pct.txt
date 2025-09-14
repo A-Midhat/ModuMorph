@@ -1,0 +1,3 @@
+[JOB-333] Starting: allnodes Kinova3 LiftCylinder 0% (seed 2008)
+SUCCESS,0.0,15.32
+[JOB-333] ✅ Success=0.0%, Reward=15.32

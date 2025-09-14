@@ -1,0 +1,30 @@
+FAILED,0.0,0.0
+Error: [SEED-LOG] Using master seed: 1409
+[Density] Applying this density values: ['1', '0', '7', '9', '.', '5', '6']
+🎯 OBJECT GENERALIZATION MODE: Testing unseen task 'LiftBall' on seen morph 'Jaco'
+📚 Using task embedding from base task 'Lift'
+🔧 Using morph 'Jaco' (reference pair: ('Jaco', 'Door') at index 1)
+📝 Will create environment with task 'LiftBall' but use 'Lift' embedding
+Loading model from: test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19/checkpoint_600.pt
+Traceback (most recent call last):
+  File "/home/alimidhat_aims_ac_za/ModuMorph/tools/obj_geom_seeded.py", line 497, in <module>
+    main()
+  File "/home/alimidhat_aims_ac_za/ModuMorph/tools/obj_geom_seeded.py", line 240, in main
+    loaded = torch.load(model_path, map_location=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu'))
+  File "/home/alimidhat_aims_ac_za/ModuMorph/venv/lib/python3.10/site-packages/torch/serialization.py", line 789, in load
+    return _load(opened_zipfile, map_location, pickle_module, **pickle_load_args)
+  File "/home/alimidhat_aims_ac_za/ModuMorph/venv/lib/python3.10/site-packages/torch/serialization.py", line 1131, in _load
+    result = unpickler.load()
+  File "/home/alimidhat_aims_ac_za/ModuMorph/venv/lib/python3.10/site-packages/torch/serialization.py", line 1101, in persistent_load
+    load_tensor(dtype, nbytes, key, _maybe_decode_ascii(location))
+  File "/home/alimidhat_aims_ac_za/ModuMorph/venv/lib/python3.10/site-packages/torch/serialization.py", line 1083, in load_tensor
+    wrap_storage=restore_location(storage, location),
+  File "/home/alimidhat_aims_ac_za/ModuMorph/venv/lib/python3.10/site-packages/torch/serialization.py", line 1055, in restore_location
+    return default_restore_location(storage, str(map_location))
+  File "/home/alimidhat_aims_ac_za/ModuMorph/venv/lib/python3.10/site-packages/torch/serialization.py", line 215, in default_restore_location
+    result = fn(storage, location)
+  File "/home/alimidhat_aims_ac_za/ModuMorph/venv/lib/python3.10/site-packages/torch/serialization.py", line 187, in _cuda_deserialize
+    return obj.cuda(device)
+  File "/home/alimidhat_aims_ac_za/ModuMorph/venv/lib/python3.10/site-packages/torch/_utils.py", line 80, in _cuda
+    untyped_storage = torch.UntypedStorage(
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 2.00 MiB (GPU 0; 21.95 GiB total capacity; 1.52 MiB already allocated; 40.81 MiB free; 2.00 MiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF

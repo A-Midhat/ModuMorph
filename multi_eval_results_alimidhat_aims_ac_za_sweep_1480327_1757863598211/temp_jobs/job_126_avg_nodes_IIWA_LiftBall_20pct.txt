@@ -1,0 +1,3 @@
+[JOB-126] Starting: avg_nodes IIWA LiftBall 20% (seed 2008)
+SUCCESS,0.0,165.81
+[JOB-126] ✅ Success=0.0%, Reward=165.81

@@ -1,0 +1,3 @@
+[JOB-204] Starting: avg_nodes Sawyer LiftBall 100% (seed 2008)
+SUCCESS,0.0,245.54
+[JOB-204] ✅ Success=0.0%, Reward=245.54

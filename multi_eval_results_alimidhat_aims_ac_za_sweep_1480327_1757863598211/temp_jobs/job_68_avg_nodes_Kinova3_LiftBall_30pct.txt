@@ -1,0 +1,3 @@
+[JOB-68] Starting: avg_nodes Kinova3 LiftBall 30% (seed 3296)
+SUCCESS,20.0,318.48
+[JOB-68] ✅ Success=20.0%, Reward=318.48

@@ -1,0 +1,4 @@
+Attribute,Method,Success_Variance,Reward_Variance,Success_Range,Reward_Range
+scale,avg_nodes,992.0634920634924,15949.13908505291,100.0,457.25
+density,avg_nodes,1521.1640211640208,26341.465723809528,100.0,479.78
+friction,avg_nodes,1521.1640211640208,15703.878020105818,100.0,478.56

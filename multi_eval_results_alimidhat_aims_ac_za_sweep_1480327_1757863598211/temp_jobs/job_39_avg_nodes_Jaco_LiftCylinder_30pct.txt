@@ -1,0 +1,3 @@
+[JOB-39] Starting: avg_nodes Jaco LiftCylinder 30% (seed 2008)
+SUCCESS,0.0,170.25
+[JOB-39] ✅ Success=0.0%, Reward=170.25

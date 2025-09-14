@@ -1,0 +1,3 @@
+[JOB-308] Starting: allnodes Kinova3 LiftBall 30% (seed 3296)
+SUCCESS,20.0,246.89
+[JOB-308] ✅ Success=20.0%, Reward=246.89

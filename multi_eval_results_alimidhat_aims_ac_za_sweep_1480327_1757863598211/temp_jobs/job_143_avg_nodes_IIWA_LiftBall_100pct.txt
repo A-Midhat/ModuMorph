@@ -1,0 +1,3 @@
+[JOB-143] Starting: avg_nodes IIWA LiftBall 100% (seed 3296)
+SUCCESS,0.0,205.32
+[JOB-143] ✅ Success=0.0%, Reward=205.32
