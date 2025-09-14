@@ -18,6 +18,598 @@ from metamorph.utils import file as fu
 from metamorph.config import cfg 
 from metamorph.config import get_list_cfg
 
+
+
+
+
+##########################################################
+##################### CUSTOM ENV #########################
+##########################################################
+
+import robosuite
+from robosuite.environments.manipulation.lift import Lift
+from robosuite.models.objects import BallObject, CylinderObject, BoxObject
+from robosuite.models.tasks import ManipulationTask
+from robosuite.models.arenas import TableArena
+from robosuite.utils.placement_samplers import UniformRandomSampler
+from robosuite.utils.observables import Observable, sensor
+from robosuite.utils.transform_utils import convert_quat
+import numpy as np
+
+
+class LiftBall(Lift):
+    """Lift task with a ball object"""
+    def __init__(self, sphere_scale=1.0, **kwargs):
+        self.sphere_scale = cfg.ROBOSUITE.OBJECTS.SPHERE_SCALE 
+        if self.sphere_scale !=1.0:
+            print(f"[LiftBall] Using sphere scale: {self.sphere_scale}")
+        super().__init__(**kwargs)
+    def _load_model(self):
+        super(Lift, self)._load_model()
+        
+        xpos = self.robots[0].robot_model.base_xpos_offset["table"](self.table_full_size[0])
+        self.robots[0].robot_model.set_base_xpos(xpos)
+
+        mujoco_arena = TableArena(
+            table_full_size=self.table_full_size,
+            table_friction=self.table_friction,
+            table_offset=self.table_offset,
+        )
+        mujoco_arena.set_origin([0, 0, 0])
+
+        self.ball = BallObject(name="ball", size=[0.02*self.sphere_scale], rgba=[0.5, 0.3, 0.7, 1])
+
+        self.placement_initializer = UniformRandomSampler(
+            name="ObjectSampler", mujoco_objects=self.ball,
+            x_range=[-0.03, 0.03], y_range=[-0.03, 0.03],
+            rotation=None, ensure_object_boundary_in_range=False,
+            ensure_valid_placement=True, reference_pos=self.table_offset,
+            z_offset=0.01,
+        )
+
+        self.model = ManipulationTask(
+            mujoco_arena=mujoco_arena,
+            mujoco_robots=[robot.robot_model for robot in self.robots],
+            mujoco_objects=self.ball,
+        )
+
+    def _setup_references(self):
+        super(Lift, self)._setup_references()
+        self.ball_body_id = self.sim.model.body_name2id(self.ball.root_body)
+
+    def _setup_observables(self):
+        observables = super(Lift, self)._setup_observables()
+        pf = self.robots[0].robot_model.naming_prefix
+
+        if self.use_object_obs:
+            modality = "object"
+            
+            @sensor(modality=modality)
+            def ball_pos(obs_cache):
+                return np.array(self.sim.data.body_xpos[self.ball_body_id])
+
+            @sensor(modality=modality)
+            def ball_quat(obs_cache):
+                return convert_quat(np.array(self.sim.data.body_xquat[self.ball_body_id]), to="xyzw")
+            
+            @sensor(modality=modality)
+            def gripper_to_ball_pos(obs_cache):
+                return (
+                    obs_cache[f"{pf}eef_pos"] - obs_cache["ball_pos"]
+                    if f"{pf}eef_pos" in obs_cache and "ball_pos" in obs_cache
+                    else np.zeros(3)
+                )
+
+            sensors = [ball_pos, ball_quat, gripper_to_ball_pos]
+            names = [s.__name__ for s in sensors]
+
+            for name, s in zip(names, sensors):
+                observables[name] = Observable(
+                    name=name, sensor=s, sampling_rate=self.control_freq,
+                )
+        return observables
+
+    def _check_success(self):
+        ball_height = self.sim.data.body_xpos[self.ball_body_id][2]
+        table_height = self.model.mujoco_arena.table_offset[2]
+        return ball_height > table_height + 0.04
+
+    def reward(self, action=None):
+        reward = 0.0
+        if self._check_success():
+            reward = 2.25
+        elif self.reward_shaping:
+            dist = self._gripper_to_target(
+                gripper=self.robots[0].gripper, target=self.ball.root_body, 
+                target_type="body", return_distance=True
+            )
+            reaching_reward = 1 - np.tanh(10.0 * dist)
+            reward += reaching_reward
+            if self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.ball):
+                reward += 0.25
+        if self.reward_scale is not None:
+            reward *= self.reward_scale / 2.25
+        return reward
+
+
+
+class LiftScalableCube(Lift):
+    def __init__(self, cube_scale=1.0, **kwargs):
+        self.cube_scale = cfg.ROBOSUITE.OBJECTS.CUBE_SCALE 
+        if self.cube_scale !=1.0:
+            print(f"[LiftScalableCube] Using cube scale: {self.cube_scale}")
+        super().__init__(**kwargs)
+    
+    def _load_model(self):
+        # Copy the entire _load_model from Lift, but modify the cube creation
+        super(Lift, self)._load_model()
+        
+        xpos = self.robots[0].robot_model.base_xpos_offset["table"](self.table_full_size[0])
+        self.robots[0].robot_model.set_base_xpos(xpos)
+
+        mujoco_arena = TableArena(
+            table_full_size=self.table_full_size,
+            table_friction=self.table_friction,
+            table_offset=self.table_offset,
+        )
+        mujoco_arena.set_origin([0, 0, 0])
+
+        # ONLY THIS PART CHANGES - scaled cube instead of default
+        base_size = [0.02, 0.02, 0.02] 
+        scaled_size = [s * self.cube_scale for s in base_size]
+        
+        self.cube = BoxObject(
+            name="cube",
+            size=scaled_size,
+            rgba=[1, 0, 0, 1]
+        )
+
+        # Rest is identical to original Lift
+        self.placement_initializer = UniformRandomSampler(
+            name="ObjectSampler", mujoco_objects=self.cube,
+            x_range=[-0.03, 0.03], y_range=[-0.03, 0.03],
+            rotation=None, ensure_object_boundary_in_range=False,
+            ensure_valid_placement=True, reference_pos=self.table_offset,
+            z_offset=0.01,
+        )
+
+        self.model = ManipulationTask(
+            mujoco_arena=mujoco_arena,
+            mujoco_robots=[robot.robot_model for robot in self.robots],
+            mujoco_objects=self.cube,
+        ) 
+
+class LiftCylinder(Lift):
+    def __init__(self, cylinder_scale=1.0, **kwargs):
+        self.cylinder_scale = cfg.ROBOSUITE.OBJECTS.CYLINDER_SCALE
+        if self.cylinder_scale != 1.0:
+            print(f"[LiftCylinder] Using cylinder scale: {self.cylinder_scale}")
+        super().__init__(**kwargs)
+    
+    def _load_model(self):
+        super(Lift, self)._load_model()
+        
+        xpos = self.robots[0].robot_model.base_xpos_offset["table"](self.table_full_size[0])
+        self.robots[0].robot_model.set_base_xpos(xpos)
+
+        mujoco_arena = TableArena(
+            table_full_size=self.table_full_size,
+            table_friction=self.table_friction,
+            table_offset=self.table_offset,
+        )
+        mujoco_arena.set_origin([0, 0, 0])
+        
+        self.cylinder = CylinderObject(
+            name="cylinder", 
+            size=[0.02*self.cylinder_scale, 0.03*self.cylinder_scale], # [radius, height]
+            rgba=[0.3, 0.7, 0.5, 1]
+        )
+
+        self.placement_initializer = UniformRandomSampler(
+            name="ObjectSampler", mujoco_objects=self.cylinder,
+            x_range=[-0.03, 0.03], y_range=[-0.03, 0.03],
+            rotation=None, ensure_object_boundary_in_range=False,
+            ensure_valid_placement=True, reference_pos=self.table_offset,
+            z_offset=0.01,
+        )
+
+        self.model = ManipulationTask(
+            mujoco_arena=mujoco_arena,
+            mujoco_robots=[robot.robot_model for robot in self.robots],
+            mujoco_objects=self.cylinder,
+        )
+
+    def _setup_references(self):
+        super(Lift, self)._setup_references()
+        self.cylinder_body_id = self.sim.model.body_name2id(self.cylinder.root_body)
+
+    def _setup_observables(self):
+        observables = super(Lift, self)._setup_observables()
+        pf = self.robots[0].robot_model.naming_prefix
+
+        if self.use_object_obs:
+            modality = "object"
+            
+            @sensor(modality=modality)
+            def cylinder_pos(obs_cache):
+                return np.array(self.sim.data.body_xpos[self.cylinder_body_id])
+
+            @sensor(modality=modality)
+            def cylinder_quat(obs_cache):
+                return convert_quat(np.array(self.sim.data.body_xquat[self.cylinder_body_id]), to="xyzw")
+            
+            @sensor(modality=modality)
+            def gripper_to_cylinder_pos(obs_cache):
+                return (
+                    obs_cache[f"{pf}eef_pos"] - obs_cache["cylinder_pos"]
+                    if f"{pf}eef_pos" in obs_cache and "cylinder_pos" in obs_cache
+                    else np.zeros(3)
+                )
+
+            sensors = [cylinder_pos, cylinder_quat, gripper_to_cylinder_pos]
+            names = [s.__name__ for s in sensors]
+
+            for name, s in zip(names, sensors):
+                observables[name] = Observable(
+                    name=name, sensor=s, sampling_rate=self.control_freq,
+                )
+        return observables
+
+    def _check_success(self):
+        cylinder_height = self.sim.data.body_xpos[self.cylinder_body_id][2]
+        table_height = self.model.mujoco_arena.table_offset[2]
+        return cylinder_height > table_height + 0.04
+
+    def reward(self, action=None):
+        reward = 0.0
+        if self._check_success():
+            reward = 2.25
+        elif self.reward_shaping:
+            dist = self._gripper_to_target(
+                gripper=self.robots[0].gripper, target=self.cylinder.root_body, 
+                target_type="body", return_distance=True
+            )
+            reaching_reward = 1 - np.tanh(10.0 * dist)
+            reward += reaching_reward
+            if self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.cylinder):
+                reward += 0.25
+        if self.reward_scale is not None:
+            reward *= self.reward_scale / 2.25
+        return reward
+
+class LiftRectangle(Lift):
+    def __init__(self, rect_scale=1.0, **kwargs):
+        self.rect_scale = cfg.ROBOSUITE.OBJECTS.RECT_SCALE
+        super().__init__(**kwargs)
+    
+    def _load_model(self):
+        super(Lift, self)._load_model()
+        
+        xpos = self.robots[0].robot_model.base_xpos_offset["table"](self.table_full_size[0])
+        self.robots[0].robot_model.set_base_xpos(xpos)
+
+        mujoco_arena = TableArena(
+            table_full_size=self.table_full_size,
+            table_friction=self.table_friction,
+            table_offset=self.table_offset,
+        )
+        mujoco_arena.set_origin([0, 0, 0])
+        
+        self.rectangle = BoxObject(
+            name="rectangle",
+            size=[0.01*self.rect_scale, 0.03*self.rect_scale, 0.02*self.rect_scale], # [x, y, z]
+            rgba=[0.7, 0.5, 0.3, 1]
+        )
+
+        self.placement_initializer = UniformRandomSampler(
+            name="ObjectSampler", mujoco_objects=self.rectangle,
+            x_range=[-0.03, 0.03], y_range=[-0.03, 0.03],
+            rotation=None, ensure_object_boundary_in_range=False,
+            ensure_valid_placement=True, reference_pos=self.table_offset,
+            z_offset=0.01,
+        )
+
+        self.model = ManipulationTask(
+            mujoco_arena=mujoco_arena,
+            mujoco_robots=[robot.robot_model for robot in self.robots],
+            mujoco_objects=self.rectangle,
+        )
+
+    def _setup_references(self):
+        super(Lift, self)._setup_references()
+        self.rectangle_body_id = self.sim.model.body_name2id(self.rectangle.root_body)
+
+    def _setup_observables(self):
+        observables = super(Lift, self)._setup_observables()
+        pf = self.robots[0].robot_model.naming_prefix
+
+        if self.use_object_obs:
+            modality = "object"
+            
+            @sensor(modality=modality)
+            def rectangle_pos(obs_cache):
+                return np.array(self.sim.data.body_xpos[self.rectangle_body_id])
+
+            @sensor(modality=modality)
+            def rectangle_quat(obs_cache):
+                return convert_quat(np.array(self.sim.data.body_xquat[self.rectangle_body_id]), to="xyzw")
+            
+            @sensor(modality=modality)
+            def gripper_to_rectangle_pos(obs_cache):
+                return (
+                    obs_cache[f"{pf}eef_pos"] - obs_cache["rectangle_pos"]
+                    if f"{pf}eef_pos" in obs_cache and "rectangle_pos" in obs_cache
+                    else np.zeros(3)
+                )
+
+            sensors = [rectangle_pos, rectangle_quat, gripper_to_rectangle_pos]
+            names = [s.__name__ for s in sensors]
+
+            for name, s in zip(names, sensors):
+                observables[name] = Observable(
+                    name=name, sensor=s, sampling_rate=self.control_freq,
+                )
+        return observables
+
+    def _check_success(self):
+        rectangle_height = self.sim.data.body_xpos[self.rectangle_body_id][2]
+        table_height = self.model.mujoco_arena.table_offset[2]
+        return rectangle_height > table_height + 0.04
+
+    def reward(self, action=None):
+        reward = 0.0
+        if self._check_success():
+            reward = 2.25
+        elif self.reward_shaping:
+            dist = self._gripper_to_target(
+                gripper=self.robots[0].gripper, target=self.rectangle.root_body, 
+                target_type="body", return_distance=True
+            )
+            reaching_reward = 1 - np.tanh(10.0 * dist)
+            reward += reaching_reward
+            if self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.rectangle):
+                reward += 0.25
+        if self.reward_scale is not None:
+            reward *= self.reward_scale / 2.25
+        return reward
+def register_custom_environments():
+    """Register custom environments so they work with robosuite.make()"""
+    
+    # Monkey patch robosuite.make to handle our custom environments
+    original_make = robosuite.make
+    
+    def custom_make(env_name, **kwargs):
+        if env_name == "LiftBall":
+            return LiftBall(**kwargs)
+        else:
+            return original_make(env_name, **kwargs)
+    
+    robosuite.make = custom_make
+    print("✅ Custom environments registered successfully!")
+
+
+# def compare_observations():
+#     """Compare observations between original Lift and LiftBall"""
+    
+#     print("🔍 OBSERVATION COMPARISON TEST")
+#     print("=" * 50)
+    
+#     # Create both environments with identical settings
+#     env_original = robosuite.make(
+#         "Lift", 
+#         robots="Panda", 
+#         has_renderer=False,
+#         reward_shaping=True,
+#         use_object_obs=True,  # Important!
+#         horizon=100
+#     )
+    
+#     env_ball = robosuite.make(
+#         "LiftBall", 
+#         robots="Panda", 
+#         has_renderer=False,
+#         reward_shaping=True,
+#         use_object_obs=True,  # Important!
+#         horizon=100
+#     )
+    
+#     # Get observations
+#     obs_original = env_original.reset()
+#     obs_ball = env_ball.reset()
+    
+#     print(f"📦 ORIGINAL LIFT (Cube) - {len(obs_original)} keys:")
+#     for i, (key, value) in enumerate(obs_original.items()):
+#         if isinstance(value, np.ndarray):
+#             print(f"  {i+1:2d}. {key:<25} shape={value.shape} dtype={value.dtype}")
+#             if value.size <= 10:  # Small arrays, show values
+#                 print(f"      values: {value.flatten()}")
+#         else:
+#             print(f"  {i+1:2d}. {key:<25} value={value}")
+    
+#     print(f"\n🏀 CUSTOM LIFT (Ball) - {len(obs_ball)} keys:")
+#     for i, (key, value) in enumerate(obs_ball.items()):
+#         if isinstance(value, np.ndarray):
+#             print(f"  {i+1:2d}. {key:<25} shape={value.shape} dtype={value.dtype}")
+#             if value.size <= 10:  # Small arrays, show values
+#                 print(f"      values: {value.flatten()}")
+#         else:
+#             print(f"  {i+1:2d}. {key:<25} value={value}")
+    
+#     # Compare key sets
+#     original_keys = set(obs_original.keys())
+#     ball_keys = set(obs_ball.keys())
+    
+#     print(f"\n🔍 KEY COMPARISON:")
+#     print(f"  Original has {len(original_keys)} keys")
+#     print(f"  Ball has {len(ball_keys)} keys")
+    
+#     missing_in_ball = original_keys - ball_keys
+#     extra_in_ball = ball_keys - original_keys
+#     common_keys = original_keys & ball_keys
+    
+#     if missing_in_ball:
+#         print(f"  ❌ Missing in Ball: {missing_in_ball}")
+#     if extra_in_ball:
+#         print(f"  ➕ Extra in Ball: {extra_in_ball}")
+#     print(f"  ✅ Common keys: {len(common_keys)}")
+    
+#     env_original.close()
+#     env_ball.close()
+    
+#     return obs_original, obs_ball
+
+
+# def test_observation_consistency():
+#     """Test if observations change correctly during simulation"""
+    
+#     print("\n🧪 OBSERVATION CONSISTENCY TEST")
+#     print("=" * 50)
+    
+#     env = robosuite.make(
+#         "LiftBall", 
+#         robots="Panda", 
+#         has_renderer=False,
+#         reward_shaping=True,
+#         use_object_obs=True,
+#         horizon=100
+#     )
+    
+#     obs = env.reset()
+    
+#     print("📊 Testing observation changes over 5 steps...")
+    
+#     # Store initial values
+#     initial_ball_pos = obs['ball_pos'].copy()
+#     initial_gripper_pos = obs['robot0_eef_pos'].copy()
+#     initial_gripper_to_ball = obs['gripper_to_ball_pos'].copy()
+    
+#     print(f"Initial ball position: {initial_ball_pos}")
+#     print(f"Initial gripper position: {initial_gripper_pos}")
+#     print(f"Initial gripper-to-ball: {initial_gripper_to_ball}")
+    
+#     # Expected: gripper_to_ball_pos = gripper_pos - ball_pos
+#     expected_gripper_to_ball = initial_gripper_pos - initial_ball_pos
+#     print(f"Expected gripper-to-ball: {expected_gripper_to_ball}")
+#     print(f"Difference: {np.linalg.norm(initial_gripper_to_ball - expected_gripper_to_ball):.6f}")
+    
+#     if np.allclose(initial_gripper_to_ball, expected_gripper_to_ball, atol=1e-5):
+#         print("✅ gripper_to_ball_pos calculation is CORRECT!")
+#     else:
+#         print("❌ gripper_to_ball_pos calculation is WRONG!")
+    
+#     print("\n📈 Tracking changes over steps:")
+#     for step in range(5):
+#         # Move towards the ball
+#         action = np.zeros(env.action_dim)
+#         if 'gripper_to_ball_pos' in obs:
+#             # Simple policy: move toward ball
+#             direction = obs['gripper_to_ball_pos'] * 0.5  # Scale down
+#             action[:3] = np.clip(direction, -1, 1)
+        
+#         obs, reward, done, info = env.step(action)
+        
+#         print(f"  Step {step+1}:")
+#         print(f"    Ball pos: {obs['ball_pos']}")
+#         print(f"    Gripper pos: {obs['robot0_eef_pos']}")
+#         print(f"    Gripper-to-ball: {obs['gripper_to_ball_pos']}")
+#         print(f"    Distance to ball: {np.linalg.norm(obs['gripper_to_ball_pos']):.4f}")
+#         print(f"    Reward: {reward:.4f}")
+        
+#         # Verify consistency
+#         expected = obs['robot0_eef_pos'] - obs['ball_pos']
+#         if np.allclose(obs['gripper_to_ball_pos'], expected, atol=1e-5):
+#             print(f"    ✅ Calculation consistent")
+#         else:
+#             print(f"    ❌ Calculation inconsistent!")
+        
+#         if done:
+#             print(f"    🎯 Episode done! Success: {info.get('success', False)}")
+#             break
+    
+#     env.close()
+
+
+# def test_object_interaction():
+#     """Test if the ball object responds to physics correctly"""
+    
+#     print("\n🎾 BALL PHYSICS TEST")
+#     print("=" * 50)
+    
+#     env = robosuite.make(
+#         "LiftBall", 
+#         robots="Panda", 
+#         has_renderer=False,
+#         reward_shaping=True,
+#         use_object_obs=True,
+#         horizon=200
+#     )
+    
+#     obs = env.reset()
+#     initial_height = obs['ball_pos'][2]
+#     print(f"Initial ball height: {initial_height:.4f}")
+    
+#     # Try to lift the ball
+#     print("🤖 Attempting to lift the ball...")
+#     max_height = initial_height
+    
+#     for step in range(100):
+#         action = np.zeros(env.action_dim)
+        
+#         # Simple lifting strategy
+#         gripper_to_ball = obs['gripper_to_ball_pos']
+#         distance = np.linalg.norm(gripper_to_ball)
+        
+#         if distance > 0.05:  # Far from ball - move closer
+#             action[:3] = np.clip(gripper_to_ball * 2.0, -1, 1)
+#             action[-1] = -1  # Open gripper
+#         else:  # Close to ball - grasp and lift
+#             action[:3] = [0, 0, 0.5]  # Move up
+#             action[-1] = 1  # Close gripper
+        
+#         obs, reward, done, info = env.step(action)
+        
+#         current_height = obs['ball_pos'][2]
+#         max_height = max(max_height, current_height)
+        
+#         if step % 20 == 0:
+#             print(f"  Step {step}: height={current_height:.4f}, max={max_height:.4f}, reward={reward:.3f}")
+        
+#         if done:
+#             print(f"  🎯 Success! Ball lifted to {current_height:.4f}")
+#             break
+    
+#     height_increase = max_height - initial_height
+#     print(f"\n📏 Results:")
+#     print(f"  Initial height: {initial_height:.4f}")
+#     print(f"  Max height: {max_height:.4f}") 
+#     print(f"  Height increase: {height_increase:.4f}")
+    
+#     if height_increase > 0.02:
+#         print(f"  ✅ Ball physics working! Ball was lifted {height_increase:.4f}m")
+#     else:
+#         print(f"  ❌ Ball might not be responding to physics properly")
+    
+#     env.close()
+
+
+# if __name__ == "__main__":
+#     # Register environments
+#     register_custom_environments()
+    
+#     # Run all tests
+#     try:
+#         obs_orig, obs_ball = compare_observations()
+#         test_observation_consistency() 
+#         test_object_interaction()
+        
+#         print("\n🎉 ALL TESTS COMPLETED!")
+#         print("✅ If no errors appeared, your observations are working correctly!")
+        
+#     except Exception as e:
+#         print(f"❌ Test failed with error: {e}")
+#         import traceback
+#         traceback.print_exc()
+
 # ---------------------------------------------------------
 # -----------------Base Wrapper----------------------------
 # ---------------------------------------------------------
@@ -929,6 +1521,148 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
         self.metadata['act_padding_mask'] = self.act_padding_mask_global.copy()
         self._structure_initialized = True
  
+    # def _parse_object_state(self, obs_dict):
+    #     """
+    #     Parses the task-specific raw observation dictionary into a canonical format.
+    #     This function is the abstraction layer that handles task-dependent object keys.
+    #     """
+    #     task_name = self.base_env_ref.env_name
+    #     parsed = {
+    #         # --- Proprioceptive (Dynamic) ---
+    #         'target_pos': np.zeros(3, dtype=np.float32),
+    #         'target_quat': np.array([1.0, 0, 0, 0], dtype=np.float32), # Default to identity quaternion
+    #         'eef_to_target_pos': np.zeros(3, dtype=np.float32),
+    #         'hinge_qpos': np.zeros(1, dtype=np.float32),
+    #         'handle_qpos': np.zeros(1, dtype=np.float32),
+    #         'wipe_radius': np.zeros(1, dtype=np.float32),
+    #         'proportion_wiped': np.zeros(1, dtype=np.float32),
+    #         'secondary_target_pos': np.zeros(3, dtype=np.float32),
+    #         'door_to_eef_pos': np.zeros(3, dtype=np.float32),
+    #         'eef_to_target_quat': np.array([1.0, 0, 0, 0], dtype=np.float32), # For PickPlaceCan
+    #         # --- Context (Static) ---
+    #         'object_size': np.zeros(3, dtype=np.float32),
+    #         'wipe_centroid': np.zeros(3, dtype=np.float32),
+    #     }
+
+    #     # Map task name to the primary interactive geometry name in the MuJoCo model
+    #     geom_map = {
+    #         "Lift": "cube_g0_vis", 
+    #         "Door": "Door_handle_visual", 
+    #         "Wipe": "table_visual",
+    #         "PickPlaceCan": "Can_g0",
+    #         "PickPlaceMilk": "Milk_g0",
+    #         "PickPlaceBread": "Bread_g0",
+    #         "PickPlaceCereal": "Cereal_g0",
+    #     }
+        
+    #     target_geom_name = geom_map.get(task_name)
+    #     if target_geom_name:
+    #         try:
+    #             geom_id = self.model.geom_name2id(target_geom_name)
+    #             # Get half-extents and convert to full size
+    #             parsed['object_size'] = self.model.geom_size[geom_id] * 2.0
+    #         except KeyError:
+    #             print(f"[Parser] Warning: Geom '{target_geom_name}' not found for task '{task_name}'.")
+
+    #     # Helper function to safely convert to array
+    #     def safe_array_convert(value, target_shape, dtype=np.float32):
+    #         if value is None:
+    #             return np.zeros(target_shape, dtype=dtype)
+    #         value_arr = np.asarray(value, dtype=dtype)
+    #         if value_arr.ndim == 0:  # scalar
+    #             if target_shape == 1 or (isinstance(target_shape, tuple) and target_shape == (1,)):
+    #                 return np.array([value_arr], dtype=dtype)
+    #             else:
+    #                 result = np.zeros(target_shape, dtype=dtype)
+    #                 result[0] = value_arr
+    #                 return result
+    #         else:
+    #             return value_arr.flatten()[:np.prod(target_shape) if isinstance(target_shape, tuple) else target_shape]
+
+    #     # --- Translate task-specific observations into our universal format ---
+    #     if task_name == 'Lift':
+    #         parsed['target_pos'] = safe_array_convert(obs_dict.get('cube_pos'), 3)
+    #         parsed['target_quat'] = safe_array_convert(obs_dict.get('cube_quat'), 4)
+    #         parsed['eef_to_target_pos'] = safe_array_convert(obs_dict.get('gripper_to_cube_pos'), 3)
+            
+    #     elif task_name == 'Door':
+    #         parsed['target_pos'] = safe_array_convert(obs_dict.get('handle_pos'), 3)
+    #         parsed['eef_to_target_pos'] = safe_array_convert(obs_dict.get('handle_to_eef_pos'), 3)
+    #         # Fix: Handle scalar values properly
+    #         parsed['hinge_qpos'] = safe_array_convert(obs_dict.get('hinge_qpos'), 1)
+    #         parsed['handle_qpos'] = safe_array_convert(obs_dict.get('handle_qpos'), 1)
+    #         parsed['secondary_target_pos'] = safe_array_convert(obs_dict.get('door_pos'), 3)
+    #         parsed['door_to_eef_pos'] = safe_array_convert(obs_dict.get('door_to_eef_pos'), 3)
+            
+    #     elif task_name == 'Wipe':
+    #         parsed['target_pos'] = safe_array_convert(obs_dict.get('wipe_centroid'), 3)
+    #         parsed['eef_to_target_pos'] = safe_array_convert(obs_dict.get('gripper_to_wipe_centroid'), 3)
+    #         parsed['wipe_radius'] = safe_array_convert(obs_dict.get('wipe_radius'), 1)
+    #         parsed['proportion_wiped'] = safe_array_convert(obs_dict.get('proportion_wiped'), 1)
+            
+    #     elif task_name == "PickPlaceCan":
+    #         parsed['target_pos'] = safe_array_convert(obs_dict.get('Can_pos'), 3)
+    #         parsed['target_quat'] = safe_array_convert(obs_dict.get('Can_quat'), 4)
+    #         parsed['eef_to_target_pos'] = safe_array_convert(obs_dict.get('Can_to_robot0_eef_pos'), 3)
+    #         parsed['eef_to_target_quat'] = safe_array_convert(obs_dict.get('Can_to_robot0_eef_quat'), 4)
+            
+    #     elif task_name == "PickPlaceMilk":
+    #         parsed['target_pos'] = safe_array_convert(obs_dict.get('Milk_pos'), 3)
+    #         parsed['target_quat'] = safe_array_convert(obs_dict.get('Milk_quat'), 4)
+    #         parsed['eef_to_target_pos'] = safe_array_convert(obs_dict.get('Milk_to_robot0_eef_pos'), 3)
+    #         parsed['eef_to_target_quat'] = safe_array_convert(obs_dict.get('Milk_to_robot0_eef_quat'), 4)
+
+    #     elif task_name == "PickPlaceBread":
+    #         parsed['target_pos'] = safe_array_convert(obs_dict.get('Bread_pos'), 3)
+    #         parsed['target_quat'] = safe_array_convert(obs_dict.get('Bread_quat'), 4)
+    #         parsed['eef_to_target_pos'] = safe_array_convert(obs_dict.get('Bread_to_robot0_eef_pos'), 3)
+    #         parsed['eef_to_target_quat'] = safe_array_convert(obs_dict.get('Bread_to_robot0_eef_quat'), 4)
+            
+    #     elif task_name == "PickPlaceCereal":
+    #         parsed['target_pos'] = safe_array_convert(obs_dict.get('Cereal_pos'), 3)
+    #         parsed['target_quat'] = safe_array_convert(obs_dict.get('Cereal_quat'), 4)
+    #         parsed['eef_to_target_pos'] = safe_array_convert(obs_dict.get('Cereal_to_robot0_eef_pos'), 3)
+    #         parsed['eef_to_target_quat'] = safe_array_convert(obs_dict.get('Cereal_to_robot0_eef_quat'), 4)
+            
+    #     elif task_name == "PickPlace":
+    #         """Here we should pass the four objects at once, Future work"""
+    #         raise NotImplementedError
+            
+    #     return parsed
+        # 1. New helper method to calculate the bounding box.
+    # This contains the verified logic from our test script.
+    def _get_geom_bounding_box(self, model, geom_id):
+        """
+        Calculates the 3D bounding box size for a given geometry,
+        regardless of its primitive type.
+        """
+        geom_type = model.geom_type[geom_id]
+        geom_size = model.geom_size[geom_id]
+        
+        body_id = model.geom_bodyid[geom_id]
+        if model.body_mocapid[body_id] != -1:
+            return np.zeros(3)
+
+        # MuJoCo Geom Type Enums:
+        # 2: sphere, 3: capsule, 5: cylinder, 6: box, 7: mesh
+        if geom_type == 2: # sphere
+            radius = geom_size[0]
+            return np.array([2 * radius, 2 * radius, 2 * radius])
+        elif geom_type == 3: # capsule (e.g., Door handle)
+            radius, half_height = geom_size[0], geom_size[1]
+            return np.array([2 * radius, 2 * radius, 2 * half_height + 2 * radius])
+        elif geom_type == 5: # cylinder
+            radius, half_height = geom_size[0], geom_size[1]
+            return np.array([2 * radius, 2 * radius, 2 * half_height])
+        elif geom_type == 6: # box
+            return geom_size * 2.0
+        elif geom_type == 7: # mesh (used for some objects like the can)
+            radius, half_height = geom_size[0], geom_size[1]
+            return np.array([2 * radius, 2 * radius, 2 * half_height])
+        else:
+            print(f"Warning: Unhandled geom type: {geom_type} for geom ID {geom_id}")
+            return np.zeros(3)
+
     def _parse_object_state(self, obs_dict):
         """
         Parses the task-specific raw observation dictionary into a canonical format.
@@ -938,7 +1672,7 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
         parsed = {
             # --- Proprioceptive (Dynamic) ---
             'target_pos': np.zeros(3, dtype=np.float32),
-            'target_quat': np.array([1.0, 0, 0, 0], dtype=np.float32), # Default to identity quaternion
+            'target_quat': np.array([1.0, 0, 0, 0], dtype=np.float32),
             'eef_to_target_pos': np.zeros(3, dtype=np.float32),
             'hinge_qpos': np.zeros(1, dtype=np.float32),
             'handle_qpos': np.zeros(1, dtype=np.float32),
@@ -946,17 +1680,23 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
             'proportion_wiped': np.zeros(1, dtype=np.float32),
             'secondary_target_pos': np.zeros(3, dtype=np.float32),
             'door_to_eef_pos': np.zeros(3, dtype=np.float32),
-            'eef_to_target_quat': np.array([1.0, 0, 0, 0], dtype=np.float32), # For PickPlaceCan
+            'eef_to_target_quat': np.array([1.0, 0, 0, 0], dtype=np.float32),
             # --- Context (Static) ---
             'object_size': np.zeros(3, dtype=np.float32),
             'wipe_centroid': np.zeros(3, dtype=np.float32),
         }
 
-        # Map task name to the primary interactive geometry name in the MuJoCo model
+        # 2. The fully corrected geom map with physical collision bodies.
+        # "Wipe" is removed as it does not have a single resizable object.
         geom_map = {
-            "Lift": "cube_g0_vis", 
-            "Door": "Door_handle_visual", 
-            "Wipe": "table_visual",
+            "Lift": "cube_g0",
+            "Door": "Door_handle",
+            # No Wipe here
+            # CUSTOM ENV 
+            "LiftBall": "ball_g0",
+            "LiftScalableCube": "cube_g0",
+            "LiftCylinder": "cylinder_g0",
+            "LiftRectangle": "rectangle_g0",
             "PickPlaceCan": "Can_g0",
             "PickPlaceMilk": "Milk_g0",
             "PickPlaceBread": "Bread_g0",
@@ -966,18 +1706,19 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
         target_geom_name = geom_map.get(task_name)
         if target_geom_name:
             try:
-                geom_id = self.model.geom_name2id(target_geom_name)
-                # Get half-extents and convert to full size
-                parsed['object_size'] = self.model.geom_size[geom_id] * 2.0
+                # 3. The new, robust logic to get the object's bounding box.
+                # Uses the modern API and our verified helper function.
+                geom_id = self.model.geom(target_geom_name).id
+                parsed['object_size'] = self._get_geom_bounding_box(self.model, geom_id)
             except KeyError:
                 print(f"[Parser] Warning: Geom '{target_geom_name}' not found for task '{task_name}'.")
 
-        # Helper function to safely convert to array
+        # Helper function to safely convert to array (This part remains unchanged)
         def safe_array_convert(value, target_shape, dtype=np.float32):
             if value is None:
                 return np.zeros(target_shape, dtype=dtype)
             value_arr = np.asarray(value, dtype=dtype)
-            if value_arr.ndim == 0:  # scalar
+            if value_arr.ndim == 0:
                 if target_shape == 1 or (isinstance(target_shape, tuple) and target_shape == (1,)):
                     return np.array([value_arr], dtype=dtype)
                 else:
@@ -988,15 +1729,26 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
                 return value_arr.flatten()[:np.prod(target_shape) if isinstance(target_shape, tuple) else target_shape]
 
         # --- Translate task-specific observations into our universal format ---
-        if task_name == 'Lift':
+        # (This part of your code remains unchanged as it handles dynamic state)
+        if task_name == 'Lift' or task_name == 'LiftScalableCube':
             parsed['target_pos'] = safe_array_convert(obs_dict.get('cube_pos'), 3)
             parsed['target_quat'] = safe_array_convert(obs_dict.get('cube_quat'), 4)
             parsed['eef_to_target_pos'] = safe_array_convert(obs_dict.get('gripper_to_cube_pos'), 3)
-            
+        elif task_name == 'LiftBall':
+            parsed['target_pos'] = safe_array_convert(obs_dict.get('ball_pos'), 3)
+            parsed['target_quat'] = safe_array_convert(obs_dict.get('ball_quat'), 4)
+            parsed['eef_to_target_pos'] = safe_array_convert(obs_dict.get('gripper_to_ball_pos'), 3)
+        elif task_name == 'LiftCylinder':
+            parsed['target_pos'] = safe_array_convert(obs_dict.get('cylinder_pos'), 3)
+            parsed['target_quat'] = safe_array_convert(obs_dict.get('cylinder_quat'), 4)
+            parsed['eef_to_target_pos'] = safe_array_convert(obs_dict.get('gripper_to_cylinder_pos'), 3)
+        elif task_name == 'LiftRectangle':
+            parsed['target_pos'] = safe_array_convert(obs_dict.get('rectangle_pos'), 3)
+            parsed['target_quat'] = safe_array_convert(obs_dict.get('rectangle_quat'), 4)
+            parsed['eef_to_target_pos'] = safe_array_convert(obs_dict.get('gripper_to_rectangle_pos'), 3)
         elif task_name == 'Door':
             parsed['target_pos'] = safe_array_convert(obs_dict.get('handle_pos'), 3)
             parsed['eef_to_target_pos'] = safe_array_convert(obs_dict.get('handle_to_eef_pos'), 3)
-            # Fix: Handle scalar values properly
             parsed['hinge_qpos'] = safe_array_convert(obs_dict.get('hinge_qpos'), 1)
             parsed['handle_qpos'] = safe_array_convert(obs_dict.get('handle_qpos'), 1)
             parsed['secondary_target_pos'] = safe_array_convert(obs_dict.get('door_pos'), 3)
@@ -1033,10 +1785,10 @@ class RobosuiteNodeCentricObservation(gym.ObservationWrapper):
             parsed['eef_to_target_quat'] = safe_array_convert(obs_dict.get('Cereal_to_robot0_eef_quat'), 4)
             
         elif task_name == "PickPlace":
-            """Here we should pass the four objects at once, Future work"""
             raise NotImplementedError
             
         return parsed
+
     def _extract_feat_per_node(self, obs_dict):
         """Extracts and pads proprioceptive and context features for each node."""
         if not hasattr(self, '_structure_initialized') or not self._structure_initialized:
@@ -1865,20 +2617,28 @@ class RobosuiteSampleWrapper(gym.Wrapper):
 #     cfg.MODEL.MAX_JOINTS = 10
 #     cfg.MODEL.TASK_EMBED_DIM = 16
 #     cfg.MODEL.TRANSFORMER.DECODER_OUT_DIM = 6
-#     cfg.ROBOSUITE.ENV_NAMES = ["Lift", "Door", "Wipe", "PickPlaceCan", "PickPlaceMilk", "PickPlaceBread", "PickPlaceCereal"]
+#     cfg.ROBOSUITE.ENV_NAMES = ["Lift", "LiftBall","LiftScalableCube","LiftCylinder", "LiftRectangle", "Door", "Wipe", "PickPlaceCan", "PickPlaceMilk", "PickPlaceBread", "PickPlaceCereal"]
 #     cfg.ROBOSUITE.GRIPPER_DIM = 1
 #     cfg.ROBOSUITE.MAX_OBJECT_STATE_DIM = 40
 #     cfg.MODEL.ADD_OBJECT_NODE = True
 #     cfg.MODEL.OBJECT_POSE_IN_CONTEXT = True  # CRUCIAL: Set this to True
-
+#     cfg.ROBOSUITE.OBJECTS.CUBE_SCALE = 2.0
+#     cfg.ROBOSUITE.OBJECTS.SPHERE_SCALE = 2.0
+#     cfg.ROBOSUITE.OBJECTS.CYLINDER_SCALE = 2.0
+#     cfg.ROBOSUITE.OBJECTS.RECT_SCALE = 2.0
+    
 #     print("\n[Step 1] Global config object modified for test.")
 
 #     # 2. Define the tasks to test - NOW INCLUDING ALL TASKS
-#     tasks_to_test = ["Lift", "Door", "Wipe", "PickPlaceCan", "PickPlaceMilk", "PickPlaceBread", "PickPlaceCereal"]
+#     tasks_to_test = ["Lift", "LiftBall","LiftScalableCube", "LiftCylinder", "LiftRectangle", "Door", "Wipe", "PickPlaceCan", "PickPlaceMilk", "PickPlaceBread", "PickPlaceCereal"]
     
 #     # Define expected features for each task
 #     task_features = {
 #         'Lift': ['target_pos', 'target_quat', 'eef_to_target_pos'],
+#         'LiftScalableCube': ['target_pos', 'target_quat', 'eef_to_target_pos'],
+#         'LiftBall': ['target_pos', 'target_quat', 'eef_to_target_pos'],
+#         'LiftCylinder': ['target_pos', 'target_quat', 'eef_to_target_pos'],
+#         'LiftRectangle': ['target_pos', 'target_quat', 'eef_to_target_pos'],
 #         'Door': ['target_pos', 'eef_to_target_pos', 'hinge_qpos', 'handle_qpos', 'secondary_target_pos', 'door_to_eef_pos'],
 #         'Wipe': ['target_pos', 'eef_to_target_pos', 'wipe_radius', 'proportion_wiped'],
 #         'PickPlaceCan': ['target_pos', 'target_quat', 'eef_to_target_pos', 'eef_to_target_quat'],
@@ -1922,9 +2682,12 @@ class RobosuiteSampleWrapper(gym.Wrapper):
 #         print(f"Raw obs keys for {task_name}: {list(raw_obs_dict.keys())}")
         
 #         # Show relevant raw values for debugging
-#         if task_name == 'Lift':
+#         if task_name == 'Lift' or task_name == 'LiftScalableCube':
 #             print(f"  cube_pos: {raw_obs_dict.get('cube_pos', 'NOT FOUND')}")
 #             print(f"  gripper_to_cube_pos: {raw_obs_dict.get('gripper_to_cube_pos', 'NOT FOUND')}")
+#         elif task_name == 'LiftBall':
+#             print(f"  ball_pos: {raw_obs_dict.get('ball_pos', 'NOT FOUND')}")
+#             print(f"  gripper_to_ball_pos: {raw_obs_dict.get('gripper_to_ball_pos', 'NOT FOUND')}")
 #         elif task_name == 'Door':
 #             print(f"  handle_pos: {raw_obs_dict.get('handle_pos', 'NOT FOUND')}")
 #             print(f"  hinge_qpos: {raw_obs_dict.get('hinge_qpos', 'NOT FOUND')} (type: {type(raw_obs_dict.get('hinge_qpos'))})")

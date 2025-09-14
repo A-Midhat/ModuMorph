@@ -1,3 +1,7 @@
+
+####################################
+####################################
+#### New GEOM SIZES ################
 import argparse
 import os
 import sys
@@ -13,14 +17,16 @@ from metamorph.envs.vec_env.vec_video_recorder import VecVideoRecorder
 
 """
 Example:
-python tools/normal_eval.py \
+python tools/obj_geom_seeded.py \
   --run_dir ./artifacts/Robosuite-v0-MR-ST-MR-MT_object_only_JNT_3296-run:v3/ \
   --checkpoint checkpoint_300.pt \
   --morph Kinova3 \
-  --task Door \
+  --task Lift \
   --controller JOINT_VELOCITY \
-  --episodes 25 \
+  --episodes 1 \
   --save_video ./test_videos/ \
+  --new-geom-size 0.01 0.01 0.01 \
+  --seed 1409 \
   --debug
 'RethinkGripper', 'PandaGripper', 'JacoThreeFingerGripper', 'JacoThreeFingerDexterousGripper', 
 'WipingGripper', 'Robotiq85Gripper', 'Robotiq140Gripper', 'RobotiqThreeFingerGripper', 
@@ -54,6 +60,15 @@ def parse_args():
     parser.add_argument("--debug", action="store_true", help="Enable debug prints")
     parser.add_argument("--test_all_ids", action="store_true", help="Quick scan for all unimal ids (debug)")
     parser.add_argument("--seed", default=None, type=int, help="Master seed for reproducibility")
+    # --- NEW ARG: test different object geom sizes (e.g., for Door handle or Lift cube)
+    parser.add_argument(
+        "--new-geom-size",
+        type=float,
+        nargs="+",
+        default=None,
+        help="Specify new raw geom_size values to test generalization (e.g., hx hy hz for box or [radius half_height] for cyl)."
+    )
+    
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
@@ -90,6 +105,11 @@ def main():
     torch.manual_seed(seed_to_use) 
     np.random.seed(seed_to_use)
     print(f"[SEED-LOG] Using master seed: {seed_to_use}")
+    # --- LOG: show that new-geom-size flag was passed at startup (even if not using --debug) ---
+    if args.new_geom_size is not None:
+        print(f"[GEOM-LOG] --new-geom-size was passed on CLI: {args.new_geom_size}")
+    else:
+        print(f"[GEOM-LOG] --new-geom-size NOT passed")
     # --- 1. Load config ---
     config_path = os.path.join(args.run_dir, "config.yaml")
     if not os.path.exists(config_path):
@@ -263,7 +283,7 @@ def main():
         for test_id in range(max_scan):
             tid = torch.tensor([test_id], dtype=torch.long, device=device)
             local_video_kwargs = {"video_dir": args.save_video, "video_prefix": f"scan_{test_id}_{args.task}_{args.morph}"} if args.save_video else {}
-            local_env = make_vec_envs(training=False, save_video=False, morph_idx_render=render_idx, seed=seed_to_use,**local_video_kwargs)
+            local_env = make_vec_envs(training=False, save_video=False, morph_idx_render=render_idx, seed=seed_to_use, **local_video_kwargs)
             set_ob_rms(local_env, ob_rms)
             obs = local_env.reset()
             done = [False]
@@ -289,15 +309,126 @@ def main():
     # build video kwargs for main loop (pass only if saving)
     video_kwargs = {"video_dir": args.save_video, "video_prefix": f"{args.task}_{args.morph}"} if args.save_video else {}
 
+    
+    # Minimal verified mapping of env task -> geom name (used when --new-geom-size passed)
+    correct_geom_map = {
+        "Lift": "cube_g0",
+        "Door": "Door_handle",
+        "PickPlaceCan": "Can_g0",
+        "PickPlaceMilk": "Milk_g0",
+        "PickPlaceBread": "Bread_g0",
+        "PickPlaceCereal": "Cereal_g0",
+    }
     for i in tqdm(range(args.episodes), desc="🤖 Running Evaluation Episodes"):
         envs = make_vec_envs(training=False, save_video=bool(args.save_video), morph_idx_render=render_idx, seed=seed_to_use, **video_kwargs)
         set_ob_rms(envs, ob_rms)
+        
+        # --- NEW: Object geometry modification (minimal, safe) ---
+        # This only runs if --new-geom-size is provided. We try to apply the change,
+        # but we do NOT abort the whole evaluation if it fails (we print a warning).
+        if args.new_geom_size:
+            target_geom_name = correct_geom_map.get(args.task)
+            if not target_geom_name:
+                print(f"Warning: Task '{args.task}' not in geom_map. Cannot modify object size.")
+            else:
+                try:
+                    # Access underlying MuJoCo model (assumes NUM_ENVS=1)
+                    sim_env = envs.venv.envs[0]
+                    model = sim_env.sim.model
 
+                    # Attempt to get geom id (this matches the obj_geom_eval.py approach)
+                                        # Attempt to get geom id (this matches the obj_geom_eval.py approach)
+                    geom_id = model.geom(target_geom_name).id
+                    ###############################################################
+                    ##################### DEBUGGING ###############################
+                    ###############################################################
+
+                    # Add this after getting geom_id
+                    geom_type = model.geom_type[geom_id]
+                    geom_type_names = {0: 'plane', 1: 'hfield', 2: 'sphere', 3: 'capsule', 
+                                    5: 'cylinder', 6: 'box', 7: 'mesh'}
+                    print(f"Geom '{target_geom_name}' is type: {geom_type_names.get(geom_type, 'unknown')}")
+
+                    # Also check if it has a mesh
+                    if hasattr(model, 'geom_meshid') and model.geom_meshid[geom_id] >= 0:
+                        print("This geometry uses a mesh - size scaling might not work as expected")
+                    else:
+                        print("This is a primitive geometry - size scaling should work fine")
+                    ###############################################################
+                    ###############################################################
+                    ###############################################################
+                    # --- Pre-change logging ---
+                    original_size = model.geom_size[geom_id].copy()
+                    if i == 0:
+                        print("\n--- 🦾 Object Geometry Modification (attempt) ---")
+                        print(f"Task: '{args.task}', Target Geom: '{target_geom_name}' (ID: {geom_id})")
+                        print(f"  - original model.geom_size[{geom_id}]: {original_size.tolist()}")
+                        print(f"  - requested --new-geom-size: {args.new_geom_size}")
+
+                    # Apply the new size (only overwrite first len(new_size) components)
+                    new_size = np.array(args.new_geom_size, dtype=float)
+                    model.geom_size[geom_id][: len(new_size)] = new_size
+
+                    # Ensure MuJoCo recomputes derived quantities
+                    try:
+                        sim_env.sim.forward()
+                    except Exception:
+                        # forward() is best-effort; continue even if it fails
+                        pass
+
+                    # --- Immediate post-change check ---
+                    after_size = model.geom_size[geom_id].copy()
+                    if i == 0:
+                        print(f"  - after assignment, model.geom_size[{geom_id}]: {after_size.tolist()}")
+                    # verify the first components were set correctly
+                    try:
+                        compare_ok = np.allclose(after_size[: len(new_size)], new_size, atol=1e-6, rtol=1e-6)
+                    except Exception:
+                        compare_ok = False
+
+                    if compare_ok:
+                        print(f"[GEOM-LOG] Immediate verification: PASS (first {len(new_size)} elements match requested values)")
+                    else:
+                        print(f"[GEOM-LOG] Immediate verification: FAIL - requested {new_size.tolist()} ; got {after_size[:len(new_size)].tolist()}")
+                        print("  -> Will continue; a later re-check is performed after env.reset() in case the wrapper re-initialized model.")
+
+                    if i == 0:
+                        print("--------------------------------------\n")         
+                except Exception as e:
+                    print(f"\n❌ Warning: failed to modify object geometry (will continue). Error: {e}\n")
+        # --- END: object geometry modification ---
         debug_print(f"Episode {i+1}: Environment created", args.debug)
         debug_print(f"Environment action space: {envs.action_space}", args.debug)
         debug_print(f"Environment observation space: {envs.observation_space}", args.debug)
 
         obs = envs.reset()
+        # --- POST-RESET verification: confirm the change survived env.reset() ---
+        if args.new_geom_size:
+            try:
+                sim_env = envs.venv.envs[0]
+                model = sim_env.sim.model
+                geom_id = model.geom(target_geom_name).id
+                post_reset_size = model.geom_size[geom_id].copy()
+                # Print a concise verification line
+                print(f"[GEOM-LOG] After env.reset(): model.geom_size[{geom_id}] = {post_reset_size.tolist()}")
+                # If mismatch, attempt to reapply and report
+                if not np.allclose(post_reset_size[: len(new_size)], new_size, atol=1e-6, rtol=1e-6):
+                    print(f"[GEOM-LOG] MISMATCH after reset (expected {new_size.tolist()}). Reapplying assignment and calling sim.forward()...")
+                    model.geom_size[geom_id][: len(new_size)] = new_size
+                    try:
+                        sim_env.sim.forward()
+                    except Exception:
+                        pass
+                    post_fix_size = model.geom_size[geom_id].copy()
+                    print(f"[GEOM-LOG] After reapply: model.geom_size[{geom_id}] = {post_fix_size.tolist()}")
+                    if np.allclose(post_fix_size[: len(new_size)], new_size, atol=1e-6, rtol=1e-6):
+                        print(f"[GEOM-LOG] Reapply verification: PASS")
+                    else:
+                        print(f"[GEOM-LOG] Reapply verification: FAIL - geometry still does not match requested values.")
+                        print("  -> This indicates the environment likely overwrites geom_size on reset; consider modifying the environment factory or the XML before env creation.")
+            except Exception as e:
+                print(f"[GEOM-LOG] post-reset verification failed with exception: {e}")
+
         if isinstance(obs, dict):
             debug_print(f"Episode {i+1}: Observation is dict with keys: {list(obs.keys())}", args.debug)
             for key, value in obs.items():
@@ -412,6 +543,8 @@ def main():
     avg_success_rate = float(np.mean(episode_successes) * 100) if episode_successes else 0.0
 
     print("\n--- Evaluation Statistics ---")
+    if args.new_geom_size:
+        print(f"NOTE: Ran with MODIFIED object size: {args.new_geom_size}")
     print(f"Episodes:    {args.episodes}")
     print(f"Avg. Reward: {avg_reward:.2f} ± {std_reward:.2f}")
     print(f"Success Rate: {avg_success_rate:.1f}%")

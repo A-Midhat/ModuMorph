@@ -1,0 +1,10 @@
+path,variant,artifact,seed,task,morph,avg_reward,success_rate_pct
+test_results_by_type/allnodes/allnodes/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_1409-run_v9_metrics.json,allnodes,Robosuite-v0-MR-ST-MR-MT_ALLNODES4_1409-run_v9,1409,Door,UR5e,456.42365441913716,100.0
+test_results_by_type/allnodes/allnodes/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_2008-run_v9_metrics.json,allnodes,Robosuite-v0-MR-ST-MR-MT_ALLNODES4_2008-run_v9,2008,Door,UR5e,3.172033677591653,0.0
+test_results_by_type/allnodes/allnodes/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_3296-run_v9_metrics.json,allnodes,Robosuite-v0-MR-ST-MR-MT_ALLNODES4_3296-run_v9,3296,Door,UR5e,0.05274076300663008,0.0
+test_results_by_type/avg_nodes/avg_nodes/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run_v19_metrics.json,avg_nodes,Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run_v19,1409,Lift,UR5e,0.9400168180814035,0.0
+test_results_by_type/avg_nodes/avg_nodes/Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run_v18_metrics.json,avg_nodes,Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run_v18,2008,Lift,UR5e,0.6846973479550797,0.0
+test_results_by_type/avg_nodes/avg_nodes/Robosuite-v0-MR-ST-MR-MT_avg_nodes_3296-run_v18_metrics.json,avg_nodes,Robosuite-v0-MR-ST-MR-MT_avg_nodes_3296-run_v18,3296,Door,UR5e,0.01548619894310832,0.0
+test_results_by_type/object_only/object_only/Robosuite-v0-MR-ST-MR-MT_object_only4_2008-run_v9_metrics.json,object_only,Robosuite-v0-MR-ST-MR-MT_object_only4_2008-run_v9,2008,Door,UR5e,59.197617596480995,0.0
+test_results_by_type/object_only/object_only/Robosuite-v0-MR-ST-MR-MT_object_only_1409-run_v20_metrics.json,object_only,Robosuite-v0-MR-ST-MR-MT_object_only_1409-run_v20,1409,Door,UR5e,431.1461801407859,100.0
+test_results_by_type/object_only/object_only/Robosuite-v0-MR-ST-MR-MT_object_only_3296-run_v18_metrics.json,object_only,Robosuite-v0-MR-ST-MR-MT_object_only_3296-run_v18,3296,Door,UR5e,0.09206093426894313,0.0

@@ -9,11 +9,18 @@ ROBOSUITE:
     "PickPlaceCan","PickPlaceCan","PickPlaceCan","PickPlaceCan",
     "Wipe", "Wipe", "Wipe"  # 6 PickPlaceCan environments 
   ]
+  # CONTROLLERS: [
+  #   "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY",     # Door controllers
+  #   "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY",     # Lift controllers
+  #   "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY",
+  #   "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY",      # PickPlaceCan controllers
+  #   # "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE"
+  # ]
   CONTROLLERS: [
-    "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY",     # Door controllers
-    "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY",     # Lift controllers
-    "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY",
-    "JOINT_VELOCITY", "JOINT_VELOCITY", "JOINT_VELOCITY",      # PickPlaceCan controllers
+    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE",     # Door controllers
+    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE",     # Lift controllers
+    "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE",
+    "OSC_POSE", "OSC_POSE", "OSC_POSE",      # PickPlaceCan controllers
     # "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE", "OSC_POSE"
   ]
   GRIPPER_TYPES: [null]
@@ -51,8 +58,9 @@ MODEL:
     NLAYERS: 5
     NHEAD: 2
     DIM_FEEDFORWARD: 1024
-    DECODER_OUT_DIM: 1      # 6 for OSC_POSE controller
-    DROPOUT: 0.1          
+    # DECODER_OUT_DIM: 1      # 6 for OSC_POSE controller
+    DECODER_OUT_DIM: 6
+    DROPOUT: 0.0          
     EXT_MIX: "late"         # exteroceptive info is mixed (not used if object-node is on) TODO: will change later
     POS_EMBEDDING: "none"   
     
@@ -87,20 +95,23 @@ LOGGING:
   PROJECT: "MR-MT_FULL"
   ENTITY: "alimidhat62-org" 
 
-OUT_DIR: "./output/MR-MT_ALLNODES4_JNT_1409" #MR-MT_<MODE>_<SEED>
+OUT_DIR: "./output/MR-MT_Metamorph_JNT_1409" #MR-MT_<MODE>_<SEED>
 
 
 
 # My wandb api key: 2ca2f26d3ea46a1aa48e30ff41f2406a72ec8489
 
-# git pull origin spo
+# cd ModuMorph && git checkout -- . && git pull origin spo && code configs/mr_mt_runs.yaml
+# source venv/bin/activate && python tools/train_ppo.py --cfg configs/mr_mt_runs.yaml
+
+
 
 # nano venv/lib/python3.10/site-packages/robosuite/models/assets/robots/sawyer/robot.xml 
 
 # head_1, head_4
 #                 inertia="shell"
 
-# python tools/train.py --config configs/mr_mt_runs.yaml
+
 
 
 # PS: I am not a noob, just I have a lot of vms to run and I need it. :)

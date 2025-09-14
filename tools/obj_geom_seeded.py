@@ -1,3 +1,6 @@
+##################### Generalization to New Custom Envs (basically new objects) ###########
+###########################################################################################
+
 import argparse
 import os
 import sys
@@ -13,15 +16,16 @@ from metamorph.envs.vec_env.vec_video_recorder import VecVideoRecorder
 
 """
 Example for object generalization testing:
-python tools/zs_objects.py \
+python tools/obj_geom_seeded.py \
   --run_dir ./test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19 \
   --checkpoint checkpoint_600.pt \
-  --morph Kinova3 \
-  --task LiftBall \
+  --morph Jaco \
+  --task LiftCylinder  \
   --base_task Lift \
   --controller OSC_POSE \
-  --episodes 5 \
+  --episodes 1 \
   --save_video ./test_object_generalization/ \
+  --scale 1.0
   --debug
 """
 
@@ -52,6 +56,7 @@ def parse_args():
     parser.add_argument("--debug", action="store_true", help="Enable debug prints")
     parser.add_argument("--test_all_ids", action="store_true", help="Quick scan for all unimal ids (debug)")
     parser.add_argument("--seed", default=None, type=int, help="Master seed for reproducibility")
+    parser.add_argument("--scale", type=float, default=1.0, help="Uniform scaling factor for the custom object's geometry.")
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
@@ -111,7 +116,19 @@ def main():
     debug_print(f"Original training pairs: {list(zip(original_morphs, original_tasks))}", args.debug)
 
     cfg.defrost()
-    
+    # Determine which object scale to modify based on the task name
+    if args.scale != 1.0:
+        print(f"[SCALE-LOG] Applying scale factor {args.scale} for task '{args.task}'")
+        if "Ball" in args.task:
+            cfg.ROBOSUITE.OBJECTS.SPHERE_SCALE = args.scale
+        elif "Cube" in args.task:
+            cfg.ROBOSUITE.OBJECTS.CUBE_SCALE = args.scale
+        elif "Cylinder" in args.task:
+            cfg.ROBOSUITE.OBJECTS.CYLINDER_SCALE = args.scale
+        elif "Rectangle" in args.task:
+            cfg.ROBOSUITE.OBJECTS.RECT_SCALE = args.scale
+        else:
+            print(f"[SCALE-LOG] Warning: Could not determine object type from task name '{args.task}'. Scale not applied.")
     # --- 2. Setup evaluation config for OBJECT GENERALIZATION ---
     cfg.ROBOSUITE.TASK_TYPE = "MR"
     

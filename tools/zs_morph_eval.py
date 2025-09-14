@@ -11,16 +11,34 @@ from metamorph.algos.ppo.envs import set_ob_rms
 from metamorph.algos.ppo.model import Agent
 from metamorph.envs.vec_env.vec_video_recorder import VecVideoRecorder
 
+
+"""
+declare -A ARTIFACT_PATHS=(
+    # AllNodes variants (3 seeds each)
+    ["allnodes_seed1"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_1409-run:v9"
+    ["allnodes_seed2"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_3296-run:v9"  
+    ["allnodes_seed3"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_2008-run:v9"
+    
+    # Avg_nodes variants (3 seeds each)
+    ["avg_nodes_seed1"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19"
+    ["avg_nodes_seed2"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_3296-run:v18"
+    ["avg_nodes_seed3"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run:v18"
+    
+    # Object_only variants (3 seeds each)  
+    ["object_only_seed1"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_object_only_1409-run:v20"
+    ["object_only_seed2"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_object_only_3296-run:v18"
+    ["object_only_seed3"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_object_only4_2008-run:v9"
+)
+"""
 """
 Example for generalization testing:
 python tools/zs_morph_eval.py \
-  --run_dir ./artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_1409-run:v9/ \
-  --checkpoint Robosuite-v0.pt \
-  --morph UR5e \
+  --run_dir ./test_artifacts/Robosuite-v0-MR-ST-MR-MT_object_only4_2008-run:v9 \
+  --checkpoint checkpoint_600.pt \
+  --morph Panda \
   --task Door \
   --controller OSC_POSE \
-  --episodes 1 \
-  --seed 42 \
+  --episodes 5 \
   --save_video ./test_generalization/ \
   --debug
 """
@@ -38,7 +56,9 @@ def parse_args():
     parser.add_argument("--gripper", default=None, type=str, help="Override gripper type")
     parser.add_argument("--debug", action="store_true", help="Enable debug prints")
     parser.add_argument("--test_all_ids", action="store_true", help="Quick scan for all unimal ids (debug)")
-
+    parser.add_argument("--out_dir", default=None, type=str, help="Directory to save per-run metrics (JSON + CSV per type)")
+    parser.add_argument("--save_metrics", action="store_true", help="If set, save per-run metrics (JSON) and append to per-type CSV")
+    parser.add_argument("--seed", default=None, type=int, help="Master seed for reproducibility")
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -73,6 +93,10 @@ def _to_scalar_float(x):
 def main():
     args = parse_args()
     # --- 1. Load config ---
+    seed_to_use = args.seed if args.seed is not None else int(args.run_dir.split("_")[-1].split("-")[0])
+    torch.manual_seed(seed_to_use)
+    np.random.seed(seed_to_use)
+    print(f"[SEED-LOG] Using master seed: {seed_to_use}")
     config_path = os.path.join(args.run_dir, "config.yaml")
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Config file not found at {config_path}")
@@ -242,7 +266,7 @@ def main():
     if args.debug:
         print("[Eval] Running quick 1-episode sanity check...")
         quick_video_kwargs = {"video_dir": args.save_video, "video_prefix": f"quick_{args.task}_{args.morph}"} if args.save_video else {}
-        quick_env = make_vec_envs(training=False, save_video=False, morph_idx_render=extended_render_idx, **quick_video_kwargs)
+        quick_env = make_vec_envs(training=False, save_video=False, morph_idx_render=extended_render_idx,seed=seed_to_use, **quick_video_kwargs)
         set_ob_rms(quick_env, ob_rms)
         obs = quick_env.reset()
         done = [False]
@@ -267,7 +291,7 @@ def main():
         for test_id in range(max_scan):
             tid = torch.tensor([test_id], dtype=torch.long, device=device)
             local_video_kwargs = {"video_dir": args.save_video, "video_prefix": f"scan_{test_id}_{args.task}_{args.morph}"} if args.save_video else {}
-            local_env = make_vec_envs(training=False, save_video=False, morph_idx_render=extended_render_idx, **local_video_kwargs)
+            local_env = make_vec_envs(training=False, save_video=False, morph_idx_render=extended_render_idx, seed=seed_to_use, **local_video_kwargs)
             set_ob_rms(local_env, ob_rms)
             obs = local_env.reset()
             done = [False]
@@ -293,7 +317,7 @@ def main():
     video_kwargs = {"video_dir": args.save_video, "video_prefix": f"{args.task}_{args.morph}"} if args.save_video else {}
 
     for i in tqdm(range(args.episodes), desc="🤖 Running Evaluation Episodes"):
-        envs = make_vec_envs(training=False, save_video=bool(args.save_video), morph_idx_render=extended_render_idx, **video_kwargs)
+        envs = make_vec_envs(training=False, save_video=bool(args.save_video), morph_idx_render=extended_render_idx, seed=seed_to_use, **video_kwargs)
         set_ob_rms(envs, ob_rms)
 
         debug_print(f"Episode {i+1}: Environment created", args.debug)
@@ -405,6 +429,169 @@ def main():
     print(f"Individual episode rewards: {episode_returns}")
     print("="*50 + "\n")
 
+    #######################################
+    ################# #####################
+        # --- Save metrics (optional) ---
+    # if args.save_metrics:
+    #     import json
+    #     import re
+    #     import csv
+    #     # Derive some metadata from run_dir name
+    #     run_basename = os.path.basename(os.path.normpath(args.run_dir)).replace(":", "_")
+    #     # seed: try to extract pattern like _1409-run or _1409-run:v9
+    #     seed = None
+    #     m = re.search(r'_(\d+)-run', run_basename)
+    #     if m:
+    #         seed = m.group(1)
+    #     # run_version: try to capture run:v\d+
+    #     rv = None
+    #     m2 = re.search(r'run:v?(\d+)', run_basename)
+    #     if m2:
+    #         rv = m2.group(1)
+    #     # type detection (simple, robust)
+    #     lowname = run_basename.lower()
+    #     if "allnodes" in lowname:
+    #         atype = "allnodes"
+    #     elif "avg_nodes" in lowname or "avgnodes" in lowname:
+    #         atype = "avg_nodes"
+    #     elif "object_only" in lowname or "objectonly" in lowname:
+    #         atype = "object_only"
+    #     else:
+    #         # fallback: try to find known tokens
+    #         if "all" in lowname:
+    #             atype = "allnodes"
+    #         elif "avg" in lowname:
+    #             atype = "avg_nodes"
+    #         else:
+    #             atype = "unknown"
+
+    #     out_base = args.out_dir if args.out_dir else os.path.join(args.run_dir, "eval_results")
+    #     type_dir = os.path.join(out_base, atype)
+    #     os.makedirs(type_dir, exist_ok=True)
+
+    #     results = {
+    #         "artifact": run_basename,
+    #         "type": atype,
+    #         "seed": seed,
+    #         "run_version": rv,
+    #         "morph": args.morph,
+    #         "task": args.task,
+    #         "episodes": int(args.episodes),
+    #         "avg_reward": float(avg_reward),
+    #         "std_reward": float(std_reward),
+    #         "success_rate_pct": float(avg_success_rate),
+    #         "episode_returns": episode_returns,
+    #     }
+
+    #     # write json per run
+    #     json_path = os.path.join(type_dir, f"{run_basename}_metrics.json")
+    #     try:
+    #         with open(json_path, "w") as f:
+    #             json.dump(results, f, indent=2)
+    #         print(f"[Metrics] Saved JSON metrics to {json_path}")
+    #     except Exception as e:
+    #         print(f"[Metrics] Failed to write JSON metrics: {e}")
+
+    #     # append to aggregated CSV for the type
+    #     csv_path = os.path.join(type_dir, "aggregated.csv")
+    #     fieldnames = ["artifact", "seed", "run_version", "morph", "task", "episodes", "avg_reward", "std_reward", "success_rate_pct", "episode_returns"]
+    #     try:
+    #         write_header = not os.path.exists(csv_path)
+    #         with open(csv_path, "a", newline="") as cf:
+    #             writer = csv.DictWriter(cf, fieldnames=fieldnames)
+    #             if write_header:
+    #                 writer.writeheader()
+    #             # episode_returns store as JSON string to keep structure
+    #             row = {k: results.get(k) for k in fieldnames}
+    #             # convert episode_returns to JSON string to be safe
+    #             row["episode_returns"] = json.dumps(results["episode_returns"])
+    #             writer.writerow(row)
+    #         print(f"[Metrics] Appended results to {csv_path}")
+    #     except Exception as e:
+    #         print(f"[Metrics] Failed to append CSV row: {e}")
+    if args.save_metrics:
+        import json
+        import re
+        import csv
+        
+        # Derive metadata from run_dir name
+        run_basename = os.path.basename(os.path.normpath(args.run_dir)).replace(":", "_")
+        
+        # Extract seed
+        seed = None
+        m = re.search(r'_(\d+)-run', run_basename)
+        if m:
+            seed = m.group(1)
+        
+        # Extract run version
+        rv = None
+        m2 = re.search(r'run:v?(\d+)', run_basename)
+        if m2:
+            rv = m2.group(1)
+        
+        # Detect type
+        lowname = run_basename.lower()
+        if "allnodes" in lowname:
+            atype = "allnodes"
+        elif "avg_nodes" in lowname or "avgnodes" in lowname:
+            atype = "avg_nodes"
+        elif "object_only" in lowname or "objectonly" in lowname:
+            atype = "object_only"
+        else:
+            if "all" in lowname:
+                atype = "allnodes"
+            elif "avg" in lowname:
+                atype = "avg_nodes"
+            else:
+                atype = "unknown"
+
+        out_base = args.out_dir if args.out_dir else os.path.join(args.run_dir, "eval_results")
+        type_dir = os.path.join(out_base, atype)
+        os.makedirs(type_dir, exist_ok=True)
+
+        results = {
+            "artifact": run_basename,
+            "type": atype,
+            "seed": seed,
+            "run_version": rv,
+            "morph": args.morph,
+            "task": args.task,
+            "episodes": int(args.episodes),
+            "avg_reward": float(avg_reward),
+            "std_reward": float(std_reward),
+            "success_rate_pct": float(avg_success_rate),
+            "episode_returns": episode_returns,
+        }
+
+        # FIXED: Include morph and task in filename to avoid overwrites
+        json_filename = f"{run_basename}_{args.morph}_{args.task}_metrics.json"
+        json_path = os.path.join(type_dir, json_filename)
+        
+        try:
+            with open(json_path, "w") as f:
+                json.dump(results, f, indent=2)
+            print(f"[Metrics] Saved JSON metrics to {json_path}")
+        except Exception as e:
+            print(f"[Metrics] Failed to write JSON metrics: {e}")
+
+        # Append to aggregated CSV for the type
+        csv_path = os.path.join(type_dir, "aggregated.csv")
+        fieldnames = ["artifact", "seed", "run_version", "morph", "task", "episodes", "avg_reward", "std_reward", "success_rate_pct", "episode_returns"]
+        
+        try:
+            write_header = not os.path.exists(csv_path)
+            with open(csv_path, "a", newline="") as cf:
+                writer = csv.DictWriter(cf, fieldnames=fieldnames)
+                if write_header:
+                    writer.writeheader()
+                row = {k: results.get(k) for k in fieldnames}
+                # Convert episode_returns to JSON string to preserve structure
+                row["episode_returns"] = json.dumps(results["episode_returns"])
+                writer.writerow(row)
+            print(f"[Metrics] Appended results to {csv_path}")
+        except Exception as e:
+            print(f"[Metrics] Failed to append CSV row: {e}")
+            
     if args.debug:
         print("\n--- Debug Information ---")
         print(f"Evaluation mode: {'Generalization' if is_generalization else 'Standard'}")

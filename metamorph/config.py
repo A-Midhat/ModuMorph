@@ -84,6 +84,11 @@ _C.ROBOSUITE.ENV_ARGS.reward_scale = 1.0
 _C.ROBOSUITE.EXTERO_KEYS = ["object-state"] 
 
 
+_C.ROBOSUITE.OBJECTS = CN()
+_C.ROBOSUITE.OBJECTS.CUBE_SCALE = 1.0 # FOR CUSTOM ENV
+_C.ROBOSUITE.OBJECTS.SPHERE_SCALE = 1.0
+_C.ROBOSUITE.OBJECTS.CYLINDER_SCALE = 1.0
+_C.ROBOSUITE.OBJECTS.RECT_SCALE = 1.0
 # ----------------------------------------------------------------------------#
 # Unimal Env Options
 # ----------------------------------------------------------------------------#
