@@ -7,19 +7,19 @@
 # --- 1. CONFIGURATION ---
 # Define all artifact paths with their seeds
 declare -A ARTIFACT_PATHS=(
-    ["allnodes_seed1"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_1409-run:v9"
-    ["allnodes_seed2"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_3296-run:v9"
-    ["allnodes_seed3"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_2008-run:v9"
-    # ["avg_nodes_seed1"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19"
-    # ["avg_nodes_seed2"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_3296-run:v18"
-    # ["avg_nodes_seed3"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run:v18"
+    # ["allnodes_seed1"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_1409-run:v9"
+    # ["allnodes_seed2"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_3296-run:v9"
+    # ["allnodes_seed3"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_2008-run:v9"
+    ["avg_nodes_seed1"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19"
+    ["avg_nodes_seed2"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_3296-run:v18"
+    ["avg_nodes_seed3"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run:v18"
 #     ["object_only_seed1"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_object_only_1409-run:v20"
 #     ["object_only_seed2"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_object_only_3296-run:v18"
 #     ["object_only_seed3"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_object_only4_2008-run:v9"
 )
 
 # Define checkpoint file (assuming same for all)
-CHECKPOINT="checkpoint_400.pt"
+CHECKPOINT="checkpoint_600.pt"
 
 # Define all morphologies to test
 MORPHS=("Jaco" "Kinova3" "IIWA" "Sawyer")
@@ -34,7 +34,7 @@ BASE_TASK="Lift"
 CONTROLLER="OSC_POSE"
 
 # Number of episodes to run for each sample
-EPISODES=10
+EPISODES=5
 
 # Directory to save videos (optional, can be left empty)
 VIDEO_DIR="./analysis_results/physical_attrs_videos/"
@@ -535,3 +535,6 @@ EOF
 
 echo -e "\n✨ Physical attributes analysis complete! Check the results directory: $RESULTS_DIR"
 echo "🎲 Remember: All samples were generated with seed $SAMPLING_SEED for reproducibility across computers"
+
+
+

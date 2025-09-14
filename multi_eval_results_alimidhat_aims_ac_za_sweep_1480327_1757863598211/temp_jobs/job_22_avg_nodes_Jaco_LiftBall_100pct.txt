@@ -1,0 +1,3 @@
+[JOB-22] Starting: avg_nodes Jaco LiftBall 100% (seed 1409)
+SUCCESS,0.0,116.79
+[JOB-22] ✅ Success=0.0%, Reward=116.79

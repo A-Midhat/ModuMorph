@@ -1,0 +1,3 @@
+[JOB-9] Starting: avg_nodes Jaco LiftBall 30% (seed 2008)
+SUCCESS,0.0,180.84
+[JOB-9] ✅ Success=0.0%, Reward=180.84

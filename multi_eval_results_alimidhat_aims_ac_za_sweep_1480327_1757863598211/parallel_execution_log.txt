@@ -1,0 +1,25 @@
+Seq	Host	Starttime	JobRuntime	Send	Receive	Exitval	Signal	Command
+2	:	1757863602.053	   146.918	0	0	0	0	run_single_job 2 avg_nodes avg_nodes_seed2 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_3296-run:v18 Jaco LiftBall 0 1.00000000000000000000 3296
+11	:	1757863602.116	   147.651	0	0	0	0	run_single_job 11 avg_nodes avg_nodes_seed2 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_3296-run:v18 Jaco LiftBall 50 1.50000000000000000000 3296
+5	:	1757863602.073	   147.782	0	0	0	0	run_single_job 5 avg_nodes avg_nodes_seed2 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_3296-run:v18 Jaco LiftBall 20 1.20000000000000000000 3296
+8	:	1757863602.094	   147.988	0	0	0	0	run_single_job 8 avg_nodes avg_nodes_seed2 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_3296-run:v18 Jaco LiftBall 30 1.30000000000000000000 3296
+6	:	1757863602.080	   148.161	0	0	0	0	run_single_job 6 avg_nodes avg_nodes_seed3 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run:v18 Jaco LiftBall 20 1.20000000000000000000 2008
+9	:	1757863602.101	   149.289	0	0	0	0	run_single_job 9 avg_nodes avg_nodes_seed3 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run:v18 Jaco LiftBall 30 1.30000000000000000000 2008
+3	:	1757863602.060	   149.414	0	0	0	0	run_single_job 3 avg_nodes avg_nodes_seed3 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run:v18 Jaco LiftBall 0 1.00000000000000000000 2008
+12	:	1757863602.124	   150.628	0	0	0	0	run_single_job 12 avg_nodes avg_nodes_seed3 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run:v18 Jaco LiftBall 50 1.50000000000000000000 2008
+7	:	1757863602.087	   151.726	0	0	0	0	run_single_job 7 avg_nodes avg_nodes_seed1 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19 Jaco LiftBall 30 1.30000000000000000000 1409
+1	:	1757863602.046	   151.842	0	0	0	0	run_single_job 1 avg_nodes avg_nodes_seed1 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19 Jaco LiftBall 0 1.00000000000000000000 1409
+10	:	1757863602.108	   151.833	0	0	0	0	run_single_job 10 avg_nodes avg_nodes_seed1 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19 Jaco LiftBall 50 1.50000000000000000000 1409
+4	:	1757863602.066	   152.302	0	0	0	0	run_single_job 4 avg_nodes avg_nodes_seed1 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19 Jaco LiftBall 20 1.20000000000000000000 1409
+14	:	1757863749.779	   143.773	0	0	0	0	run_single_job 14 avg_nodes avg_nodes_seed2 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_3296-run:v18 Jaco LiftBall 60 1.60000000000000000000 3296
+17	:	1757863750.251	   144.140	0	0	0	0	run_single_job 17 avg_nodes avg_nodes_seed2 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_3296-run:v18 Jaco LiftBall 80 1.80000000000000000000 3296
+20	:	1757863752.762	   143.824	0	0	0	0	run_single_job 20 avg_nodes avg_nodes_seed2 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_3296-run:v18 Jaco LiftBall 90 1.90000000000000000000 3296
+15	:	1757863749.863	   147.180	0	0	0	0	run_single_job 15 avg_nodes avg_nodes_seed3 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run:v18 Jaco LiftBall 60 1.60000000000000000000 2008
+18	:	1757863751.403	   146.463	0	0	0	0	run_single_job 18 avg_nodes avg_nodes_seed3 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run:v18 Jaco LiftBall 80 1.80000000000000000000 2008
+13	:	1757863748.985	   149.154	0	0	0	0	run_single_job 13 avg_nodes avg_nodes_seed1 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19 Jaco LiftBall 60 1.60000000000000000000 1409
+23	:	1757863753.951	   144.766	0	0	0	0	run_single_job 23 avg_nodes avg_nodes_seed2 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_3296-run:v18 Jaco LiftBall 100 2.00000000000000000000 3296
+19	:	1757863751.485	   147.595	0	0	0	0	run_single_job 19 avg_nodes avg_nodes_seed1 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19 Jaco LiftBall 90 1.90000000000000000000 1409
+16	:	1757863750.093	   150.287	0	0	0	0	run_single_job 16 avg_nodes avg_nodes_seed1 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19 Jaco LiftBall 80 1.80000000000000000000 1409
+21	:	1757863753.822	   146.602	0	0	0	0	run_single_job 21 avg_nodes avg_nodes_seed3 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run:v18 Jaco LiftBall 90 1.90000000000000000000 2008
+24	:	1757863754.377	   147.149	0	0	0	0	run_single_job 24 avg_nodes avg_nodes_seed3 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run:v18 Jaco LiftBall 100 2.00000000000000000000 2008
+22	:	1757863753.897	   148.279	0	0	0	0	run_single_job 22 avg_nodes avg_nodes_seed1 test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19 Jaco LiftBall 100 2.00000000000000000000 1409
