@@ -15,9 +15,9 @@ declare -A ARTIFACT_PATHS=(
     # ["Modumorph_seed1"]="artifacts/Robosuite-v0-MR-ST-MR-MT_ModuMorph_1409-run:v5"
     # ["Modumorph_seed2"]="artifacts/Robosuite-v0-MR-ST-MR-MT_ModuMorph_3296-run:v5"
     # ["Modumorph_seed3"]="artifacts/Robosuite-v0-MR-ST-MR-MT_ModuMorph_3296-run:v5"
-    ["allnodes_seed1"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_1409-run:v9"
-    ["allnodes_seed2"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_3296-run:v9"
-    ["allnodes_seed3"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_2008-run:v9"
+    # ["allnodes_seed1"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_1409-run:v9"
+    # ["allnodes_seed2"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_3296-run:v9"
+    # ["allnodes_seed3"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_2008-run:v9"
     ["avg_nodes_seed1"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19"
     ["avg_nodes_seed2"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_3296-run:v18"
     ["avg_nodes_seed3"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run:v18"
@@ -362,3 +362,6 @@ except Exception as e:
 EOF
 
 echo -e "\n✨ Analysis complete! Check the results directory: $RESULTS_DIR"
+
+
+# cd ModuMorph && git checkout -- . && git pull origin spo && sudo apt-get install bc && sudo apt-get install ffmpeg -y && code down_wandb.py tools/object_generalization_auto.sh

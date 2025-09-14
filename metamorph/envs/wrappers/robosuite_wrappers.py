@@ -457,81 +457,85 @@ class LiftScalableCube(Lift):
         return cube_height > table_height + scaled_threshold
 
 
-class DoorScalableHandle(Door):
-    def __init__(self, handle_friction=0.0, handel_damping=0.1, handle_scale=1.0, **kwargs):
-            self.handle_friction = handle_friction 
-            self.handel_damping = handel_damping
-            if cfg.ROBOSUITE.OBJECTS.HANDLE_FRICTION:
-                self.handle_friction = cfg.ROBOSUITE.OBJECTS.HANDLE_FRICTION
-                print(f"[DoorScalableHandle] Using handle with custom friction: {self.handle_friction}")
-            if cfg.ROBOSUITE.OBJECTS.HANDLE_DAMPING:
-                self.handel_damping = cfg.ROBOSUITE.OBJECTS.HANDLE_DAMPING
-                print(f"[DoorScalableHandle] Using handle with custom dampping: {self.handel_damping}")
+# class DoorScalableHandle(Door):
+#     def __init__(self, handle_friction=0.0, handel_damping=0.1, handle_scale=1.0, **kwargs):
+#             self.handle_friction = handle_friction 
+#             self.handel_damping = handel_damping
+#             if cfg.ROBOSUITE.OBJECTS.HANDLE_FRICTION:
+#                 self.handle_friction = cfg.ROBOSUITE.OBJECTS.HANDLE_FRICTION
+#                 print(f"[DoorScalableHandle] Using handle with custom friction: {self.handle_friction}")
+#             if cfg.ROBOSUITE.OBJECTS.HANDLE_DAMPING:
+#                 self.handel_damping = cfg.ROBOSUITE.OBJECTS.HANDLE_DAMPING
+#                 print(f"[DoorScalableHandle] Using handle with custom dampping: {self.handel_damping}")
 
-            self.handle_scale = cfg.ROBOSUITE.OBJECTS.HANDLE_SCALE 
-            if self.handle_scale != 1.0:
-                print(f"[DoorScalableHandle] Using handle scale: {self.handle_scale}")
-            super().__init__(**kwargs)
+#             self.handle_scale = cfg.ROBOSUITE.OBJECTS.HANDLE_SCALE 
+#             if self.handle_scale != 1.0:
+#                 print(f"[DoorScalableHandle] Using handle scale: {self.handle_scale}")
+#             super().__init__(**kwargs)
 
-    def _load_model(self):
-        """
-        Loads an xml model, puts it in self.model
-        """
-        super()._load_model()
+#     def _load_model(self):
+#         """
+#         Loads an xml model, puts it in self.model
+#         """
+#         super()._load_model()
 
-        # Adjust base pose accordingly
-        xpos = self.robots[0].robot_model.base_xpos_offset["table"](self.table_full_size[0])
-        self.robots[0].robot_model.set_base_xpos(xpos)
+#         # Adjust base pose accordingly
+#         xpos = self.robots[0].robot_model.base_xpos_offset["table"](self.table_full_size[0])
+#         self.robots[0].robot_model.set_base_xpos(xpos)
 
-        # load model for table top workspace
-        mujoco_arena = TableArena(
-            table_full_size=self.table_full_size,
-            table_offset=self.table_offset,
-        )
+#         # load model for table top workspace
+#         mujoco_arena = TableArena(
+#             table_full_size=self.table_full_size,
+#             table_offset=self.table_offset,
+#         )
 
-        # Arena always gets set to zero origin
-        mujoco_arena.set_origin([0, 0, 0])
+#         # Arena always gets set to zero origin
+#         mujoco_arena.set_origin([0, 0, 0])
 
-        # Modify default agentview camera
-        mujoco_arena.set_camera(
-            camera_name="agentview",
-            pos=[0.5986131746834771, -4.392035683362857e-09, 1.5903500240372423],
-            quat=[0.6380177736282349, 0.3048497438430786, 0.30484986305236816, 0.6380177736282349],
-        )
+#         # Modify default agentview camera
+#         mujoco_arena.set_camera(
+#             camera_name="agentview",
+#             pos=[0.5986131746834771, -4.392035683362857e-09, 1.5903500240372423],
+#             quat=[0.6380177736282349, 0.3048497438430786, 0.30484986305236816, 0.6380177736282349],
+#         )
 
-        # initialize objects of interest
-        self.door = DoorObject(
-            name="Door",
-            friction=0.0,
-            damping=0.1,
-            lock=self.use_latch,
-        )
+#         # initialize objects of interest
+#         self.door = DoorObject(
+#             name="Door",
+#             friction=0.0,
+#             damping=0.1,
+#             lock=self.use_latch,
+#         )
 
-        # Create placement initializer
-        if self.placement_initializer is not None:
-            self.placement_initializer.reset()
-            self.placement_initializer.add_objects(self.door)
-        else:
-            self.placement_initializer = UniformRandomSampler(
-                name="ObjectSampler",
-                mujoco_objects=self.door,
-                x_range=[0.07, 0.09],
-                y_range=[-0.01, 0.01],
-                rotation=(-np.pi / 2.0 - 0.25, -np.pi / 2.0),
-                rotation_axis="z",
-                ensure_object_boundary_in_range=False,
-                ensure_valid_placement=True,
-                reference_pos=self.table_offset,
-                rng=self.rng,
-            )
+#         # Create placement initializer
+#         if self.placement_initializer is not None:
+#             self.placement_initializer.reset()
+#             self.placement_initializer.add_objects(self.door)
+#         else:
+#             self.placement_initializer = UniformRandomSampler(
+#                 name="ObjectSampler",
+#                 mujoco_objects=self.door,
+#                 x_range=[0.07, 0.09],
+#                 y_range=[-0.01, 0.01],
+#                 rotation=(-np.pi / 2.0 - 0.25, -np.pi / 2.0),
+#                 rotation_axis="z",
+#                 ensure_object_boundary_in_range=False,
+#                 ensure_valid_placement=True,
+#                 reference_pos=self.table_offset,
+#                 rng=self.rng,
+#             )
 
-        # task includes arena, robot, and objects of interest
-        self.model = ManipulationTask(
-            mujoco_arena=mujoco_arena,
-            mujoco_robots=[robot.robot_model for robot in self.robots],
-            mujoco_objects=self.door,
-        )
+#         # task includes arena, robot, and objects of interest
+#         self.model = ManipulationTask(
+#             mujoco_arena=mujoco_arena,
+#             mujoco_robots=[robot.robot_model for robot in self.robots],
+#             mujoco_objects=self.door,
+#         )
 
+# class PPScalable(PickPlaceMilk):
+#     def __init__(self, mlik_scale=1.0, milk_friction=None, milk_density=None, **kwargs):
+#         # add same logic above 
+#         pass
 
 def register_custom_environments():
     """Register custom environments so they work with robosuite.make()"""
