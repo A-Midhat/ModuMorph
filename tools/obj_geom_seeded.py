@@ -19,8 +19,8 @@ from metamorph.envs.vec_env.vec_video_recorder import VecVideoRecorder
 """
 Example for object generalization testing:
 python tools/obj_geom_seeded.py \
-  --run_dir ./test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19 \
-  --checkpoint checkpoint_600.pt \
+  --run_dir ./artifacts/Robosuite-v0-MR-ST-MR-MT_ModuMorph_1409-run:v4 \
+  --checkpoint checkpoint_400.pt \
   --morph Kinova3 \
   --task LiftCylinder  \
   --base_task Lift \
@@ -34,14 +34,18 @@ python tools/obj_geom_seeded.py \
 """
 
 """
-python tools/normal_eval.py \
-  --run_dir ./artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run:v3/ \
+python tools/obj_geom_seeded.py \
+  --run_dir ./test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19 \
   --checkpoint Robosuite-v0.pt \
-  --morph Panda \
-  --task Door \
+  --morph Sawyer \
+  --task DoorScalableHandle  \
+  --base_task Door \
   --controller OSC_POSE \
-  --episodes 5 \
-  --save_video ./test_videos/ \
+  --episodes 3 \
+  --save_video ./test_GLENS_VIDS/ \
+  --friction 0.0  \
+  --damping 0.1 
+  --debug
     
 """
 
@@ -63,6 +67,7 @@ def parse_args():
     parser.add_argument("--scale", type=float, default=1.0, help="Uniform scaling factor for the custom object's geometry.")
     parser.add_argument("--friction", default=None, nargs="+", help="Enter modfieid friction values")
     parser.add_argument("--density", default=None, help="Add modified density")
+    parser.add_argument("--damping", default=None, type=float, help="Enter modified damping value for Door handle")
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
@@ -136,17 +141,24 @@ def main():
         else:
             print(f"[SCALE-LOG] Warning: Could not determine object type from task name '{args.task}'. Scale not applied.")
     if args.friction: 
-        print(f"[Friction] Applying this friction values: {list(args.friction)}")
-        if "Ball" in args.task:
-            cfg.ROBOSUITE.OBJECTS.SPHERE_FRICTION = args.friction
-        elif "Cube" in args.task:
-            cfg.ROBOSUITE.OBJECTS.CUBE_FRICTION = args.friction
-        elif "Cylinder" in args.task:
-            cfg.ROBOSUITE.OBJECTS.CYLINDER_FRICTION = args.friction
-        elif "Rectangle" in args.task:
-            cfg.ROBOSUITE.OBJECTS.RECT_FRICTION = args.friction
+        if isinstance(args.friction, list):
+           print(f"[Friction] Applying friction values: {args.friction}")
+           friction_value = args.friction
         else:
-            print(f"[SCALE-LOG] Warning: Could not determine object type from task name '{args.task}'. Scale not applied.")
+           print(f"[Friction] Applying friction value: {args.friction}")
+           friction_value = args.friction
+        if "Ball" in args.task:
+            cfg.ROBOSUITE.OBJECTS.SPHERE_FRICTION = friction_value
+        elif "Cube" in args.task:
+            cfg.ROBOSUITE.OBJECTS.CUBE_FRICTION = friction_value
+        elif "Cylinder" in args.task:
+            cfg.ROBOSUITE.OBJECTS.CYLINDER_FRICTION = friction_value
+        elif "Rectangle" in args.task:
+            cfg.ROBOSUITE.OBJECTS.RECT_FRICTION = friction_value
+        elif "DoorScalableHandle" in args.task:
+           cfg.ROBOSUITE.OBJECTS.HANDLE_FRICTION = friction_value
+        else:
+            print(f"[FRICTION-LOG] Warning: Could not determine object type from task name '{args.task}'. Friction not applied.")
     if args.density: 
         print(f"[Density] Applying this density values: {list(args.density)}")
         if "Ball" in args.task:
@@ -158,7 +170,14 @@ def main():
         elif "Rectangle" in args.task:
             cfg.ROBOSUITE.OBJECTS.RECT_DENSITY = args.density
         else:
-            print(f"[SCALE-LOG] Warning: Could not determine object type from task name '{args.task}'. Scale not applied.")
+            print(f"[DENSITY-LOG] Warning: Could not determine object type from task name '{args.task}'. density not applied.")
+    
+    if args.damping:
+        print(f"[Damping] Applying damping value: {args.damping}")
+        if "DoorScalableHandle" in args.task:
+            cfg.ROBOSUITE.OBJECTS.HANDLE_DAMPING = args.damping
+        else:
+           print(f"[DAMPING-LOG] Warning: Could not determine object type from task name '{args.task}'. Damping not applied.")
     # --- 2. Setup evaluation config for OBJECT GENERALIZATION ---
     cfg.ROBOSUITE.TASK_TYPE = "MR"
     

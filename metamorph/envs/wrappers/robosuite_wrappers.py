@@ -457,85 +457,84 @@ class LiftScalableCube(Lift):
         return cube_height > table_height + scaled_threshold
 
 
-# class DoorScalableHandle(Door):
-#     def __init__(self, handle_friction=0.0, handel_damping=0.1, handle_scale=1.0, **kwargs):
-#             self.handle_friction = handle_friction 
-#             self.handel_damping = handel_damping
-#             if cfg.ROBOSUITE.OBJECTS.HANDLE_FRICTION:
-#                 self.handle_friction = cfg.ROBOSUITE.OBJECTS.HANDLE_FRICTION
-#                 print(f"[DoorScalableHandle] Using handle with custom friction: {self.handle_friction}")
-#             if cfg.ROBOSUITE.OBJECTS.HANDLE_DAMPING:
-#                 self.handel_damping = cfg.ROBOSUITE.OBJECTS.HANDLE_DAMPING
-#                 print(f"[DoorScalableHandle] Using handle with custom dampping: {self.handel_damping}")
+class DoorScalableHandle(Door):
+    def __init__(self, handle_friction=None, handle_damping=None, **kwargs):
+            self.handle_friction = handle_friction 
+            self.handle_damping = handle_damping
+            if cfg.ROBOSUITE.OBJECTS.HANDLE_FRICTION:
+                self.handle_friction = cfg.ROBOSUITE.OBJECTS.HANDLE_FRICTION
+                print(f"[DoorScalableHandle] Using handle with custom friction: {self.handle_friction}")
+            if cfg.ROBOSUITE.OBJECTS.HANDLE_DAMPING:
+                self.handle_damping = cfg.ROBOSUITE.OBJECTS.HANDLE_DAMPING
+                print(f"[DoorScalableHandle] Using handle with custom damping: {self.handle_damping}")
 
-#             self.handle_scale = cfg.ROBOSUITE.OBJECTS.HANDLE_SCALE 
-#             if self.handle_scale != 1.0:
-#                 print(f"[DoorScalableHandle] Using handle scale: {self.handle_scale}")
-#             super().__init__(**kwargs)
+            
+            super().__init__(**kwargs)
+    
+    def _load_model(self):
+        """
+        Loads an xml model, puts it in self.model
+        """
+        super()._load_model()
 
-#     def _load_model(self):
-#         """
-#         Loads an xml model, puts it in self.model
-#         """
-#         super()._load_model()
+        # Adjust base pose accordingly
+        xpos = self.robots[0].robot_model.base_xpos_offset["table"](self.table_full_size[0])
+        self.robots[0].robot_model.set_base_xpos(xpos)
 
-#         # Adjust base pose accordingly
-#         xpos = self.robots[0].robot_model.base_xpos_offset["table"](self.table_full_size[0])
-#         self.robots[0].robot_model.set_base_xpos(xpos)
+        # load model for table top workspace
+        mujoco_arena = TableArena(
+            table_full_size=self.table_full_size,
+            table_offset=self.table_offset,
+        )
 
-#         # load model for table top workspace
-#         mujoco_arena = TableArena(
-#             table_full_size=self.table_full_size,
-#             table_offset=self.table_offset,
-#         )
+        # Arena always gets set to zero origin
+        mujoco_arena.set_origin([0, 0, 0])
 
-#         # Arena always gets set to zero origin
-#         mujoco_arena.set_origin([0, 0, 0])
+        # Modify default agentview camera
+        mujoco_arena.set_camera(
+            camera_name="agentview",
+            pos=[0.5986131746834771, -4.392035683362857e-09, 1.5903500240372423],
+            quat=[0.6380177736282349, 0.3048497438430786, 0.30484986305236816, 0.6380177736282349],
+        )
+        door_kwargs = {
+            "name":"Door",
+            "lock": self.use_latch
+        }
+        if self.handle_friction is not None: 
+            door_kwargs["friction"] = self.handle_friction
+        if self.handle_damping is not None:
+            door_kwargs["damping"] = self.handle_damping
+               
+        # initialize objects of interest
+        self.door = DoorObject(
+            **door_kwargs
+        )
 
-#         # Modify default agentview camera
-#         mujoco_arena.set_camera(
-#             camera_name="agentview",
-#             pos=[0.5986131746834771, -4.392035683362857e-09, 1.5903500240372423],
-#             quat=[0.6380177736282349, 0.3048497438430786, 0.30484986305236816, 0.6380177736282349],
-#         )
+        # Create placement initializer
+        if self.placement_initializer is not None:
+            self.placement_initializer.reset()
+            self.placement_initializer.add_objects(self.door)
+        else:
+            self.placement_initializer = UniformRandomSampler(
+                name="ObjectSampler",
+                mujoco_objects=self.door,
+                x_range=[0.07, 0.09],
+                y_range=[-0.01, 0.01],
+                rotation=(-np.pi / 2.0 - 0.25, -np.pi / 2.0),
+                rotation_axis="z",
+                ensure_object_boundary_in_range=False,
+                ensure_valid_placement=True,
+                reference_pos=self.table_offset,
+                rng=self.rng,
+            )
 
-#         # initialize objects of interest
-#         self.door = DoorObject(
-#             name="Door",
-#             friction=0.0,
-#             damping=0.1,
-#             lock=self.use_latch,
-#         )
+        # task includes arena, robot, and objects of interest
+        self.model = ManipulationTask(
+            mujoco_arena=mujoco_arena,
+            mujoco_robots=[robot.robot_model for robot in self.robots],
+            mujoco_objects=self.door,
+        )
 
-#         # Create placement initializer
-#         if self.placement_initializer is not None:
-#             self.placement_initializer.reset()
-#             self.placement_initializer.add_objects(self.door)
-#         else:
-#             self.placement_initializer = UniformRandomSampler(
-#                 name="ObjectSampler",
-#                 mujoco_objects=self.door,
-#                 x_range=[0.07, 0.09],
-#                 y_range=[-0.01, 0.01],
-#                 rotation=(-np.pi / 2.0 - 0.25, -np.pi / 2.0),
-#                 rotation_axis="z",
-#                 ensure_object_boundary_in_range=False,
-#                 ensure_valid_placement=True,
-#                 reference_pos=self.table_offset,
-#                 rng=self.rng,
-#             )
-
-#         # task includes arena, robot, and objects of interest
-#         self.model = ManipulationTask(
-#             mujoco_arena=mujoco_arena,
-#             mujoco_robots=[robot.robot_model for robot in self.robots],
-#             mujoco_objects=self.door,
-#         )
-
-# class PPScalable(PickPlaceMilk):
-#     def __init__(self, mlik_scale=1.0, milk_friction=None, milk_density=None, **kwargs):
-#         # add same logic above 
-#         pass
 
 def register_custom_environments():
     """Register custom environments so they work with robosuite.make()"""
@@ -546,234 +545,14 @@ def register_custom_environments():
     def custom_make(env_name, **kwargs):
         if env_name == "LiftBall":
             return LiftBall(**kwargs)
-        elif env_name == ... :
+        elif env_name == "DoorScalableHandle":
+            return DoorScalableHandle(**kwargs)
+        else: 
             return original_make(env_name, **kwargs)
     
     robosuite.make = custom_make
     print("✅ Custom environments registered successfully!")
 
-
-# def compare_observations():
-#     """Compare observations between original Lift and LiftBall"""
-    
-#     print("🔍 OBSERVATION COMPARISON TEST")
-#     print("=" * 50)
-    
-#     # Create both environments with identical settings
-#     env_original = robosuite.make(
-#         "Lift", 
-#         robots="Panda", 
-#         has_renderer=False,
-#         reward_shaping=True,
-#         use_object_obs=True,  # Important!
-#         horizon=100
-#     )
-    
-#     env_ball = robosuite.make(
-#         "LiftBall", 
-#         robots="Panda", 
-#         has_renderer=False,
-#         reward_shaping=True,
-#         use_object_obs=True,  # Important!
-#         horizon=100
-#     )
-    
-#     # Get observations
-#     obs_original = env_original.reset()
-#     obs_ball = env_ball.reset()
-    
-#     print(f"📦 ORIGINAL LIFT (Cube) - {len(obs_original)} keys:")
-#     for i, (key, value) in enumerate(obs_original.items()):
-#         if isinstance(value, np.ndarray):
-#             print(f"  {i+1:2d}. {key:<25} shape={value.shape} dtype={value.dtype}")
-#             if value.size <= 10:  # Small arrays, show values
-#                 print(f"      values: {value.flatten()}")
-#         else:
-#             print(f"  {i+1:2d}. {key:<25} value={value}")
-    
-#     print(f"\n🏀 CUSTOM LIFT (Ball) - {len(obs_ball)} keys:")
-#     for i, (key, value) in enumerate(obs_ball.items()):
-#         if isinstance(value, np.ndarray):
-#             print(f"  {i+1:2d}. {key:<25} shape={value.shape} dtype={value.dtype}")
-#             if value.size <= 10:  # Small arrays, show values
-#                 print(f"      values: {value.flatten()}")
-#         else:
-#             print(f"  {i+1:2d}. {key:<25} value={value}")
-    
-#     # Compare key sets
-#     original_keys = set(obs_original.keys())
-#     ball_keys = set(obs_ball.keys())
-    
-#     print(f"\n🔍 KEY COMPARISON:")
-#     print(f"  Original has {len(original_keys)} keys")
-#     print(f"  Ball has {len(ball_keys)} keys")
-    
-#     missing_in_ball = original_keys - ball_keys
-#     extra_in_ball = ball_keys - original_keys
-#     common_keys = original_keys & ball_keys
-    
-#     if missing_in_ball:
-#         print(f"  ❌ Missing in Ball: {missing_in_ball}")
-#     if extra_in_ball:
-#         print(f"  ➕ Extra in Ball: {extra_in_ball}")
-#     print(f"  ✅ Common keys: {len(common_keys)}")
-    
-#     env_original.close()
-#     env_ball.close()
-    
-#     return obs_original, obs_ball
-
-
-# def test_observation_consistency():
-#     """Test if observations change correctly during simulation"""
-    
-#     print("\n🧪 OBSERVATION CONSISTENCY TEST")
-#     print("=" * 50)
-    
-#     env = robosuite.make(
-#         "LiftBall", 
-#         robots="Panda", 
-#         has_renderer=False,
-#         reward_shaping=True,
-#         use_object_obs=True,
-#         horizon=100
-#     )
-    
-#     obs = env.reset()
-    
-#     print("📊 Testing observation changes over 5 steps...")
-    
-#     # Store initial values
-#     initial_ball_pos = obs['ball_pos'].copy()
-#     initial_gripper_pos = obs['robot0_eef_pos'].copy()
-#     initial_gripper_to_ball = obs['gripper_to_ball_pos'].copy()
-    
-#     print(f"Initial ball position: {initial_ball_pos}")
-#     print(f"Initial gripper position: {initial_gripper_pos}")
-#     print(f"Initial gripper-to-ball: {initial_gripper_to_ball}")
-    
-#     # Expected: gripper_to_ball_pos = gripper_pos - ball_pos
-#     expected_gripper_to_ball = initial_gripper_pos - initial_ball_pos
-#     print(f"Expected gripper-to-ball: {expected_gripper_to_ball}")
-#     print(f"Difference: {np.linalg.norm(initial_gripper_to_ball - expected_gripper_to_ball):.6f}")
-    
-#     if np.allclose(initial_gripper_to_ball, expected_gripper_to_ball, atol=1e-5):
-#         print("✅ gripper_to_ball_pos calculation is CORRECT!")
-#     else:
-#         print("❌ gripper_to_ball_pos calculation is WRONG!")
-    
-#     print("\n📈 Tracking changes over steps:")
-#     for step in range(5):
-#         # Move towards the ball
-#         action = np.zeros(env.action_dim)
-#         if 'gripper_to_ball_pos' in obs:
-#             # Simple policy: move toward ball
-#             direction = obs['gripper_to_ball_pos'] * 0.5  # Scale down
-#             action[:3] = np.clip(direction, -1, 1)
-        
-#         obs, reward, done, info = env.step(action)
-        
-#         print(f"  Step {step+1}:")
-#         print(f"    Ball pos: {obs['ball_pos']}")
-#         print(f"    Gripper pos: {obs['robot0_eef_pos']}")
-#         print(f"    Gripper-to-ball: {obs['gripper_to_ball_pos']}")
-#         print(f"    Distance to ball: {np.linalg.norm(obs['gripper_to_ball_pos']):.4f}")
-#         print(f"    Reward: {reward:.4f}")
-        
-#         # Verify consistency
-#         expected = obs['robot0_eef_pos'] - obs['ball_pos']
-#         if np.allclose(obs['gripper_to_ball_pos'], expected, atol=1e-5):
-#             print(f"    ✅ Calculation consistent")
-#         else:
-#             print(f"    ❌ Calculation inconsistent!")
-        
-#         if done:
-#             print(f"    🎯 Episode done! Success: {info.get('success', False)}")
-#             break
-    
-#     env.close()
-
-
-# def test_object_interaction():
-#     """Test if the ball object responds to physics correctly"""
-    
-#     print("\n🎾 BALL PHYSICS TEST")
-#     print("=" * 50)
-    
-#     env = robosuite.make(
-#         "LiftBall", 
-#         robots="Panda", 
-#         has_renderer=False,
-#         reward_shaping=True,
-#         use_object_obs=True,
-#         horizon=200
-#     )
-    
-#     obs = env.reset()
-#     initial_height = obs['ball_pos'][2]
-#     print(f"Initial ball height: {initial_height:.4f}")
-    
-#     # Try to lift the ball
-#     print("🤖 Attempting to lift the ball...")
-#     max_height = initial_height
-    
-#     for step in range(100):
-#         action = np.zeros(env.action_dim)
-        
-#         # Simple lifting strategy
-#         gripper_to_ball = obs['gripper_to_ball_pos']
-#         distance = np.linalg.norm(gripper_to_ball)
-        
-#         if distance > 0.05:  # Far from ball - move closer
-#             action[:3] = np.clip(gripper_to_ball * 2.0, -1, 1)
-#             action[-1] = -1  # Open gripper
-#         else:  # Close to ball - grasp and lift
-#             action[:3] = [0, 0, 0.5]  # Move up
-#             action[-1] = 1  # Close gripper
-        
-#         obs, reward, done, info = env.step(action)
-        
-#         current_height = obs['ball_pos'][2]
-#         max_height = max(max_height, current_height)
-        
-#         if step % 20 == 0:
-#             print(f"  Step {step}: height={current_height:.4f}, max={max_height:.4f}, reward={reward:.3f}")
-        
-#         if done:
-#             print(f"  🎯 Success! Ball lifted to {current_height:.4f}")
-#             break
-    
-#     height_increase = max_height - initial_height
-#     print(f"\n📏 Results:")
-#     print(f"  Initial height: {initial_height:.4f}")
-#     print(f"  Max height: {max_height:.4f}") 
-#     print(f"  Height increase: {height_increase:.4f}")
-    
-#     if height_increase > 0.02:
-#         print(f"  ✅ Ball physics working! Ball was lifted {height_increase:.4f}m")
-#     else:
-#         print(f"  ❌ Ball might not be responding to physics properly")
-    
-#     env.close()
-
-
-# if __name__ == "__main__":
-#     # Register environments
-#     register_custom_environments()
-    
-#     # Run all tests
-#     try:
-#         obs_orig, obs_ball = compare_observations()
-#         test_observation_consistency() 
-#         test_object_interaction()
-        
-#         print("\n🎉 ALL TESTS COMPLETED!")
-#         print("✅ If no errors appeared, your observations are working correctly!")
-        
-#     except Exception as e:
-#         print(f"❌ Test failed with error: {e}")
-#         import traceback
-#         traceback.print_exc()
 
 # ---------------------------------------------------------
 # -----------------Base Wrapper----------------------------

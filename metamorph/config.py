@@ -97,7 +97,9 @@ _C.ROBOSUITE.OBJECTS.CYLINDER_DENSITY = None
 _C.ROBOSUITE.OBJECTS.RECT_SCALE = 1.0
 _C.ROBOSUITE.OBJECTS.RECT_FRICTION = None
 _C.ROBOSUITE.OBJECTS.RECT_DENSITY = None
-
+_C.ROBOSUITE.OBJECTS.HANDLE_FRICTION = None
+_C.ROBOSUITE.OBJECTS.HANDLE_DAMPING = None
+# _C.ROBOSUITE.OBJECTS.HANDLE_SCALE = 1.0
 # ----------------------------------------------------------------------------#
 # Unimal Env Options
 # ----------------------------------------------------------------------------#
