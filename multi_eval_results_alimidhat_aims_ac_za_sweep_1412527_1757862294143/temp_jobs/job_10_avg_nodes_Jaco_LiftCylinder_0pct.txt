@@ -1,3 +1,0 @@
-[JOB-10] Starting: avg_nodes Jaco LiftCylinder 0% (seed 1409)
-SUCCESS,0.0,135.36
-[JOB-10] ✅ Success=0.0%, Reward=135.36

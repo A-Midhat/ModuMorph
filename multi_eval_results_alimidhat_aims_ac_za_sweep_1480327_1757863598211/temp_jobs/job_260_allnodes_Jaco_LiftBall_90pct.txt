@@ -1,3 +1,0 @@
-[JOB-260] Starting: allnodes Jaco LiftBall 90% (seed 3296)
-SUCCESS,0.0,173.29
-[JOB-260] ✅ Success=0.0%, Reward=173.29

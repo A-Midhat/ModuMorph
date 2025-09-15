@@ -1,3 +1,0 @@
-[JOB-290] Starting: allnodes Jaco LiftCylinder 90% (seed 3296)
-SUCCESS,0.0,156.26
-[JOB-290] ✅ Success=0.0%, Reward=156.26

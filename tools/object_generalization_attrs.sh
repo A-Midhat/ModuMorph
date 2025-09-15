@@ -547,9 +547,9 @@
 # --- 1. CONFIGURATION ---
 # Define all artifact paths with their seeds
 declare -A ARTIFACT_PATHS=(
-    # ["allnodes_seed1"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_1409-run:v9"
-    # ["allnodes_seed2"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_3296-run:v9"
-    # ["allnodes_seed3"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_2008-run:v9"
+    ["allnodes_seed1"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_1409-run:v9"
+    ["allnodes_seed2"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_3296-run:v9"
+    ["allnodes_seed3"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_2008-run:v9"
     ["avg_nodes_seed1"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19"
     ["avg_nodes_seed2"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_3296-run:v18"
     ["avg_nodes_seed3"]="test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_2008-run:v18"
@@ -562,7 +562,7 @@ declare -A ARTIFACT_PATHS=(
 CHECKPOINT="checkpoint_600.pt"
 
 # Define all morphologies to test
-MORPHS=("Jaco" "Kinova3") #"IIWA" "Sawyer")
+MORPHS=("Jaco" "Kinova3" "IIWA" "Sawyer")
 
 # Define all tasks to test  
 TASKS=("LiftBall" "LiftCylinder")
@@ -574,7 +574,7 @@ BASE_TASK="Lift"
 CONTROLLER="OSC_POSE"
 
 # Number of episodes to run for each sample
-EPISODES=1
+EPISODES=5
 
 # Directory to save videos (optional, can be left empty)
 VIDEO_DIR="./analysis_results/physical_attrs_videos/"
@@ -583,12 +583,12 @@ VIDEO_DIR="./analysis_results/physical_attrs_videos/"
 SAMPLING_SEED=42
 
 # Sampling configuration
-NORMAL_SAMPLES_PER_ATTR=5
+NORMAL_SAMPLES_PER_ATTR=10
 EXTREME_SAMPLES_PER_ATTR=2
 
 # --- PARALLEL EXECUTION SETTINGS ---
-MAX_PARALLEL_JOBS=6        # Conservative for physical simulation load
-GPU_JOBS_LIMIT=3          # Fewer GPU jobs for physics-heavy tasks
+MAX_PARALLEL_JOBS=16        # Conservative for physical simulation load
+GPU_JOBS_LIMIT=4          # Fewer GPU jobs for physics-heavy tasks
 MEMORY_PER_JOB="2G"       # More memory for physics simulations
 RUN_ID="${USER}_$(hostname)_$$_$(date +%s%N | cut -c1-13)"
 

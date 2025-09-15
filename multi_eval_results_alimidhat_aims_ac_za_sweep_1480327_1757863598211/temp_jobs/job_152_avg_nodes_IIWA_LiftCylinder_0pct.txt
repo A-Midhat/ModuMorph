@@ -1,3 +1,0 @@
-[JOB-152] Starting: avg_nodes IIWA LiftCylinder 0% (seed 3296)
-SUCCESS,100.0,447.70
-[JOB-152] ✅ Success=100.0%, Reward=447.70

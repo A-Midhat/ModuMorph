@@ -1,3 +1,0 @@
-[JOB-22] Starting: avg_nodes Kinova3 LiftBall 20% (seed 1409)
-SUCCESS,100.0,471.00
-[JOB-22] ✅ Success=100.0%, Reward=471.00

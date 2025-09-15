@@ -25,9 +25,9 @@ python tools/obj_geom_seeded.py \
   --task LiftCylinder  \
   --base_task Lift \
   --controller OSC_POSE \
-  --episodes 10 \
-  --save_video ./test_object_generalization/ \
-  --scale 2.0 \ 
+  --episodes 1 \
+  --save_video ./test_GLENS_VIDS/ \
+  --scale 1.25 \ 
   --friction 1.5 0.0005 0.0001 \
   --density 600 
   --debug

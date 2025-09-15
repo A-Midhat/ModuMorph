@@ -1,3 +1,0 @@
-[JOB-94] Starting: avg_nodes Kinova3 LiftCylinder 20% (seed 1409)
-SUCCESS,20.0,307.16
-[JOB-94] ✅ Success=20.0%, Reward=307.16

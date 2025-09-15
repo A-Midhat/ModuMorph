@@ -1,3 +1,0 @@
-[JOB-318] Starting: allnodes Kinova3 LiftBall 80% (seed 2008)
-SUCCESS,0.0,15.19
-[JOB-318] ✅ Success=0.0%, Reward=15.19

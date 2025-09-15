@@ -1,3 +1,0 @@
-[JOB-343] Starting: allnodes Kinova3 LiftCylinder 60% (seed 1409)
-SUCCESS,0.0,99.01
-[JOB-343] ✅ Success=0.0%, Reward=99.01

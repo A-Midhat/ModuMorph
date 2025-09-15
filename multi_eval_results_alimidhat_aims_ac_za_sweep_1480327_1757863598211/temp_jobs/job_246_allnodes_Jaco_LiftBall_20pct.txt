@@ -1,3 +1,0 @@
-[JOB-246] Starting: allnodes Jaco LiftBall 20% (seed 2008)
-SUCCESS,0.0,2.27
-[JOB-246] ✅ Success=0.0%, Reward=2.27

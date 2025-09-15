@@ -1,3 +1,0 @@
-[JOB-230] Starting: avg_nodes Sawyer LiftCylinder 90% (seed 3296)
-SUCCESS,0.0,70.63
-[JOB-230] ✅ Success=0.0%, Reward=70.63

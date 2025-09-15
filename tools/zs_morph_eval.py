@@ -33,12 +33,12 @@ declare -A ARTIFACT_PATHS=(
 """
 Example for generalization testing:
 python tools/zs_morph_eval.py \
-  --run_dir ./test_artifacts/Robosuite-v0-MR-ST-MR-MT_object_only4_2008-run:v9 \
+  --run_dir ./test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_1409-run:v9 \
   --checkpoint checkpoint_600.pt \
   --morph Panda \
   --task Door \
   --controller OSC_POSE \
-  --episodes 5 \
+  --episodes 1 \
   --save_video ./test_generalization/ \
   --debug
 """
