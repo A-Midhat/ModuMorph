@@ -1,0 +1,17 @@
+Seq	Host	Starttime	JobRuntime	Send	Receive	Exitval	Signal	Command
+2	:	1757919592.750	    42.088	0	0	0	0	run_single_attr_job 2 allnodes allnodes_seed3 test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_2008-run:v9 Jaco DoorScalableHandle scale 9 1.2665 2008
+8	:	1757919592.792	    43.171	0	0	0	0	run_single_attr_job 8 allnodes allnodes_seed3 test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_2008-run:v9 Jaco DoorScalableHandle scale 8 1.1809 2008
+3	:	1757919592.757	    44.009	0	0	0	0	run_single_attr_job 3 allnodes allnodes_seed2 test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_3296-run:v9 Jaco DoorScalableHandle scale 9 1.2665 3296
+14	:	1757919592.838	    44.119	0	0	0	0	run_single_attr_job 14 allnodes allnodes_seed3 test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_2008-run:v9 Jaco DoorScalableHandle scale 7 1.3929 2008
+13	:	1757919592.830	    44.262	0	0	0	0	run_single_attr_job 13 allnodes allnodes_seed1 test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_1409-run:v9 Jaco DoorScalableHandle scale 7 1.3929 1409
+7	:	1757919592.785	    44.516	0	0	0	0	run_single_attr_job 7 allnodes allnodes_seed1 test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_1409-run:v9 Jaco DoorScalableHandle scale 8 1.1809 1409
+9	:	1757919592.799	    44.595	0	0	0	0	run_single_attr_job 9 allnodes allnodes_seed2 test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_3296-run:v9 Jaco DoorScalableHandle scale 8 1.1809 3296
+15	:	1757919592.847	    44.560	0	0	0	0	run_single_attr_job 15 allnodes allnodes_seed2 test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_3296-run:v9 Jaco DoorScalableHandle scale 7 1.3929 3296
+1	:	1757919592.744	    44.990	0	0	0	0	run_single_attr_job 1 allnodes allnodes_seed1 test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_1409-run:v9 Jaco DoorScalableHandle scale 9 1.2665 1409
+6	:	1757919592.778	    45.728	0	0	0	0	run_single_attr_job 6 allnodes allnodes_seed2 test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_3296-run:v9 Kinova3 DoorScalableHandle scale 9 1.2665 3296
+10	:	1757919592.806	    46.295	0	0	0	0	run_single_attr_job 10 allnodes allnodes_seed1 test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_1409-run:v9 Kinova3 DoorScalableHandle scale 8 1.1809 1409
+4	:	1757919592.764	    46.861	0	0	0	0	run_single_attr_job 4 allnodes allnodes_seed1 test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_1409-run:v9 Kinova3 DoorScalableHandle scale 9 1.2665 1409
+12	:	1757919592.822	    46.902	0	0	0	0	run_single_attr_job 12 allnodes allnodes_seed2 test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_3296-run:v9 Kinova3 DoorScalableHandle scale 8 1.1809 3296
+11	:	1757919592.814	    47.140	0	0	0	0	run_single_attr_job 11 allnodes allnodes_seed3 test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_2008-run:v9 Kinova3 DoorScalableHandle scale 8 1.1809 2008
+16	:	1757919592.856	    47.815	0	0	0	0	run_single_attr_job 16 allnodes allnodes_seed1 test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_1409-run:v9 Kinova3 DoorScalableHandle scale 7 1.3929 1409
+5	:	1757919592.771	    48.712	0	0	0	0	run_single_attr_job 5 allnodes allnodes_seed3 test_artifacts/Robosuite-v0-MR-ST-MR-MT_ALLNODES4_2008-run:v9 Kinova3 DoorScalableHandle scale 9 1.2665 2008

@@ -22,13 +22,14 @@ python tools/obj_geom_seeded.py \
   --run_dir ./artifacts/Robosuite-v0-MR-ST-MR-MT_ModuMorph_1409-run:v4 \
   --checkpoint checkpoint_400.pt \
   --morph Kinova3 \
-  --task LiftCylinder  \
+  --task LiftScalableCube  \
   --base_task Lift \
   --controller OSC_POSE \
-  --episodes 1 \
+  --episodes 5 \
   --save_video ./test_GLENS_VIDS/ \
-  --scale 1.25 \ 
   --friction 1.5 0.0005 0.0001 \
+  --scale 1.25 \ 
+  
   --density 600 
   --debug
 """
@@ -38,10 +39,10 @@ python tools/obj_geom_seeded.py \
   --run_dir ./test_artifacts/Robosuite-v0-MR-ST-MR-MT_avg_nodes_1409-run:v19 \
   --checkpoint Robosuite-v0.pt \
   --morph Sawyer \
-  --task DoorScalableHandle  \
-  --base_task Door \
+  --task LiftScalableCube  \
+  --base_task Lift \
   --controller OSC_POSE \
-  --episodes 3 \
+  --episodes 10 \
   --save_video ./test_GLENS_VIDS/ \
   --friction 0.0  \
   --damping 0.1 

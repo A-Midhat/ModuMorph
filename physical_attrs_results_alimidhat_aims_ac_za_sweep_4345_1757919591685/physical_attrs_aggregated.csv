@@ -1,0 +1,4 @@
+Method,Morph,Task,Attribute_Type,Sample_Index,Attribute_Value,Success_Rate_Mean,Success_Rate_Std,Avg_Reward_Mean,Avg_Reward_Std
+allnodes,Jaco,DoorScalableHandle,scale,9,1.2665,0.00,0.00,3.14,0.00
+allnodes,Kinova3,DoorScalableHandle,scale,9,1.2665,0.00,0.00,0.76,0.00
+allnodes,Jaco,DoorScalableHandle,scale,8,1.1809,0.00,0.00,3.14,0.00
